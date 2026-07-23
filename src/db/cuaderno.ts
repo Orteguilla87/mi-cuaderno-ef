@@ -1,0 +1,307 @@
+import { db, nuevoId } from './db'
+import type {
+  Columna,
+  Etapa,
+  Rubrica,
+  TipoColumna,
+  Trimestre,
+  ValorCelda,
+} from './types'
+import { TIPOS_NUMERICOS } from './types'
+
+/** Metadatos de cada tipo de columna, para poblar el selector y la rejilla. */
+export const TIPOS_COLUMNA: {
+  tipo: TipoColumna
+  etiqueta: string
+  descripcion: string
+}[] = [
+  { tipo: 'numero', etiqueta: 'Número', descripcion: 'Nota en una escala, p. ej. 0–10' },
+  {
+    tipo: 'positivo_negativo',
+    etiqueta: 'Positivos y negativos',
+    descripcion: 'Contadores + y − que se acumulan',
+  },
+  { tipo: 'caritas', etiqueta: 'Caritas', descripcion: 'Escala visual de 3 o 5 niveles' },
+  { tipo: 'si_no', etiqueta: 'Lista de control', descripcion: 'Conseguido o no conseguido' },
+  { tipo: 'rubrica', etiqueta: 'Rúbrica', descripcion: 'Varios criterios con niveles' },
+  { tipo: 'texto', etiqueta: 'Texto', descripcion: 'Anotación libre por alumno' },
+]
+
+/** Tipos disponibles según la etapa: Infantil no admite números (§6). */
+export function tiposDisponibles(etapa: Etapa): typeof TIPOS_COLUMNA {
+  if (etapa === 'infantil') return TIPOS_COLUMNA.filter((t) => !TIPOS_NUMERICOS.includes(t.tipo))
+  return TIPOS_COLUMNA
+}
+
+export async function crearColumna(datos: {
+  grupoId: string
+  trimestre: Trimestre
+  titulo: string
+  tipo: TipoColumna
+  udId?: string
+  criterioCodigo?: string
+  fecha?: string
+  escala?: Columna['escala']
+  caritas?: 3 | 5
+  rubricaId?: string
+}): Promise<string> {
+  const existentes = await db.columnas
+    .where('[grupoId+trimestre]')
+    .equals([datos.grupoId, datos.trimestre])
+    .toArray()
+
+  const columna: Columna = {
+    id: nuevoId(),
+    grupoId: datos.grupoId,
+    trimestre: datos.trimestre,
+    titulo: datos.titulo.trim(),
+    tipo: datos.tipo,
+    orden: existentes.length,
+    fecha: datos.fecha,
+    udId: datos.udId,
+    criterioCodigo: datos.criterioCodigo,
+    escala: datos.tipo === 'numero' ? (datos.escala ?? { min: 0, max: 10, decimales: 1 }) : undefined,
+    caritas: datos.tipo === 'caritas' ? (datos.caritas ?? 3) : undefined,
+    rubricaId: datos.tipo === 'rubrica' ? datos.rubricaId : undefined,
+  }
+  await db.columnas.add(columna)
+  return columna.id
+}
+
+/** Borra la columna y todos sus valores. Devuelve la función de deshacer. */
+export async function eliminarColumna(columnaId: string): Promise<() => Promise<void>> {
+  const columna = await db.columnas.get(columnaId)
+  const valores = await db.valores.where('columnaId').equals(columnaId).toArray()
+  if (!columna) return async () => {}
+
+  await db.transaction('rw', [db.columnas, db.valores], async () => {
+    await db.valores.bulkDelete(valores.map((v) => v.id))
+    await db.columnas.delete(columnaId)
+  })
+
+  return async () => {
+    await db.transaction('rw', [db.columnas, db.valores], async () => {
+      await db.columnas.add(columna)
+      await db.valores.bulkAdd(valores)
+    })
+  }
+}
+
+/** Mueve una columna una posición a izquierda o derecha. */
+export async function moverColumna(columnaId: string, delta: number): Promise<void> {
+  const columna = await db.columnas.get(columnaId)
+  if (!columna) return
+  const hermanas = (
+    await db.columnas
+      .where('[grupoId+trimestre]')
+      .equals([columna.grupoId, columna.trimestre])
+      .toArray()
+  ).sort((a, b) => a.orden - b.orden)
+
+  const i = hermanas.findIndex((c) => c.id === columnaId)
+  const j = i + delta
+  if (j < 0 || j >= hermanas.length) return
+  ;[hermanas[i], hermanas[j]] = [hermanas[j], hermanas[i]]
+  // Se reescriben todos los órdenes: es barato y evita huecos y empates.
+  await db.transaction('rw', db.columnas, async () => {
+    for (let k = 0; k < hermanas.length; k++) {
+      await db.columnas.update(hermanas[k].id, { orden: k })
+    }
+  })
+}
+
+export async function columnasDe(grupoId: string, trimestre: Trimestre): Promise<Columna[]> {
+  const lista = await db.columnas.where('[grupoId+trimestre]').equals([grupoId, trimestre]).toArray()
+  return lista.sort((a, b) => a.orden - b.orden)
+}
+
+/** Valores de un conjunto de columnas, indexados por `columnaId|alumnoId`. */
+export async function valoresDe(columnaIds: string[]): Promise<Map<string, ValorCelda>> {
+  if (columnaIds.length === 0) return new Map()
+  const lista = await db.valores.where('columnaId').anyOf(columnaIds).toArray()
+  return new Map(lista.map((v) => [`${v.columnaId}|${v.alumnoId}`, v]))
+}
+
+/**
+ * Escribe (o limpia) el valor de una celda. Devuelve la función de deshacer,
+ * porque en la rejilla se toca muy rápido y equivocarse es lo normal.
+ */
+export async function guardarValor(
+  columnaId: string,
+  alumnoId: string,
+  cambios: Partial<Omit<ValorCelda, 'id' | 'columnaId' | 'alumnoId' | 'actualizado'>>,
+): Promise<() => Promise<void>> {
+  const previo = await db.valores
+    .where('[columnaId+alumnoId]')
+    .equals([columnaId, alumnoId])
+    .first()
+
+  if (previo) {
+    const antes = { ...previo }
+    await db.valores.update(previo.id, { ...cambios, actualizado: Date.now() })
+    return async () => void (await db.valores.put(antes))
+  }
+
+  const nuevo: ValorCelda = {
+    id: nuevoId(),
+    columnaId,
+    alumnoId,
+    ...cambios,
+    actualizado: Date.now(),
+  }
+  await db.valores.add(nuevo)
+  return async () => void (await db.valores.delete(nuevo.id))
+}
+
+/**
+ * Valor de una celda normalizado a 0–10, o `null` si no aplica.
+ *
+ * Es la pieza que permitirá promediar columnas de tipos distintos dentro de una
+ * unidad: una carita, un «conseguido» y un 7 tienen que poder convivir en la
+ * misma media. Los positivos/negativos y el texto NO se normalizan: un contador
+ * no representa un logro sobre 10, y forzarlo daría medias engañosas.
+ */
+export function valorNormalizado(
+  columna: Columna,
+  valor: ValorCelda | undefined,
+  rubrica?: Rubrica,
+): number | null {
+  if (!valor) return null
+
+  switch (columna.tipo) {
+    case 'numero': {
+      if (valor.numero == null) return null
+      const { min, max } = columna.escala ?? { min: 0, max: 10 }
+      if (max === min) return null
+      return ((valor.numero - min) / (max - min)) * 10
+    }
+    case 'caritas': {
+      if (valor.carita == null) return null
+      const niveles = columna.caritas ?? 3
+      return (valor.carita / (niveles - 1)) * 10
+    }
+    case 'si_no':
+      if (valor.marcado == null) return null
+      return valor.marcado ? 10 : 0
+    case 'rubrica': {
+      if (!rubrica || !valor.rubrica) return null
+      const valores = rubrica.niveles.map((n) => n.valor)
+      const min = Math.min(...valores)
+      const max = Math.max(...valores)
+      if (max === min) return null
+
+      let suma = 0
+      let pesos = 0
+      for (const criterio of rubrica.criterios) {
+        const nivelId = valor.rubrica[criterio.id]
+        const nivel = rubrica.niveles.find((n) => n.id === nivelId)
+        if (!nivel) continue
+        const peso = criterio.pesoPct > 0 ? criterio.pesoPct : 1
+        suma += ((nivel.valor - min) / (max - min)) * 10 * peso
+        pesos += peso
+      }
+      return pesos === 0 ? null : suma / pesos
+    }
+    default:
+      return null // positivo_negativo y texto no son promediables
+  }
+}
+
+export interface MediaAlumno {
+  alumnoId: string
+  media: number | null
+  /** Columnas con valor que han entrado en la media. */
+  contadas: number
+}
+
+/**
+ * Media 0–10 de un alumno sobre un conjunto de columnas. Se usa tanto para el
+ * total del trimestre como para la media por unidad didáctica.
+ */
+export function mediaDe(
+  columnas: Columna[],
+  valores: Map<string, ValorCelda>,
+  alumnoId: string,
+  rubricas: Map<string, Rubrica>,
+): MediaAlumno {
+  let suma = 0
+  let contadas = 0
+  for (const c of columnas) {
+    const v = valores.get(`${c.id}|${alumnoId}`)
+    const n = valorNormalizado(c, v, c.rubricaId ? rubricas.get(c.rubricaId) : undefined)
+    if (n == null) continue
+    suma += n
+    contadas++
+  }
+  return { alumnoId, media: contadas === 0 ? null : suma / contadas, contadas }
+}
+
+/** Agrupa las columnas por unidad didáctica, para las medias por UD. */
+export function agruparPorUnidad(columnas: Columna[]): Map<string | null, Columna[]> {
+  const mapa = new Map<string | null, Columna[]>()
+  for (const c of columnas) {
+    const clave = c.udId ?? null
+    const lista = mapa.get(clave) ?? []
+    lista.push(c)
+    mapa.set(clave, lista)
+  }
+  return mapa
+}
+
+// ——— Rúbricas ———
+
+/**
+ * Niveles de logro por defecto: 5 tramos puntuados 2, 4, 6, 8 y 10.
+ *
+ * Los valores van sobre 10 a propósito, así la puntuación de la rúbrica se lee
+ * directamente como nota y no hay que traducir nada mentalmente.
+ */
+const NIVELES_POR_DEFECTO: { etiqueta: string; valor: number }[] = [
+  { etiqueta: 'No conseguido', valor: 2 },
+  { etiqueta: 'En proceso', valor: 4 },
+  { etiqueta: 'Conseguido', valor: 6 },
+  { etiqueta: 'Notable', valor: 8 },
+  { etiqueta: 'Excelente', valor: 10 },
+]
+
+/** Rúbrica nueva con una estructura de partida editable. */
+export async function crearRubrica(titulo: string, etapa?: Etapa): Promise<string> {
+  const niveles = NIVELES_POR_DEFECTO.map((n) => ({ ...n, id: nuevoId() }))
+  const rubrica: Rubrica = {
+    id: nuevoId(),
+    titulo: titulo.trim() || 'Rúbrica sin título',
+    etapa,
+    niveles,
+    criterios: [{ id: nuevoId(), titulo: 'Criterio 1', pesoPct: 100 }],
+  }
+  await db.rubricas.add(rubrica)
+  return rubrica.id
+}
+
+export async function duplicarRubrica(rubricaId: string): Promise<string | null> {
+  const origen = await db.rubricas.get(rubricaId)
+  if (!origen) return null
+  // Los ids de niveles y criterios se regeneran para que editarla no afecte a
+  // los valores ya guardados con la rúbrica original.
+  const mapaNiveles = new Map(origen.niveles.map((n) => [n.id, nuevoId()]))
+  const copia: Rubrica = {
+    id: nuevoId(),
+    titulo: `${origen.titulo} (copia)`,
+    etapa: origen.etapa,
+    niveles: origen.niveles.map((n) => ({ ...n, id: mapaNiveles.get(n.id)! })),
+    criterios: origen.criterios.map((c) => ({
+      ...c,
+      id: nuevoId(),
+      descripciones: c.descripciones
+        ? Object.fromEntries(
+            Object.entries(c.descripciones).map(([nivelId, texto]) => [
+              mapaNiveles.get(nivelId) ?? nivelId,
+              texto,
+            ]),
+          )
+        : undefined,
+    })),
+  }
+  await db.rubricas.add(copia)
+  return copia.id
+}

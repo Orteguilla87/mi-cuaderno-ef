@@ -1,0 +1,285 @@
+{
+  "marco": "Decreto 61/2022, de 13 de julio, del Consejo de Gobierno de la Comunidad de Madrid — Anexo II, área de Educación Física. Textos literales aportados por el usuario.",
+  "estado": "COMPLETO",
+  "competencias_especificas": [
+    {
+      "codigo": "CE1",
+      "texto": "Adoptar un estilo de vida activo y adecuado, practicando regularmente actividades físicas, lúdicas y deportivas, adoptando comportamientos que potencien la salud, así como medidas de responsabilidad durante la práctica motriz."
+    },
+    {
+      "codigo": "CE2",
+      "texto": "Adaptar los elementos propios del esquema corporal, las capacidades físicas, perceptivo-motrices y coordinativas, así como las habilidades y destrezas motrices, aplicando procesos de percepción, decisión y ejecución, para dar respuesta a las demandas de proyectos motores y de prácticas motrices con distintas finalidades en contextos de la vida diaria."
+    },
+    {
+      "codigo": "CE3",
+      "texto": "Desarrollar procesos de regulación e interacción en el marco de la práctica motriz, haciendo uso de habilidades sociales y actitudes de respeto, trabajo en equipo y deportividad, con independencia de las diferencias y de las habilidades de los participantes, para contribuir a la convivencia."
+    },
+    {
+      "codigo": "CE4",
+      "texto": "Reconocer y practicar diferentes manifestaciones lúdicas, físico-deportivas y artístico-expresivas propias de la cultura motriz, valorando su influencia y sus aportaciones a la cultura, para integrarlas en las situaciones motrices que se utilizan regularmente en la vida cotidiana."
+    },
+    {
+      "codigo": "CE5",
+      "texto": "Valorar diferentes medios naturales y urbanos como contextos de práctica motriz, interactuando con ellos y comprendiendo la importancia de su conservación, adoptando medidas de responsabilidad durante la práctica de juegos y actividades físico-deportivas, para realizar una práctica eficiente y respetuosa con el entorno y participar en su cuidado y mejora."
+    }
+  ],
+  "ciclos": [
+    {
+      "ciclo": 1,
+      "cursos": [
+        1,
+        2
+      ],
+      "criterios": [
+        {
+          "codigo": "1.1",
+          "competencia": "CE1",
+          "texto": "Identificar los desplazamientos activos como práctica saludable, conociendo sus beneficios físicos y sociales para el establecimiento de un estilo de vida activo."
+        },
+        {
+          "codigo": "1.2",
+          "competencia": "CE1",
+          "texto": "Explorar las posibilidades de la propia motricidad y de la de los demás a través del juego, aplicando en distintas situaciones cotidianas medidas básicas de cuidado de la salud personal a través de la higiene corporal, el descanso, la educación postural y la alimentación."
+        },
+        {
+          "codigo": "1.3",
+          "competencia": "CE1",
+          "texto": "Participar en juegos de activación y vuelta a la calma, reconociendo su utilidad para adaptar el cuerpo a la actividad física y evitar lesiones, así como recuperar el equilibrio psicosomático después del esfuerzo manteniendo la calma y sabiendo cómo actuar en caso de que se produzca algún accidente en contextos de práctica motriz. Tomando medidas de seguridad previas a la práctica motriz y utilizando los diferentes materiales de forma correcta."
+        },
+        {
+          "codigo": "1.4",
+          "competencia": "CE1",
+          "texto": "Conocer los valores positivos que fomenta la práctica motriz, realizada ya sea de manera individual como compartida, reconociendo, vivenciando y disfrutando sus beneficios en contextos variados, y respetando a todos los participantes con independencia de sus diferencias."
+        },
+        {
+          "codigo": "2.1",
+          "competencia": "CE2",
+          "texto": "Reconocer la importancia de establecer metas y objetivos claros, conocer los recursos materiales, los roles de los participantes y las reglas básicas a la hora de desarrollar proyectos motores de carácter individual o grupal, valorando su consecución a partir de un análisis de los resultados obtenidos, ya sean de proceso o finales."
+        },
+        {
+          "codigo": "2.2",
+          "competencia": "CE2",
+          "texto": "Adoptar decisiones en contextos de práctica motriz de manera ajustada según las circunstancias personales, materiales y ambientales."
+        },
+        {
+          "codigo": "2.3",
+          "competencia": "CE2",
+          "texto": "Descubrir, reconocer y emplear los componentes cualitativos y cuantitativos de la motricidad de manera lúdica responsable e integrada en diferentes situaciones y contextos, mejorando progresivamente su control y su dominio corporal."
+        },
+        {
+          "codigo": "3.1",
+          "competencia": "CE3",
+          "texto": "Identificar y reconocer las emociones que se producen durante el juego, intentando gestionarlas, disfrutando de la actividad física."
+        },
+        {
+          "codigo": "3.2",
+          "competencia": "CE3",
+          "texto": "Respetar las normas consensuadas, así como las reglas de juego, y actuar desde los parámetros de la deportividad y el juego limpio, gestionando la tolerancia a la frustración y aceptando las características y niveles de los participantes, así como los roles de juego asignado."
+        },
+        {
+          "codigo": "3.3",
+          "competencia": "CE3",
+          "texto": "Participar en las prácticas motrices cotidianas, comenzando a desarrollar habilidades sociales de acogida, ayuda y colaboración, iniciándose en la resolución de conflictos personales fomentando el dialogo y la mejora de la convivencia."
+        },
+        {
+          "codigo": "4.1",
+          "competencia": "CE4",
+          "texto": "Participar activamente en la reproducción de juegos y otras manifestaciones artístico-expresivas de carácter cultural del entorno, valorando su componente lúdico-festivo y disfrutando de su puesta en práctica."
+        },
+        {
+          "codigo": "4.2",
+          "competencia": "CE4",
+          "texto": "Conocer y valorar los logros de personas y distintos colectivos referentes del deporte de ambos géneros, reconociendo el esfuerzo, la dedicación su actitud ante la derrota y los sacrificios requeridos para alcanzar dichos éxitos."
+        },
+        {
+          "codigo": "4.3",
+          "competencia": "CE4",
+          "texto": "Adecuar los distintos usos comunicativos de la corporalidad (gestos, muecas, representación de personajes) y sus manifestaciones a diferentes ritmos y contextos expresivos."
+        },
+        {
+          "codigo": "5.1",
+          "competencia": "CE5",
+          "texto": "Participar en actividades lúdico-recreativas de forma segura en los entornos natural y urbano y en contextos terrestres o acuáticos, conociendo otros usos desde la motricidad y adoptando actitudes de cuidado y conservación de dichos entornos."
+        }
+      ]
+    },
+    {
+      "ciclo": 2,
+      "cursos": [
+        3,
+        4
+      ],
+      "criterios": [
+        {
+          "codigo": "1.1",
+          "competencia": "CE1",
+          "texto": "Reconocer la actividad física como alternativa de ocio saludable, identificando desplazamientos activos y conociendo los efectos beneficiosos a nivel físico, social y mental que posee adoptar un estilo de vida activo."
+        },
+        {
+          "codigo": "1.2",
+          "competencia": "CE1",
+          "texto": "Aplicar medidas de educación postural, alimentación saludable, higiene corporal y preparación de la práctica motriz, asumiendo responsabilidades y generando hábitos y rutinas en situaciones cotidianas."
+        },
+        {
+          "codigo": "1.3",
+          "competencia": "CE1",
+          "texto": "Tomar medidas de precaución, previa y durante la práctica motriz y prevención de lesiones en relación con la conservación y al mantenimiento del material en el marco de distintas prácticas físico deportivas, conociendo protocolos básicos de actuación ante accidentes que se puedan producir en este contexto."
+        },
+        {
+          "codigo": "1.4",
+          "competencia": "CE1",
+          "texto": "Reconocer la propia imagen corporal y la de los demás, identificar las propias fortalezas y debilidades ante mensajes nocivos, aceptando y respetando las diferencias individuales que puedan existir, superando y rechazando las conductas discriminatorias que se puedan producir en contextos de práctica motriz."
+        },
+        {
+          "codigo": "2.1",
+          "competencia": "CE2",
+          "texto": "Llevar a cabo proyectos motores de carácter individual o grupal, empleando estrategias de monitorización y seguimiento que permitan analizar los resultados obtenidos."
+        },
+        {
+          "codigo": "2.2",
+          "competencia": "CE2",
+          "texto": "Adoptar decisiones en situaciones lúdicas, juegos y actividades deportivas, ajustándose a las demandas derivadas de los objetivos motores, de las características del grupo y de la lógica interna de situaciones individuales o grupales de oposición y de colaboración oposición, en contextos simulados de actuación."
+        },
+        {
+          "codigo": "2.3",
+          "competencia": "CE2",
+          "texto": "Emplear los componentes cualitativos y cuantitativos de la motricidad de manera eficiente y creativa en distintos contextos y situaciones motrices, adquiriendo un control y dominio corporal sobre ellos."
+        },
+        {
+          "codigo": "3.1",
+          "competencia": "CE3",
+          "texto": "Mostrar una disposición positiva hacia la práctica física y hacia el esfuerzo, controlando la impulsividad y las emociones que surjan en contextos de actividad motriz. Establecer estrategias para una adecuada regulación de las emociones."
+        },
+        {
+          "codigo": "3.2",
+          "competencia": "CE3",
+          "texto": "Respetar las normas consensuadas en clase, así como las reglas de juego, a los adversarios, compañeros, árbitros, espectadores y profesores y actuar desde los parámetros de la deportividad y el juego limpio, valorando la aportación de los participantes."
+        },
+        {
+          "codigo": "3.3",
+          "competencia": "CE3",
+          "texto": "Desarrollar habilidades sociales de acogida, ayuda y colaboración al participar en prácticas motrices variadas, resolviendo los conflictos, mostrando un compromiso frente a las actuaciones discriminatorias y cualquier tipo de violencia."
+        },
+        {
+          "codigo": "4.1",
+          "competencia": "CE4",
+          "texto": "Participar activamente en juegos motores y otras manifestaciones artístico-expresivas con arraigo en la cultura tradicional o actual, así como otros procedentes de diversas culturas, contextualizando su origen, su aparición y su transmisión a lo largo del tiempo y valorando su importancia, repercusión e influencia en las sociedades pasadas y presentes."
+        },
+        {
+          "codigo": "4.2",
+          "competencia": "CE4",
+          "texto": "Apreciar los logros de personas y colectivos referentes del deporte, reconociendo el esfuerzo, la dedicación y los sacrificios requeridos para alcanzar el éxito y su actitud ante la derrota o los objetivos no conseguidos."
+        },
+        {
+          "codigo": "4.3",
+          "competencia": "CE4",
+          "texto": "Estimar el esfuerzo como valor para conseguir un objetivo."
+        },
+        {
+          "codigo": "4.4",
+          "competencia": "CE4",
+          "texto": "Asumir una visión abierta del deporte a partir del conocimiento de distintas ligas, acercándose al deporte federado e identificando comportamientos contrarios a la convivencia independientemente del contexto en el que tengan lugar."
+        },
+        {
+          "codigo": "4.5",
+          "competencia": "CE4",
+          "texto": "Reproducir distintas combinaciones de movimientos o coreografías individuales y grupales que incorporen prácticas comunicativas que transmitan sentimientos, emociones o ideas a través del cuerpo, empleando los distintos recursos expresivos y rítmicos de la corporalidad."
+        },
+        {
+          "codigo": "5.1",
+          "competencia": "CE5",
+          "texto": "Desarrollar y explorar de forma consciente, respetuosa y controlada por el docente una práctica motriz segura en contextos naturales y urbanos de carácter terrestre o acuático, adecuando las acciones al análisis de cada situación y aplicando medidas de conservación ambiental."
+        }
+      ]
+    },
+    {
+      "ciclo": 3,
+      "cursos": [
+        5,
+        6
+      ],
+      "criterios": [
+        {
+          "codigo": "1.1",
+          "competencia": "CE1",
+          "texto": "Reconocer los efectos beneficiosos a nivel físico, social y mental de la actividad física como paso previo para su integración en la vida diaria."
+        },
+        {
+          "codigo": "1.2",
+          "competencia": "CE1",
+          "texto": "Integrar los procesos de activación corporal, dosificación del esfuerzo, relajación e higiene en la práctica de actividades motrices, interiorizando las rutinas propias de una práctica motriz saludable y responsable."
+        },
+        {
+          "codigo": "1.3",
+          "competencia": "CE1",
+          "texto": "Adoptar medidas de seguridad antes, durante y después de la práctica de actividad física, conocer los primeros auxilios fundamentales, reconocimiento básico y el protocolo PAS (proteger, avisar, socorrer) reconociendo los contextos de riesgo y actuando con precaución ante ellos."
+        },
+        {
+          "codigo": "1.4",
+          "competencia": "CE1",
+          "texto": "Identificar y abordar conductas vinculadas al ámbito corporal, la actividad física y el deporte que resultan perjudiciales para la salud o afectan negativamente a la convivencia, adoptando posturas de rechazo a la violencia, a la discriminación y a la desigualdad, en los entornos sociales, tanto reales como virtuales, y evitando activamente su reproducción."
+        },
+        {
+          "codigo": "2.1",
+          "competencia": "CE2",
+          "texto": "Desarrollar proyectos motores de carácter individual o grupal, definiendo metas, secuenciando acciones, introduciendo cambios, si es preciso, durante el proceso, y generando producciones motrices de calidad, valorando el grado de ajuste al proceso seguido y al resultado obtenido."
+        },
+        {
+          "codigo": "2.2",
+          "competencia": "CE2",
+          "texto": "Aplicar principios básicos de toma de decisiones en situaciones lúdicas, juegos modificados y actividades deportivas a partir de la anticipación, ajustándolos a las demandas derivadas de los objetivos motores y a la lógica interna de situaciones individuales, de colaboración, de oposición y de colaboración-oposición, en contextos reales o simulados de actuación, reflexionando sobre las soluciones obtenidas."
+        },
+        {
+          "codigo": "2.3",
+          "competencia": "CE2",
+          "texto": "Adquirir un control y dominio corporal, empleando los componentes cualitativos y cuantitativos de la motricidad de manera eficiente y creativa y haciendo frente a las demandas de resolución de problemas en situaciones motrices transferibles a su espacio vivencial. Tomar conciencia de la importancia de la atención selectiva y la anticipación perceptiva en situaciones de juego regladas y su transferencia a situaciones cotidianas."
+        },
+        {
+          "codigo": "3.1",
+          "competencia": "CE3",
+          "texto": "Participar en actividades motrices, desde la regulación de su actuación, con predisposición, esfuerzo, perseverancia y mentalidad de crecimiento, controlando la impulsividad, gestionando las emociones (introspección, motivación) y expresándolas de forma asertiva. Gestionar estrategias para superar las diferencias individuales en una práctica lúdica."
+        },
+        {
+          "codigo": "3.2",
+          "competencia": "CE3",
+          "texto": "Respetar las normas consensuadas, así como las reglas de juego, y actuar desde los parámetros de la deportividad y el juego limpio, reconociendo la derrota como parte del mismo y las actuaciones de compañeros y rivales."
+        },
+        {
+          "codigo": "3.3",
+          "competencia": "CE3",
+          "texto": "Poner en marcha actuaciones que se opongan a acciones contrarias a la buena práctica deportiva, aquellas que muestren una amenaza a la misma (hábitos no adecuados, conductas violentas y manipulación del juego)."
+        },
+        {
+          "codigo": "3.4",
+          "competencia": "CE3",
+          "texto": "Convivir mostrando en el contexto de las prácticas motrices habilidades sociales, de diálogo en la resolución de conflictos y respeto ante cualquier tipo de diversidad, haciendo especial hincapié en el fomento de la igualdad."
+        },
+        {
+          "codigo": "4.1",
+          "competencia": "CE4",
+          "texto": "Participar activamente en juegos motores y otras manifestaciones artístico expresivas con arraigo en la cultura, tradicional o actual, así como otros procedentes de diversas culturas, reconociendo y transmitiendo su valor cultural y su potencial como espacio generador de buenas relaciones entre personas con orígenes diferentes y entendiendo las ventajas de su conservación."
+        },
+        {
+          "codigo": "4.2",
+          "competencia": "CE4",
+          "texto": "Valorar el deporte como fenómeno cultural y los comportamientos discriminatorios que a veces suceden en su contexto, rechazándolos y adoptando actitudes que eviten su reproducción en el futuro y que persigan la equidad."
+        },
+        {
+          "codigo": "4.3",
+          "competencia": "CE4",
+          "texto": "Reconocer el esfuerzo, la dedicación y los sacrificios de personas y colectivos referentes del deporte, necesarios para alcanzar un rendimiento deportivo ejemplar, su respuesta y su actitud ante la competición, el éxito o la derrota."
+        },
+        {
+          "codigo": "4.4",
+          "competencia": "CE4",
+          "texto": "Reproducir y crear composiciones con o sin soporte musical, y comunicar diferentes sensaciones, emociones e ideas, de forma estética y creativa, desde el uso de los recursos rítmicos y expresivos de la motricidad."
+        },
+        {
+          "codigo": "5.1",
+          "competencia": "CE5",
+          "texto": "Adaptar las acciones motrices a la incertidumbre propia del medio natural y urbano en contextos terrestres o acuáticos de forma eficiente y segura, valorando sus posibilidades para la práctica de actividad física y actuando desde una visión cuidadosa del entorno y comunitaria."
+        }
+      ]
+    }
+  ]
+}

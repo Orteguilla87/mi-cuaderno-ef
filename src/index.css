@@ -1,0 +1,153 @@
+/* Los tokens van antes de Tailwind: las utilidades los resuelven en runtime. */
+@import './styles/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-hueso text-tinta antialiased dark:bg-noche-fondo dark:text-noche-texto;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* Sin fuentes remotas: bundle autocontenido (§1.1). */
+    overscroll-behavior-y: none;
+  }
+
+  /* Evita el zoom automático de Android al enfocar inputs (<16px). */
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
+
+  ::selection {
+    @apply bg-agua text-tinta;
+  }
+}
+
+@layer components {
+  /* ——— Texto ——— */
+  .texto-suave {
+    @apply text-tinta-suave dark:text-noche-suave;
+  }
+  .texto-tenue {
+    @apply text-tinta-tenue dark:text-noche-suave/70;
+  }
+
+  /* ——— Botones ——— */
+  .btn {
+    @apply inline-flex min-h-tap items-center justify-center gap-2 rounded-xl px-4 text-base
+           font-semibold transition active:scale-[0.98] disabled:opacity-40;
+  }
+  .btn-primario {
+    @apply btn bg-primario text-white shadow-sm shadow-primario/25
+           hover:bg-primario-claro dark:bg-primario-claro dark:hover:bg-primario;
+  }
+  .btn-acento {
+    @apply btn bg-acento text-white shadow-sm shadow-acento/25 hover:bg-acento-oscuro;
+  }
+  .btn-suave {
+    @apply btn border border-borde bg-white text-primario-oscuro
+           hover:border-borde-fuerte hover:bg-agua-claro
+           dark:border-noche-borde dark:bg-noche-superficie dark:text-agua dark:hover:bg-noche-elevada;
+  }
+  .btn-fantasma {
+    @apply btn text-primario dark:text-agua;
+  }
+  .btn-peligro {
+    @apply btn border border-acento/30 text-acento hover:bg-acento/10 dark:border-acento/40;
+  }
+
+  /* ——— Superficies ——— */
+  .tarjeta {
+    @apply rounded-xl2 border border-borde bg-white p-4
+           dark:border-noche-borde dark:bg-noche-superficie;
+  }
+  .tarjeta-pulsable {
+    @apply tarjeta transition active:scale-[0.99] hover:border-borde-fuerte
+           dark:hover:border-agua/40;
+  }
+  .panel-agua {
+    @apply rounded-xl2 border border-agua bg-agua-claro p-4
+           dark:border-noche-borde dark:bg-noche-elevada;
+  }
+
+  /* ——— Formularios ——— */
+  .campo {
+    @apply min-h-tap w-full rounded-xl border border-borde bg-white px-3 text-base
+           text-tinta outline-none placeholder:text-tinta-tenue
+           focus:border-primario focus:ring-4 focus:ring-primario/15
+           dark:border-noche-borde dark:bg-noche-superficie dark:text-noche-texto
+           dark:placeholder:text-noche-suave/60 dark:focus:border-agua dark:focus:ring-agua/20;
+  }
+  .etiqueta {
+    @apply mb-1.5 block text-sm font-bold uppercase tracking-wide text-primario
+           dark:text-agua;
+  }
+
+  /* ——— Firma visual: «doble línea de pista» (§3.2) ———
+     Dos filetes finos bajo los títulos de sección, como las líneas de un campo
+     deportivo. Es el ÚNICO adorno de la app: todo lo demás va sobrio. */
+  .linea-pista {
+    @apply border-b-2 border-t border-agua/70 dark:border-agua/30;
+    height: 3px;
+  }
+
+  /* ——— Cifras ———
+     Toda cifra que se lea en columna (notas, asistencia, horas) va con cifras
+     tabulares: sin esto los dígitos bailan de fila en fila y el cuaderno se
+     vuelve ilegible de un vistazo. */
+  .cifra {
+    @apply tabular-nums;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ——— Píldoras / badges ——— */
+  .pildora {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold
+           uppercase tracking-wide;
+  }
+}
+
+/* ——— Modo pista (§7): sol directo, guantes, prisa ——— */
+html.pista {
+  font-size: 19px;
+}
+html.pista .btn,
+html.pista .btn-primario,
+html.pista .btn-acento,
+html.pista .btn-suave,
+html.pista .btn-fantasma,
+html.pista .btn-peligro {
+  @apply min-h-[60px] px-6 text-lg;
+}
+html.pista .campo {
+  @apply min-h-[60px] text-lg;
+}
+html.pista .tarjeta,
+html.pista .tarjeta-pulsable {
+  @apply border-2 border-borde-fuerte dark:border-agua/50;
+}
+html.pista .btn-primario {
+  @apply bg-primario-oscuro shadow-none dark:bg-primario;
+}
+html.pista .btn-suave {
+  @apply border-2 border-primario-oscuro text-primario-oscuro dark:border-agua dark:text-agua;
+}
+html.pista .texto-suave {
+  @apply text-tinta dark:text-noche-texto;
+}

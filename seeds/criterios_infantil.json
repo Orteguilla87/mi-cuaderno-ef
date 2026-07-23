@@ -1,0 +1,322 @@
+{
+  "marco": "Decreto 36/2022, de 8 de junio, del Consejo de Gobierno de la Comunidad de Madrid (Anexo II). Textos literales del SEGUNDO CICLO (3-6 años).",
+  "areas": [
+    {
+      "codigo": "I",
+      "nombre": "Crecimiento en armonía",
+      "principal": true,
+      "competencias": [
+        {
+          "codigo": "I.CE1",
+          "texto": "Progresar en el conocimiento y control de su cuerpo y en la adquisición de distintas estrategias, adecuando sus acciones a la realidad del entorno de una manera segura, para construir su imagen.",
+          "criterios": [
+            {
+              "codigo": "I.1.1",
+              "texto": "Progresar en el conocimiento de su cuerpo ajustando acciones y reacciones y desarrollando el equilibrio, la percepción sensorial y la coordinación en el movimiento."
+            },
+            {
+              "codigo": "I.1.2",
+              "texto": "Manifestar sentimientos de seguridad personal en la participación en juegos y en las diversas situaciones de la vida cotidiana, confiando en las propias posibilidades y mostrando iniciativa."
+            },
+            {
+              "codigo": "I.1.3",
+              "texto": "Manejar diferentes objetos, útiles y herramientas en el juego y en la realización de tareas cotidianas, mostrando un control progresivo y de coordinación de movimientos de carácter fino."
+            },
+            {
+              "codigo": "I.1.4",
+              "texto": "Participar en juegos organizados o espontáneos con curiosidad y divirtiéndose."
+            }
+          ]
+        },
+        {
+          "codigo": "I.CE2",
+          "texto": "Reconocer, manifestar y regular sus emociones expresando necesidades y sentimientos para lograr una seguridad emocional y afectiva.",
+          "criterios": [
+            {
+              "codigo": "I.2.1",
+              "texto": "Identificar y expresar sus necesidades y sentimientos ajustando el control de sus emociones."
+            },
+            {
+              "codigo": "I.2.2",
+              "texto": "Ofrecer y pedir ayuda en situaciones cotidianas, valorando los beneficios de la cooperación y la ayuda."
+            },
+            {
+              "codigo": "I.2.3",
+              "texto": "Expresar inquietudes, gustos y preferencias, con entusiasmo y respeto, mostrando satisfacción y seguridad sobre los logros conseguidos."
+            }
+          ]
+        },
+        {
+          "codigo": "I.CE3",
+          "texto": "Adoptar modelos, normas y hábitos, desarrollando la confianza en sus posibilidades, para promover un estilo de vida saludable y responsable.",
+          "criterios": [
+            {
+              "codigo": "I.3.1",
+              "texto": "Realizar actividades relacionadas con el cuidado de uno mismo, con el cuidado del entorno y con actitud de respeto."
+            },
+            {
+              "codigo": "I.3.2",
+              "texto": "Respetar la secuencia asociada a los acontecimientos y actividades cotidianas, adaptándose a las rutinas establecidas para el grupo y desarrollando comportamientos respetuosos hacia los demás."
+            }
+          ]
+        },
+        {
+          "codigo": "I.CE4",
+          "texto": "Establecer interacciones sociales para construir su identidad y personalidad en libertad, valorando la importancia de la amistad, el respeto y la empatía.",
+          "criterios": [
+            {
+              "codigo": "I.4.1",
+              "texto": "Participar con iniciativa en juegos y actividades relacionándose con otras personas con actitudes de afecto, empatía, generosidad y amor al prójimo, respetando los distintos ritmos individuales y evitando todo tipo de discriminación."
+            },
+            {
+              "codigo": "I.4.2",
+              "texto": "Reproducir conductas, acciones o situaciones a través del juego simbólico en interacción con sus compañeros."
+            },
+            {
+              "codigo": "I.4.3",
+              "texto": "Participar activamente en actividades relacionadas con la reflexión sobre las normas sociales que regulan la convivencia y promueven valores como el respeto a los demás."
+            },
+            {
+              "codigo": "I.4.4",
+              "texto": "Desarrollar destrezas y habilidades para la gestión de conflictos de forma positiva, aprendiendo a buscar la verdad, a no mentir, a defender a quien lo necesite y a no tener miedo. Además, proponer alternativas creativas y teniendo en cuenta el criterio de otras personas."
+            },
+            {
+              "codigo": "I.4.5",
+              "texto": "Participar, desde una actitud de respeto, en actividades relacionadas con costumbres presentes en su entorno, mostrando interés por conocerlas."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "codigo": "II",
+      "nombre": "Descubrimiento y exploración del entorno",
+      "principal": false,
+      "competencias": [
+        {
+          "codigo": "II.CE1",
+          "texto": "Identificar las características de materiales, objetos y establecer relaciones entre ellos, mediante la exploración, la manipulación sensorial, el manejo de herramientas sencillas y el desarrollo de destrezas lógico-matemáticas.",
+          "criterios": [
+            {
+              "codigo": "II.1.1",
+              "texto": "Establecer distintas relaciones entre los objetos a partir de sus cualidades o atributos, mostrando curiosidad e interés."
+            },
+            {
+              "codigo": "II.1.2",
+              "texto": "Emplear los cuantificadores básicos más significativos en el contexto del juego y en las relaciones con los demás."
+            },
+            {
+              "codigo": "II.1.3",
+              "texto": "Ubicarse adecuadamente en los espacios habituales, tanto en reposo como en movimiento, aplicando sus conocimientos acerca de las nociones espaciales básicas y jugando con el propio cuerpo y con objetos."
+            },
+            {
+              "codigo": "II.1.4",
+              "texto": "Identificar las situaciones cotidianas en las que es preciso medir, utilizando el cuerpo u otros materiales y herramientas para efectuar las medidas."
+            },
+            {
+              "codigo": "II.1.5",
+              "texto": "Organizar su actividad, ordenando las secuencias y utilizando las nociones temporales básicas."
+            },
+            {
+              "codigo": "II.1.6",
+              "texto": "Utilizar nociones temporales básicas para investigar sobre el paso del tiempo y descubrir algunos hechos del pasado."
+            }
+          ]
+        },
+        {
+          "codigo": "II.CE2",
+          "texto": "Desarrollar, los procedimientos del método científico, a través de procesos de observación y manipulación de objetos, para iniciarse en la interpretación del entorno y responder a las situaciones y retos que se plantean.",
+          "criterios": [
+            {
+              "codigo": "II.2.1",
+              "texto": "Gestionar situaciones, dificultades, retos o problemas mediante la planificación de secuencias de actividades, la manifestación de interés e iniciativa y el trabajo con sus compañeros."
+            },
+            {
+              "codigo": "II.2.2",
+              "texto": "Canalizar la frustración ante las dificultades o problemas mediante la aplicación de diferentes estrategias."
+            },
+            {
+              "codigo": "II.2.3",
+              "texto": "Plantear ideas acerca del comportamiento de ciertos elementos o materiales, comprobándolas a través de la manipulación y la actuación sobre ellos."
+            },
+            {
+              "codigo": "II.2.4",
+              "texto": "Utilizar diferentes estrategias para la toma de decisiones de manera autónoma, afrontando el proceso de creación de soluciones en respuesta a los retos que se le planteen."
+            },
+            {
+              "codigo": "II.2.5",
+              "texto": "Programar secuencias de acciones o instrucciones para la resolución de tareas analógicas y digitales."
+            },
+            {
+              "codigo": "II.2.6",
+              "texto": "Participar en proyectos utilizando dinámicas de grupo, compartiendo y valorando opiniones propias y ajenas, expresando conclusiones personales a partir de ellas."
+            }
+          ]
+        },
+        {
+          "codigo": "II.CE3",
+          "texto": "Reconocer elementos y fenómenos de la naturaleza, mostrando interés por los hábitos que inciden sobre ella, para apreciar la importancia del cuidado y la conservación del entorno.",
+          "criterios": [
+            {
+              "codigo": "II.3.1",
+              "texto": "Mostrar una actitud de respeto, cuidado y protección hacia el medio natural y los animales, identificando el impacto de algunas acciones humanas."
+            },
+            {
+              "codigo": "II.3.2",
+              "texto": "Identificar rasgos comunes y diferentes entre seres vivos e inertes."
+            },
+            {
+              "codigo": "II.3.3",
+              "texto": "Establecer relaciones entre el medio natural y social a partir de conocimiento y observación de algunos fenómenos naturales y de los elementos patrimoniales presentes en el medio físico."
+            },
+            {
+              "codigo": "II.3.4",
+              "texto": "Identificar rasgos del entorno próximo, reconocer algunas señas de identidad cultural, física y social de la Comunidad de Madrid y de España."
+            },
+            {
+              "codigo": "II.3.5",
+              "texto": "Participar en actividades sociales y culturales de la Comunidad de Madrid y de España."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "codigo": "III",
+      "nombre": "Comunicación y representación de la realidad",
+      "principal": false,
+      "competencias": [
+        {
+          "codigo": "III.CE1",
+          "texto": "Manifestar interés por interactuar en situaciones cotidianas y el uso de su repertorio comunicativo, para expresar sus necesidades e intenciones.",
+          "criterios": [
+            {
+              "codigo": "III.1.1",
+              "texto": "Participar de manera espontánea y respetuosa con las diferencias individuales en situaciones comunicativas de complejidad."
+            },
+            {
+              "codigo": "III.1.2",
+              "texto": "Ajustar su repertorio comunicativo a las propuestas, a los interlocutores y al contexto, indagando en las posibilidades expresivas de los diferentes lenguajes."
+            },
+            {
+              "codigo": "III.1.3",
+              "texto": "Participar en situaciones de uso de diferentes lenguas, mostrando interés y curiosidad por las mismas."
+            },
+            {
+              "codigo": "III.1.4",
+              "texto": "Interactuar con distintos medios digitales."
+            }
+          ]
+        },
+        {
+          "codigo": "III.CE2",
+          "texto": "Interpretar y comprender mensajes y representaciones apoyándose en conocimientos y recursos de su propia experiencia para responder a las demandas del entorno.",
+          "criterios": [
+            {
+              "codigo": "III.2.1",
+              "texto": "Interpretar de forma eficaz los mensajes e intenciones comunicativas de los demás."
+            },
+            {
+              "codigo": "III.2.2",
+              "texto": "Interpretar los mensajes transmitidos mediante representaciones o manifestaciones artísticas reconociendo la intencionalidad del emisor y mostrando una actitud curiosa y responsable."
+            },
+            {
+              "codigo": "III.2.3",
+              "texto": "Mostrar interés por conocer y comprender mensajes muy sencillos en lengua extranjera relacionados con rutinas y situaciones cotidianas."
+            }
+          ]
+        },
+        {
+          "codigo": "III.CE3",
+          "texto": "Producir mensajes de manera eficaz, personal y creativa utilizando diferentes lenguajes, descubriendo los códigos de cada uno de ellos.",
+          "criterios": [
+            {
+              "codigo": "III.3.1",
+              "texto": "Hacer un uso funcional del lenguaje oral aumentando su repertorio lingüístico y construyendo un discurso organizado y coherente."
+            },
+            {
+              "codigo": "III.3.2",
+              "texto": "Utilizar el lenguaje oral como instrumento regulador de la acción en las interacciones con los demás con seguridad y confianza."
+            },
+            {
+              "codigo": "III.3.3",
+              "texto": "Evocar y expresar espontáneamente ideas a través del relato oral."
+            },
+            {
+              "codigo": "III.3.4",
+              "texto": "Elaborar creaciones plásticas explorando y utilizando diferentes materiales y técnicas, y participando activamente en el trabajo en grupo cuando se precise."
+            },
+            {
+              "codigo": "III.3.5",
+              "texto": "Interpretar propuestas dramáticas y musicales, utilizando y explorando diferentes instrumentos, recursos o técnicas."
+            },
+            {
+              "codigo": "III.3.6",
+              "texto": "Ajustar armónicamente su movimiento al de los demás y al espacio como forma de expresión corporal libre, manifestando interés e iniciativa."
+            },
+            {
+              "codigo": "III.3.7",
+              "texto": "Expresarse de manera creativa, utilizando diversas herramientas o aplicaciones."
+            },
+            {
+              "codigo": "III.3.8",
+              "texto": "Adquirir y utilizar, de manera gradual y acorde al nivel madurativo, vocabulario y expresiones sencillas en lengua extranjera relacionadas con rutinas y situaciones habituales de comunicación."
+            }
+          ]
+        },
+        {
+          "codigo": "III.CE4",
+          "texto": "Participar por iniciativa propia en actividades relacionadas con textos escritos, mostrando interés y curiosidad.",
+          "criterios": [
+            {
+              "codigo": "III.4.1",
+              "texto": "Mostrar interés por comunicarse a través de códigos escritos, convencionales o no, valorando su función comunicativa."
+            },
+            {
+              "codigo": "III.4.2",
+              "texto": "Identificar, de manera acompañada, alguna de las características textuales y paratextuales mediante la indagación en cualquier tipo de textos."
+            },
+            {
+              "codigo": "III.4.3",
+              "texto": "Recurrir a la biblioteca como fuente de información y disfrute, respetando sus normas de uso."
+            },
+            {
+              "codigo": "III.4.4",
+              "texto": "Mostrar interés por participar en actividades que favorezcan la iniciación al desarrollo perceptivo-motriz de la escritura."
+            }
+          ]
+        },
+        {
+          "codigo": "III.CE5",
+          "texto": "Valorar las diferentes lenguas presentes en su entorno, así como otras manifestaciones culturales.",
+          "criterios": [
+            {
+              "codigo": "III.5.1",
+              "texto": "Relacionarse con normalidad en la variedad lingüística y cultural de su entorno."
+            },
+            {
+              "codigo": "III.5.2",
+              "texto": "Participar en interacciones comunicativas en lengua extranjera iniciándose en el uso de normas socialmente establecidas para comenzar, mantener y terminar una conversación relacionadas con rutinas y situaciones cotidianas."
+            },
+            {
+              "codigo": "III.5.3",
+              "texto": "Participar en actividades de aproximación a la literatura infantil, explorando y apreciando la belleza del lenguaje literario."
+            },
+            {
+              "codigo": "III.5.4",
+              "texto": "Mostrar una actitud positiva durante la aproximación a textos literarios en lengua extranjera tales como cuentos, pequeños poemas, leyendas."
+            },
+            {
+              "codigo": "III.5.5",
+              "texto": "Expresar emociones, ideas y pensamientos a través de manifestaciones artísticas y culturales, disfrutando del proceso creativo."
+            },
+            {
+              "codigo": "III.5.6",
+              "texto": "Expresar gustos, preferencias y opiniones sobre distintas manifestaciones artísticas, explicando las emociones que produce su disfrute."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+/**
+ * TOKENS DE COLOR — §3.1 de CLAUDE.md. Fuente única de verdad.
+ *
+ * Ningún componente escribe un hex suelto: todos consumen estos tokens a través
+ * de las utilidades de Tailwind (`bg-primario`, `text-tinta`…), que en
+ * `tailwind.config.js` están definidas como `rgb(var(--token) / <alpha-value>)`.
+ *
+ * POR QUÉ CANALES RGB Y NO HEX: para que sigan funcionando los modificadores de
+ * opacidad de Tailwind (`bg-primario/25`, `ring-primario/15`). Un `--primary:
+ * #006A80` no se puede componer con alfa; `0 106 128` sí.
+ *
+ * Para añadir un estado intermedio (retraso, «en proceso», advertencia) se
+ * mezcla u oscurece la paleta y se documenta aquí como token nuevo. Está
+ * prohibido introducir familias de color ajenas.
+ */
+
+:root {
+  /* ——— Paleta base (§3.1: los únicos colores permitidos) ——— */
+  --primary: 0 106 128; /* #006A80 · navegación, botones primarios, foco */
+  --accent: 206 24 75; /* #CE184B · activo, énfasis, negativo/falta */
+  --positive: 171 178 0; /* #ABB200 · presente, chándal OK, conseguido */
+  --bg: 243 243 236; /* #F3F3EC · fondo base */
+  --soft: 154 195 204; /* #9AC3CC · chips, hover, cabeceras, sello Infantil */
+  --surface: 255 255 255; /* #FFFFFF · tarjetas */
+  --ink: 22 51 58; /* #16333A · texto principal, derivado del primario */
+
+  /* ——— Derivados por oscurecido/aclarado (no son colores nuevos) ——— */
+  --primary-dark: 0 80 95; /* #00505F · pulsado, modo pista */
+  --primary-light: 18 136 159; /* #12889F · hover, primario sobre fondo oscuro */
+  --accent-dark: 163 17 57; /* #A31139 · hover del acento */
+  --positive-dark: 127 133 0; /* #7F8500 · texto sobre claro: el lima puro no da AA */
+  --soft-light: 228 239 241; /* #E4EFF1 · superficies suaves */
+  --soft-mid: 198 222 227; /* #C6DEE3 · superficies suaves elevadas */
+
+  /* ——— Estado intermedio: retraso y advertencias ———
+     No es una familia nueva: es la mezcla al 50 % de --positive y --accent, es
+     decir, el punto medio entre «presente» y «falta». Se lee como ámbar sin
+     salirse de la paleta. Tres variantes porque el ámbar puro no da AA como
+     texto sobre fondo claro. */
+  --warning: 188 101 37; /* #BC6525 · relleno de chip, iconos */
+  --warning-dark: 143 76 28; /* #8F4C1C · texto sobre fondo claro (AA) */
+  --warning-soft: 250 238 226; /* #FAEEE2 · fondo de caja de aviso */
+
+  /* ——— Peto amarillo (Generador de equipos) ———
+     Único color realmente nuevo de esta hoja: representa un objeto físico (un
+     peto real del gimnasio), no chrome de la interfaz, así que no deriva de la
+     paleta base. Los otros tres colores de peto por defecto SÍ reutilizan
+     --accent (rojo), --primary (azul) y --positive (verde). */
+  --equipo-amarillo: 180 140 0; /* #B48C00 */
+
+  /* Neutros con el matiz del primario: ningún gris frío de Tailwind. */
+  --ink-soft: 91 126 133; /* #5B7E85 · texto secundario */
+  --ink-faint: 143 170 175; /* #8FAAAF · texto terciario, placeholders */
+  --border: 213 226 228; /* #D5E2E4 */
+  --border-strong: 154 195 204; /* #9AC3CC */
+
+  /* ——— Modo oscuro: fondos derivados del primario, mismos acentos ——— */
+  --night-bg: 6 40 48; /* #062830 */
+  --night-surface: 11 53 64; /* #0B3540 */
+  --night-raised: 16 63 74; /* #103F4A */
+  --night-border: 27 85 97; /* #1B5561 */
+  --night-ink: 243 243 236; /* #F3F3EC · el propio --bg como texto */
+  --night-soft: 155 188 194; /* #9BBCC2 · texto secundario en oscuro */
+}
