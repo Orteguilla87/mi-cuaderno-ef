@@ -325,8 +325,8 @@
     "semantic_hash": "6516d5bde2001d46cbf4260fd2b33ef5"
   },
   "src/pages/Rubricas.tsx": {
-    "mtime": 1784846433.0604239,
-    "ast_hash": "48b9d277261ccecdbb3a6119b40f9f91",
+    "mtime": 1784846525.3124456,
+    "ast_hash": "4c8e5d0bb6df5670076a721c428a6083",
     "semantic_hash": ""
   },
   "src/pages/SesionDetalle.tsx": {

@@ -1,10 +1,11 @@
-# Graph Report - C:\Users\orteg\Documents\cuaderno-ef  (2026-07-24)
+# Graph Report - cuaderno-ef  (2026-07-24)
 
 ## Corpus Check
-- cluster-only mode — file stats not available
+- 76 files · ~52,366 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 537 nodes · 1472 edges · 21 communities (20 shown, 1 thin omitted)
+- 559 nodes · 1493 edges · 22 communities (21 shown, 1 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 4 edges (avg confidence: 0.73)
 - Token cost: 0 input · 0 output
 
@@ -31,6 +32,7 @@
 - Juegos.tsx
 - generar-iconos.mjs
 - tsconfig.json
+- LimiteError
 
 ## God Nodes (most connected - your core abstractions)
 1. `useUI` - 54 edges
@@ -51,43 +53,43 @@
   src/lib/informes.ts → package.json
 - `exportarNotasXLSX()` --references--> `xlsx`  [EXTRACTED]
   src/lib/informes.ts → package.json
-- `Hoy()` --indirect_call--> `leerCursoActivo()`  [INFERRED]
-  src/pages/Hoy.tsx → src/db/curso.ts
-- `grupoQueTocaEn()` --calls--> `diaLectivo()`  [EXTRACTED]
-  src/lib/pseudonimizacion.ts → src/lib/fechas.ts
+- `responderConsulta()` --calls--> `resumirAsistencia()`  [EXTRACTED]
+  src/components/AgenteVoz.tsx → src/db/asistencia.ts
+- `HojaPegarCalendario()` --calls--> `useUI`  [EXTRACTED]
+  src/components/CursoEscolarAjustes.tsx → src/store/ui.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (21 total, 1 thin omitted)
+## Communities (22 total, 1 thin omitted)
 
 ### Community 0 - "planificador.ts"
 Cohesion: 0.08
-Nodes (54): aplicarPlantillaSesion(), copiarPlanificacion(), crearSesion(), crearUnidad(), duplicarSesion(), duplicarUnidad(), editarSesion(), eliminarSesion() (+46 more)
+Nodes (57): CursoEscolarAjustes(), HojaPegarCalendario(), nuevoId(), aplicarPlantillaSesion(), copiarPlanificacion(), crearSesion(), crearUnidad(), duplicarSesion() (+49 more)
 
 ### Community 1 - "App.tsx"
 Cohesion: 0.07
-Nodes (39): Contenido(), AgenteVoz(), BadgeEtapa(), BottomNav(), PESTANAS, AccionCabecera(), Cabecera(), Estado (+31 more)
+Nodes (39): Contenido(), AgenteVoz(), BadgeEtapa(), BottomNav(), PESTANAS, AccionCabecera(), Cabecera(), Snackbar() (+31 more)
 
 ### Community 2 - "useUI"
 Cohesion: 0.07
-Nodes (40): CursoEscolarAjustes(), HojaPegarCalendario(), Hoja(), HojaObservacion(), SIGNOS, TIPOS, Snackbar(), duplicarRubrica() (+32 more)
+Nodes (39): Hoja(), HojaObservacion(), SIGNOS, TIPOS, duplicarRubrica(), contadoresPorAlumno(), ContadorSigno, FiltroObservaciones (+31 more)
 
 ### Community 3 - "EquiposGenerador.tsx"
 Cohesion: 0.09
-Nodes (30): EquipoPizarra, Pizarra(), leerAsistenciaGrupo(), alumnosGenerables(), equiposGuardados(), guardarEquipo(), historialEquipos(), vinculosDelGrupo() (+22 more)
+Nodes (30): EquipoPizarra, Pizarra(), alumnosGenerables(), crearVinculo(), equiposGuardados(), guardarEquipo(), historialEquipos(), vinculosDelGrupo() (+22 more)
 
 ### Community 4 - "cuaderno.ts"
-Cohesion: 0.11
-Nodes (29): Cambios, CARITAS, CARITAS_5, Celda(), EditorColumna(), escalaCaritas(), TablaRubrica(), HojaColumna() (+21 more)
+Cohesion: 0.07
+Nodes (58): Cambios, CARITAS, CARITAS_5, Celda(), EditorColumna(), escalaCaritas(), TablaRubrica(), HojaColumna() (+50 more)
 
 ### Community 5 - "types.ts"
-Cohesion: 0.12
-Nodes (33): CuadernoDB, AccionAgente, Asistencia, Calificacion, CalificacionOficial, ComentarioBanco, Config, Criterio (+25 more)
+Cohesion: 0.09
+Nodes (21): 1. RESTRICCIONES NO NEGOCIABLES (privacidad), 2. STACK, 3.1 Tokens de color (únicos permitidos; definir en `src/styles/tokens.css` y consumir SIEMPRE vía tokens, jamás hex sueltos en componentes), 3.2 Tipografía y componentes, 3. DISEÑO — SISTEMA OBLIGATORIO, 4. MODELO DE DATOS (Dexie), 5. MÓDULOS — PARIDAD ADDITIO MEJORADA, 6. M8-bis — AGENTE DE VOZ (+13 more)
 
 ### Community 6 - "db"
 Cohesion: 0.11
-Nodes (31): Fase, AccionId, AccionResuelta, apilarDeshacer(), deshacerUltimaDelAgente(), ejecutarAccion(), estadoAsistenciaDeTexto(), interpretarLocal() (+23 more)
+Nodes (30): Fase, responderConsulta(), AccionId, AccionResuelta, apilarDeshacer(), deshacerUltimaDelAgente(), ejecutarAccion(), estadoAsistenciaDeTexto() (+22 more)
 
 ### Community 7 - "devDependencies"
 Cohesion: 0.06
@@ -110,12 +112,12 @@ Cohesion: 0.10
 Nodes (19): ES2023, node, vite.config.ts, compilerOptions, allowImportingTsExtensions, isolatedModules, lib, module (+11 more)
 
 ### Community 12 - "nuevoId"
-Cohesion: 0.17
-Nodes (14): alternarChandal(), ciclarEstado(), CICLO, marcarTodosPresentes(), ResumenAsistencia, siguienteEstado(), nuevoId(), crearVinculo() (+6 more)
+Cohesion: 0.18
+Nodes (15): HojaAgente(), alternarChandal(), ciclarEstado(), CICLO, leerAsistenciaGrupo(), marcarTodosPresentes(), ResumenAsistencia, siguienteEstado() (+7 more)
 
 ### Community 13 - "Ajustes.tsx"
-Cohesion: 0.18
-Nodes (10): HojaAgente(), CONFIG_POR_DEFECTO, guardarConfig(), leerConfig(), useConfig(), BandasOficiales, ModoMedia, Ajustes() (+2 more)
+Cohesion: 0.20
+Nodes (9): CONFIG_POR_DEFECTO, guardarConfig(), leerConfig(), useConfig(), BandasOficiales, ModoMedia, Ajustes(), ClaveApi() (+1 more)
 
 ### Community 14 - "Juegos.tsx"
 Cohesion: 0.21
@@ -125,8 +127,12 @@ Nodes (15): ALIAS, aLista(), anadirAlBanco(), analizarJuegos(), aTexto(), buscar
 Cohesion: 0.31
 Nodes (8): BLANCO, crc32(), dibujar(), png(), PRIMARIO, PUBLIC, RAIZ, trozo()
 
+### Community 21 - "LimiteError"
+Cohesion: 0.29
+Nodes (3): Estado, LimiteError, Props
+
 ## Knowledge Gaps
-- **134 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+129 more)
+- **152 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+147 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -134,16 +140,16 @@ Nodes (8): BLANCO, crc32(), dibujar(), png(), PRIMARIO, PUBLIC, RAIZ, trozo()
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `dependencies` connect `informes.ts` to `devDependencies`?**
-  _High betweenness centrality (0.150) - this node is a cross-community bridge._
+  _High betweenness centrality (0.138) - this node is a cross-community bridge._
 - **What connects `name`, `private`, `version` to the rest of the system?**
-  _134 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _152 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `planificador.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.07932692307692307 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0784313725490196 - nodes in this community are weakly interconnected._
 - **Should `App.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.07005649717514124 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07305669199298656 - nodes in this community are weakly interconnected._
 - **Should `useUI` be split into smaller, more focused modules?**
-  _Cohesion score 0.07039187227866474 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07102040816326531 - nodes in this community are weakly interconnected._
 - **Should `EquiposGenerador.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.09407665505226481 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09059233449477352 - nodes in this community are weakly interconnected._
 - **Should `cuaderno.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.10810810810810811 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0710085933966531 - nodes in this community are weakly interconnected._

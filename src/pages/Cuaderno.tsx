@@ -63,10 +63,17 @@ export function Cuaderno() {
   // en columnas sueltas de la rejilla, así que aquí es siempre una columna 1:1.
   const visibles = columnas ?? []
 
-  /** Rúbrica → tabla; número/texto → recorrido por alumno; el resto se edita al toque. */
-  function abrirEditor(columna: Columna) {
+  /**
+   * Rúbrica → tabla; número/texto → recorrido por alumno; el resto se edita al
+   * toque.
+   *
+   * `indice` es la fila tocada: el recorrido arranca en ESE alumno, no en el
+   * primero de la clase. Empezar siempre por el 0 obligaba a avanzar a mano
+   * hasta la fila que se acababa de tocar.
+   */
+  function abrirEditor(columna: Columna, indice: number) {
     if (columna.tipo === 'rubrica') setTablaRubrica(columna)
-    else setEvaluando({ columna, indice: 0 })
+    else setEvaluando({ columna, indice })
   }
 
   if (!grupos) return null
@@ -252,7 +259,8 @@ function Rejilla({
   valores: Map<string, import('../db/types').ValorCelda>
   rubricas: Map<string, Rubrica>
   onConfigurar: (c: Columna) => void
-  onEvaluar: (c: Columna) => void
+  /** `indice` = fila tocada, para que el recorrido empiece en ese alumno. */
+  onEvaluar: (c: Columna, indice: number) => void
   onCambiar: (
     columna: Columna,
     alumnoId: string,
@@ -321,7 +329,7 @@ function Rejilla({
                     // Escritura optimista sin aviso (§7): un toque suelto no
                     // necesita confirmación, igual que en el pase de lista.
                     onCambiar={(cambios) => void onCambiar(columna, a.id, cambios)}
-                    onAbrirEditor={() => onEvaluar(columna)}
+                    onAbrirEditor={() => onEvaluar(columna, fila)}
                   />
                 </td>
               ))}

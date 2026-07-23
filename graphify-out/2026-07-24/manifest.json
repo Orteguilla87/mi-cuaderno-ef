@@ -325,9 +325,9 @@
     "semantic_hash": "6516d5bde2001d46cbf4260fd2b33ef5"
   },
   "src/pages/Rubricas.tsx": {
-    "mtime": 1784797047.3408673,
-    "ast_hash": "ebb2c00b7fc4bb0bfd37bb378cfe0c87",
-    "semantic_hash": "ebb2c00b7fc4bb0bfd37bb378cfe0c87"
+    "mtime": 1784846433.0604239,
+    "ast_hash": "48b9d277261ccecdbb3a6119b40f9f91",
+    "semantic_hash": ""
   },
   "src/pages/SesionDetalle.tsx": {
     "mtime": 1784797599.5662193,
@@ -373,5 +373,30 @@
     "mtime": 1784796446.1807396,
     "ast_hash": "f879c692b724b3dffda857b006f0f63f",
     "semantic_hash": "f879c692b724b3dffda857b006f0f63f"
+  },
+  "CLAUDE.md": {
+    "mtime": 1784712041.8280256,
+    "ast_hash": "0b8eb6328f0d38a11509a7ac6fd52279",
+    "semantic_hash": ""
+  },
+  "index.html": {
+    "mtime": 1784708478.2241473,
+    "ast_hash": "2eb142629f5e43f3c4587d7a09b2bfdc",
+    "semantic_hash": ""
+  },
+  "public/icon-192.png": {
+    "mtime": 1784708851.35206,
+    "ast_hash": "3bcaba5a0870e2c3df48256bf6d11f6a",
+    "semantic_hash": ""
+  },
+  "public/icon-512.png": {
+    "mtime": 1784708851.3852944,
+    "ast_hash": "7229b6352a85f1ed552c701515ef2e29",
+    "semantic_hash": ""
+  },
+  "public/icon-maskable-512.png": {
+    "mtime": 1784708851.401836,
+    "ast_hash": "e430a4ce924c63f158856fa285d8b5b7",
+    "semantic_hash": ""
   }
 }
