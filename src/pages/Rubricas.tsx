@@ -36,7 +36,12 @@ export function Rubricas() {
   }
 
   async function eliminar(r: Rubrica) {
-    const enUso = await db.columnas.where('rubricaId').equals(r.id).count()
+    // Recorrido en memoria y no `where('rubricaId')`: ese campo NO está indexado
+    // en el store de columnas, así que la consulta lanzaba SchemaError y el
+    // borrado fallaba en silencio. Son decenas de columnas: no compensa una
+    // migración de esquema para esto.
+    const columnas = await db.columnas.toArray()
+    const enUso = columnas.filter((c) => c.rubricaId === r.id).length
     if (enUso > 0) {
       mostrarAviso(`«${r.titulo}» se usa en ${enUso} columnas: quítala de ellas primero`)
       return
@@ -243,7 +248,16 @@ function HojaImportarTabla({
   )
 }
 
-/** Editor de la rúbrica en tabla: filas = criterios, columnas = niveles. */
+/**
+ * Editor de la rúbrica en LISTA VERTICAL: los niveles una sola vez arriba
+ * (son comunes a todos los criterios) y debajo un bloque por criterio, uno tras
+ * otro, con scroll hacia abajo.
+ *
+ * No es una tabla a propósito: editar descriptores largos en celdas de una
+ * rejilla con scroll horizontal es inviable con el pulgar, que es como se usa
+ * esta app. La tabla se queda donde sí tiene sentido: al CALIFICAR
+ * (`TablaRubrica`, alumno × criterio) y al importar por pegado.
+ */
 export function HojaEditarRubrica({
   rubricaId,
   onCerrar,
@@ -316,120 +330,120 @@ export function HojaEditarRubrica({
             </button>
           </div>
 
-          <p className="text-xs texto-suave">
-            El valor de cada nivel es su nota (2, 4, 6, 8, 10…): es lo que se ve siempre al
-            evaluar y lo que se usa para promediar.
-          </p>
+          {/* ——— Niveles: comunes a todos los criterios, así que van una vez ——— */}
+          <section>
+            <h3 className="text-base font-bold">Niveles de logro</h3>
+            <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+            <p className="mb-2 text-xs texto-suave">
+              El valor de cada nivel es su nota (2, 4, 6, 8, 10…): es lo que se ve siempre al
+              evaluar y lo que se usa para promediar.
+            </p>
 
-          <div className="-mx-4 overflow-x-auto px-4">
-            <table className="w-max border-separate border-spacing-0">
-              <thead>
-                <tr>
-                  <th className="sticky left-0 z-10 min-w-[150px] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua">
-                    Criterio
-                  </th>
-                  {rubrica.niveles.map((n, i) => (
-                    <th
-                      key={n.id}
-                      className="min-w-[130px] border-b-2 border-r border-borde bg-agua-claro p-1.5 dark:border-noche-borde dark:bg-noche-elevada"
-                    >
-                      <div className="flex items-center gap-1">
-                        <input
-                          className="campo px-1.5 py-1 text-xs"
-                          value={n.etiqueta}
-                          onChange={(e) => {
-                            const niveles = [...rubrica.niveles]
-                            niveles[i] = { ...n, etiqueta: e.target.value }
-                            actualizar({ niveles })
-                          }}
-                          aria-label={`Etiqueta del nivel ${i + 1}`}
-                        />
-                        <button
-                          onClick={() =>
-                            actualizar({ niveles: rubrica.niveles.filter((x) => x.id !== n.id) })
-                          }
-                          disabled={rubrica.niveles.length <= 2}
-                          className="shrink-0 text-tinta-tenue disabled:opacity-30"
-                          aria-label={`Quitar nivel ${n.etiqueta}`}
-                        >
-                          <X size={16} aria-hidden />
-                        </button>
-                      </div>
-                      <input
-                        type="number"
-                        className="campo cifra mt-1 px-1.5 py-1 text-center text-xs font-bold"
-                        value={n.valor}
-                        onChange={(e) => {
-                          const niveles = [...rubrica.niveles]
-                          niveles[i] = { ...n, valor: Number(e.target.value) }
-                          actualizar({ niveles })
-                        }}
-                        aria-label={`Valor (nota) del nivel ${i + 1}`}
-                      />
-                    </th>
-                  ))}
-                  <th className="min-w-[56px] border-b-2 border-borde bg-agua-claro p-1 dark:border-noche-borde dark:bg-noche-elevada">
+            <ul className="space-y-2">
+              {rubrica.niveles.map((n, i) => (
+                <li key={n.id} className="flex items-center gap-2">
+                  <input
+                    className="campo flex-1"
+                    value={n.etiqueta}
+                    onChange={(e) => {
+                      const niveles = [...rubrica.niveles]
+                      niveles[i] = { ...n, etiqueta: e.target.value }
+                      actualizar({ niveles })
+                    }}
+                    aria-label={`Etiqueta del nivel ${i + 1}`}
+                  />
+                  <input
+                    type="number"
+                    className="campo cifra w-20 text-center font-bold"
+                    value={n.valor}
+                    onChange={(e) => {
+                      const niveles = [...rubrica.niveles]
+                      niveles[i] = { ...n, valor: Number(e.target.value) }
+                      actualizar({ niveles })
+                    }}
+                    aria-label={`Valor (nota) del nivel ${i + 1}`}
+                  />
+                  <button
+                    onClick={() =>
+                      actualizar({ niveles: rubrica.niveles.filter((x) => x.id !== n.id) })
+                    }
+                    disabled={rubrica.niveles.length <= 2}
+                    className="flex min-h-tap min-w-tap shrink-0 items-center justify-center text-tinta-tenue disabled:opacity-30"
+                    aria-label={`Quitar nivel ${n.etiqueta}`}
+                  >
+                    <X size={18} aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <button className="btn-suave mt-2 w-full" onClick={anadirNivel}>
+              <Plus size={18} aria-hidden />
+              Añadir nivel
+            </button>
+          </section>
+
+          {/* ——— Criterios: un bloque por criterio, apilados ——— */}
+          <section>
+            <h3 className="text-base font-bold">Criterios</h3>
+            <div className="linea-pista mb-3 mt-1.5" aria-hidden />
+
+            <div className="space-y-3">
+              {rubrica.criterios.map((c, i) => (
+                <article key={c.id} className="tarjeta space-y-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="campo flex-1 font-semibold"
+                      value={c.titulo}
+                      onChange={(e) => {
+                        const criterios = [...rubrica.criterios]
+                        criterios[i] = { ...c, titulo: e.target.value }
+                        actualizar({ criterios })
+                      }}
+                      aria-label={`Título del criterio ${i + 1}`}
+                    />
                     <button
-                      onClick={anadirNivel}
-                      className="flex h-full w-full items-center justify-center text-primario-oscuro dark:text-agua"
-                      aria-label="Añadir nivel"
+                      onClick={() =>
+                        actualizar({ criterios: rubrica.criterios.filter((x) => x.id !== c.id) })
+                      }
+                      disabled={rubrica.criterios.length <= 1}
+                      className="flex min-h-tap min-w-tap shrink-0 items-center justify-center text-acento disabled:opacity-30"
+                      aria-label={`Quitar criterio ${c.titulo}`}
                     >
-                      <Plus size={18} aria-hidden />
+                      <Trash2 size={18} aria-hidden />
                     </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rubrica.criterios.map((c, i) => (
-                  <tr key={c.id}>
-                    <th
-                      scope="row"
-                      className="sticky left-0 z-10 min-w-[150px] border-b border-r border-borde bg-superficie p-1.5 text-left dark:border-noche-borde dark:bg-noche-superficie"
-                    >
-                      <div className="flex items-center gap-1">
-                        <input
-                          className="campo px-1.5 py-1 text-xs font-semibold"
-                          value={c.titulo}
-                          onChange={(e) => {
-                            const criterios = [...rubrica.criterios]
-                            criterios[i] = { ...c, titulo: e.target.value }
-                            actualizar({ criterios })
-                          }}
-                          aria-label={`Título del criterio ${i + 1}`}
-                        />
-                        <button
-                          onClick={() =>
-                            actualizar({
-                              criterios: rubrica.criterios.filter((x) => x.id !== c.id),
-                            })
-                          }
-                          disabled={rubrica.criterios.length <= 1}
-                          className="shrink-0 text-tinta-tenue disabled:opacity-30"
-                          aria-label={`Quitar criterio ${c.titulo}`}
-                        >
-                          <X size={16} aria-hidden />
-                        </button>
-                      </div>
-                      <input
-                        type="number"
-                        className="campo cifra mt-1 px-1.5 py-1 text-xs"
-                        value={c.pesoPct}
-                        onChange={(e) => {
-                          const criterios = [...rubrica.criterios]
-                          criterios[i] = { ...c, pesoPct: Number(e.target.value) }
-                          actualizar({ criterios })
-                        }}
-                        aria-label={`Peso del criterio ${i + 1} en porcentaje`}
-                        placeholder="Peso %"
-                      />
-                    </th>
+                  </div>
+
+                  <label className="flex items-center gap-2">
+                    <span className="text-sm texto-suave">Peso</span>
+                    <input
+                      type="number"
+                      className="campo cifra w-24 text-center"
+                      value={c.pesoPct}
+                      onChange={(e) => {
+                        const criterios = [...rubrica.criterios]
+                        criterios[i] = { ...c, pesoPct: Number(e.target.value) }
+                        actualizar({ criterios })
+                      }}
+                      aria-label={`Peso del criterio ${i + 1} en porcentaje`}
+                    />
+                    <span className="text-sm texto-suave">%</span>
+                  </label>
+
+                  {/* Un descriptor por nivel, etiquetado: sin cabecera de tabla
+                      que mirar, cada campo dice a qué nivel pertenece. */}
+                  <div className="space-y-2">
                     {rubrica.niveles.map((n) => (
-                      <td
-                        key={n.id}
-                        className="border-b border-r border-borde p-1.5 align-top dark:border-noche-borde"
-                      >
+                      <div key={n.id}>
+                        <label
+                          className="mb-1 block text-xs font-bold text-primario dark:text-agua"
+                          htmlFor={`desc-${c.id}-${n.id}`}
+                        >
+                          {n.etiqueta} <span className="cifra texto-suave">({n.valor})</span>
+                        </label>
                         <textarea
-                          className="campo h-16 resize-none px-1.5 py-1 text-xs"
+                          id={`desc-${c.id}-${n.id}`}
+                          className="campo h-16 resize-none py-2 text-sm"
                           value={c.descripciones?.[n.id] ?? ''}
                           onChange={(e) => {
                             const criterios = [...rubrica.criterios]
@@ -439,28 +453,20 @@ export function HojaEditarRubrica({
                             }
                             actualizar({ criterios })
                           }}
-                          placeholder="Descriptor"
+                          placeholder="Qué hace el alumno en este nivel"
                         />
-                      </td>
+                      </div>
                     ))}
-                    <td className="border-b border-borde dark:border-noche-borde" />
-                  </tr>
-                ))}
-                <tr>
-                  <th className="sticky left-0 z-10 border-r border-borde bg-superficie p-1.5 dark:border-noche-borde dark:bg-noche-superficie">
-                    <button
-                      onClick={anadirCriterio}
-                      className="flex w-full items-center justify-center gap-1 text-xs font-bold text-primario dark:text-agua"
-                    >
-                      <Plus size={16} aria-hidden />
-                      Criterio
-                    </button>
-                  </th>
-                  <td colSpan={rubrica.niveles.length + 1} />
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <button className="btn-suave mt-3 w-full" onClick={anadirCriterio}>
+              <Plus size={18} aria-hidden />
+              Añadir criterio
+            </button>
+          </section>
 
           <p className="text-xs texto-suave">
             Los pesos suman {sumaPesos}%.{' '}
