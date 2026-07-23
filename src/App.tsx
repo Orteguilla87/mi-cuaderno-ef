@@ -100,7 +100,7 @@ export default function App() {
   }, [])
 
   return (
-    <div className="mx-auto min-h-dvh max-w-lg pb-24">
+    <div className="carril-fab mx-auto min-h-dvh max-w-lg">
       {/* key: al cambiar de ruta se reintenta el render en vez de quedarse el error pegado. */}
       <LimiteError key={ruta}>
         <Contenido ruta={ruta} />

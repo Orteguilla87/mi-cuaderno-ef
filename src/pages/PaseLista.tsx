@@ -21,6 +21,7 @@ import {
 } from '../db/asistencia'
 import { db } from '../db/db'
 import type { Alumno, Asistencia, EstadoAsistencia } from '../db/types'
+import { useFabCompacto } from '../lib/fabCompacto'
 import { aISO, etiquetaDia, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -57,6 +58,9 @@ const ESTADOS: Record<
 }
 
 export function PaseLista({ grupoId, fecha }: { grupoId: string; fecha?: string }) {
+  // Rejilla de tarjetas a dos columnas: el FAB grande caía sobre el botón de
+  // chándal de las últimas tarjetas.
+  useFabCompacto()
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const dia = fecha ?? aISO()
 

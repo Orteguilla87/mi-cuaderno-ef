@@ -13,9 +13,13 @@ import {
 } from '../db/cuaderno'
 import { db } from '../db/db'
 import type { Alumno, Columna, Rubrica, Trimestre } from '../db/types'
+import { useFabCompacto } from '../lib/fabCompacto'
 import { navegar } from '../lib/router'
 
 export function Cuaderno() {
+  // La rejilla llega hasta el borde derecho: el FAB a tamaño completo tapaba la
+  // última columna de notas.
+  useFabCompacto()
   const [grupoId, setGrupoId] = useState<string | null>(null)
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)

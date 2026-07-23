@@ -8,6 +8,17 @@
 @layer base {
   :root {
     color-scheme: light;
+
+    /* ——— Capa fija inferior ———
+       Tres elementos flotantes se apilan sobre el mismo borde de la pantalla:
+       navegación → FAB de voz → aviso. Sus alturas viven aquí, y no repetidas
+       en cada componente, porque el solape solo se evita si los tres miden el
+       hueco con la MISMA regla. Cambiar uno sin el otro es justo el fallo que
+       hacía que el FAB tapase el botón «Deshacer». */
+    --alto-nav: 4.5rem;
+    --alto-fab: 3.5rem;
+    --alto-fab-compacto: 2.5rem;
+    --holgura-capa: 0.5rem;
   }
   html.dark {
     color-scheme: dark;
@@ -114,6 +125,33 @@
   .cifra {
     @apply tabular-nums;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ——— Capa fija inferior: posiciones derivadas de un mismo origen ——— */
+
+  /* Reserva bajo el contenido para que el último elemento de cualquier página
+     se pueda desplazar por encima de la navegación Y del FAB. Sin esto, el
+     último botón de la pantalla queda permanentemente debajo del micrófono. */
+  .carril-fab {
+    padding-bottom: calc(
+      var(--alto-nav) + var(--alto-fab) + var(--holgura-capa) * 2 +
+        env(safe-area-inset-bottom)
+    );
+  }
+
+  /* El FAB se apoya justo encima de la navegación. */
+  .capa-fab {
+    bottom: calc(var(--alto-nav) + var(--holgura-capa) + env(safe-area-inset-bottom));
+  }
+
+  /* El aviso, encima del FAB. Usa siempre la altura del FAB grande aunque esté
+     compacto: una posición estable se lee mejor que una que salta de pantalla
+     en pantalla. */
+  .capa-aviso {
+    bottom: calc(
+      var(--alto-nav) + var(--alto-fab) + var(--holgura-capa) * 2 +
+        env(safe-area-inset-bottom)
+    );
   }
 
   /* ——— Píldoras / badges ——— */

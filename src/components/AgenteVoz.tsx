@@ -25,15 +25,24 @@ import { Hoja } from './Hoja'
  */
 export function AgenteVoz() {
   const [abierta, setAbierta] = useState(false)
+  const compacto = useUI((s) => s.fabCompacto)
 
   return (
     <>
       <button
         onClick={() => setAbierta(true)}
-        className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-acento text-white shadow-lg shadow-acento/30 active:scale-95"
+        // En las pantallas densas (rejilla, pase de lista) el FAB es quien
+        // cede: se contrae para no comerse celdas ni botones de la pantalla.
+        // El tamaño sale de los tokens de capa, no de un número suelto, para
+        // que `bottom` y el hueco reservado sigan cuadrando.
+        style={{
+          height: compacto ? 'var(--alto-fab-compacto)' : 'var(--alto-fab)',
+          width: compacto ? 'var(--alto-fab-compacto)' : 'var(--alto-fab)',
+        }}
+        className="capa-fab fixed right-4 z-40 flex items-center justify-center rounded-full bg-acento text-white shadow-lg shadow-acento/30 transition-all active:scale-95"
         aria-label="Agente de voz"
       >
-        <Mic size={24} aria-hidden />
+        <Mic size={compacto ? 18 : 24} aria-hidden />
       </button>
       <HojaAgente abierta={abierta} onCerrar={() => setAbierta(false)} />
     </>

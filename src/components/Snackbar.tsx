@@ -1,34 +1,39 @@
 import { useUI } from '../store/ui'
 
-/** Snackbar con Deshacer: acompaña a toda escritura (§7). */
+/**
+ * Aviso con Deshacer: acompaña a toda escritura (§7).
+ *
+ * Solo hay UNO a la vez (cola, no pila) y se coloca por encima del FAB de voz
+ * con `.capa-aviso`, para que el micrófono no tape nunca el botón «Deshacer».
+ */
 export function Snackbar() {
-  const avisos = useUI((s) => s.avisos)
+  const aviso = useUI((s) => s.aviso)
   const cerrarAviso = useUI((s) => s.cerrarAviso)
 
-  if (avisos.length === 0) return null
+  if (!aviso) return null
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-3">
-      {avisos.map((a) => (
-        <div
-          key={a.id}
-          className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl bg-primario-oscuro px-4 py-3 text-white shadow-xl"
-          role="status"
-        >
-          <span className="flex-1 text-sm font-medium">{a.texto}</span>
-          {a.deshacer && (
-            <button
-              className="min-h-tap rounded-lg px-3 font-bold text-agua active:bg-white/15"
-              onClick={async () => {
-                cerrarAviso(a.id)
-                await a.deshacer!()
-              }}
-            >
-              Deshacer
-            </button>
-          )}
-        </div>
-      ))}
+    <div className="capa-aviso pointer-events-none fixed inset-x-0 z-50 flex justify-center px-3">
+      <div
+        // key: el aviso nuevo reemplaza al anterior, y al remontar se reinicia
+        // la animación de entrada en vez de cambiar el texto en silencio.
+        key={aviso.id}
+        className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl bg-primario-oscuro px-4 py-3 text-white shadow-xl"
+        role="status"
+      >
+        <span className="flex-1 text-sm font-medium">{aviso.texto}</span>
+        {aviso.deshacer && (
+          <button
+            className="min-h-tap rounded-lg px-3 font-bold text-agua active:bg-white/15"
+            onClick={async () => {
+              cerrarAviso(aviso.id)
+              await aviso.deshacer!()
+            }}
+          >
+            Deshacer
+          </button>
+        )}
+      </div>
     </div>
   )
 }
