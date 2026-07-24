@@ -430,6 +430,33 @@ export interface BandasOficiales {
   SB: number
 }
 
+/**
+ * PIN de acceso (§1.7). Solo se guarda el hash: el PIN en claro no se almacena
+ * en ningún sitio. Con 4–6 dígitos el espacio es diminuto, así que el coste del
+ * PBKDF2 es la única defensa real — de ahí que se guarden las iteraciones.
+ */
+export interface PinGuardado {
+  /** base64 */
+  salt: string
+  /** base64 */
+  hash: string
+  iteraciones: number
+}
+
+/**
+ * Servidor WebDAV propio del usuario (Bloque 1). Solo transporta ficheros
+ * `.enc` ya cifrados: el servidor nunca ve datos legibles ni la passphrase.
+ *
+ * La contraseña se guarda en local igual que `apiKey` (§1.3) y, como toda la
+ * base, sin cifrar: el PIN no protege el disco. Se avisa en Ajustes.
+ */
+export interface ConfigWebdav {
+  /** URL de la carpeta remota. Siempre https (salvo localhost). */
+  url: string
+  usuario: string
+  password: string
+}
+
 export interface Config {
   id: 'config' // singleton
   pesosTrimestres: [number, number, number]
@@ -439,11 +466,15 @@ export interface Config {
   quickTagsObservacion: string[]
   /** Colores de peto del generador de equipos, en orden de asignación. */
   coloresPetos: string[]
-  pin?: string
+  pin?: PinGuardado
   apiKey?: string
   modeloAgente: string
   modoPista: boolean
   tema: 'claro' | 'oscuro' | 'sistema'
+  /** ISO 8601 del último backup exportado. Alimenta el aviso semanal (M9). */
+  ultimoBackup?: string
+  /** Servidor WebDAV propio para llevar el `.enc` de un dispositivo a otro. */
+  webdav?: ConfigWebdav
 }
 
 export type EstadoAccionAgente = 'aplicada' | 'deshecha'

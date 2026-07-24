@@ -1,11 +1,46 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import {
+  AlertTriangle,
+  Check,
+  CloudDownload,
+  CloudUpload,
+  Download,
+  Lock,
+  ShieldAlert,
+  Trash2,
+  Upload,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { CursoEscolarAjustes } from '../components/CursoEscolarAjustes'
+import { Hoja } from '../components/Hoja'
+import {
+  diasDesdeBackup,
+  DIAS_AVISO_BACKUP,
+  exportarBackup,
+  inspeccionarBackup,
+  registrarBackupHecho,
+  restaurarBackup,
+  tocaAvisarDeBackup,
+} from '../db/backup'
 import { CONFIG_POR_DEFECTO, guardarConfig, useConfig } from '../db/config'
 import { db } from '../db/db'
 import { leerCursoActivo } from '../db/curso'
-import type { BandasOficiales, ModoMedia } from '../db/types'
+import { comprobarPin, definirPin, quitarPin } from '../db/pin'
+import type { BandasOficiales, ConfigWebdav, ModoMedia } from '../db/types'
+import {
+  bajarBackup,
+  ErrorWebdav,
+  estadoRemoto,
+  guardarConfigWebdav,
+  probarConexion,
+  subirBackup,
+  webdavConfigurado,
+  type EstadoRemoto,
+} from '../db/webdav'
+import { ErrorBackup } from '../lib/backup'
+import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN, pinValido } from '../lib/pin'
+import { useUI } from '../store/ui'
 
 export function Ajustes() {
   const config = useConfig()
@@ -125,7 +160,7 @@ export function Ajustes() {
 
         <Seccion
           titulo="Agente de voz"
-          ayuda="Única conexión de red de la app. Solo se envía texto pseudonimizado: nunca nombres ni datos de la base."
+          ayuda="Solo se envía texto pseudonimizado a la API de Anthropic: nunca nombres ni datos de la base."
         >
           <ClaveApi />
           <div>
@@ -146,10 +181,27 @@ export function Ajustes() {
 
         <Seccion titulo="Datos" ayuda="Todo vive en este dispositivo. Nada se sube a ningún servidor.">
           <Estadisticas />
-          <p className="text-xs texto-suave">
-            El backup cifrado y el PIN llegan en la fase 8. Hasta entonces, evita reinstalar el
-            navegador o borrar sus datos.
-          </p>
+        </Seccion>
+
+        <Seccion
+          titulo="Copia de seguridad"
+          ayuda="El único sitio donde viajan los apoyos y las notas privadas: cifrada, y solo entre tus propios dispositivos."
+        >
+          <SeccionBackup config={config} />
+        </Seccion>
+
+        <Seccion
+          titulo="Servidor WebDAV"
+          ayuda="Opcional. Sirve para llevar la copia cifrada del móvil al PC sin cables. Solo viaja el fichero .enc: el servidor nunca ve tus datos."
+        >
+          <SeccionWebdav webdav={config.webdav} />
+        </Seccion>
+
+        <Seccion
+          titulo="PIN de acceso"
+          ayuda="Bloquea la pantalla tras 5 minutos sin uso. No cifra los datos del dispositivo: para eso está la copia de seguridad."
+        >
+          <SeccionPin tienePin={!!config.pin} />
         </Seccion>
       </div>
     </>
@@ -351,5 +403,713 @@ function Estadisticas() {
         </div>
       ))}
     </dl>
+  )
+}
+
+// ——————————————————————————— M9: copia de seguridad ———————————————————————————
+
+type Cotejo = Awaited<ReturnType<typeof inspeccionarBackup>>
+
+function SeccionBackup({ config }: { config: ReturnType<typeof useConfig> }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const [hojaExportar, setHojaExportar] = useState(false)
+  const [hojaSubir, setHojaSubir] = useState(false)
+  const [hojaRemota, setHojaRemota] = useState(false)
+  const [pasoImport, setPasoImport] = useState<{ fichero: Uint8Array<ArrayBuffer>; cotejo: Cotejo } | null>(null)
+  const [errorImport, setErrorImport] = useState<string | null>(null)
+  const [restaurando, setRestaurando] = useState(false)
+
+  const hayServidor = webdavConfigurado(config.webdav)
+
+  /**
+   * Una copia bajada del servidor entra por el MISMO camino que un fichero
+   * elegido a mano: inspeccionar → cotejo → confirmar. El servidor no tiene
+   * ninguna vía rápida.
+   */
+  async function usarFichero(fichero: Uint8Array<ArrayBuffer>) {
+    setErrorImport(null)
+    try {
+      setPasoImport({ fichero, cotejo: await inspeccionarBackup(fichero) })
+    } catch (err) {
+      setErrorImport(err instanceof ErrorBackup ? err.message : 'No se pudo leer el fichero.')
+    }
+  }
+
+  const dias = diasDesdeBackup(config.ultimoBackup)
+  const avisar = tocaAvisarDeBackup(config.ultimoBackup)
+
+  async function elegirFichero(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0]
+    e.target.value = '' // permite volver a elegir el mismo fichero si hace falta
+    if (!archivo) return
+    await usarFichero(new Uint8Array<ArrayBuffer>(await archivo.arrayBuffer()))
+  }
+
+  async function confirmarImport(passphrase: string) {
+    if (!pasoImport) return
+    setRestaurando(true)
+    setErrorImport(null)
+    try {
+      await restaurarBackup(pasoImport.fichero, passphrase)
+      // Cambiaron todas las tablas: recargar es lo único que garantiza que cada
+      // pantalla (curso activo, config reactiva, rutas…) parte de cero.
+      window.location.reload()
+    } catch (err) {
+      setErrorImport(err instanceof ErrorBackup ? err.message : 'No se pudo restaurar la copia.')
+      setRestaurando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {avisar && (
+        <div className="flex items-start gap-2 rounded-lg border border-aviso/40 bg-aviso-claro p-2.5 text-sm text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" aria-hidden />
+          <span>
+            {dias === null
+              ? 'Todavía no has hecho ninguna copia de seguridad.'
+              : `Han pasado ${dias} días desde la última copia (aviso a partir de ${DIAS_AVISO_BACKUP}).`}
+          </span>
+        </div>
+      )}
+
+      {config.ultimoBackup && (
+        <p className="text-sm texto-suave">
+          Última copia: <span className="cifra">{new Date(config.ultimoBackup).toLocaleString('es-ES')}</span>
+        </p>
+      )}
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button className="btn-primario flex-1" onClick={() => setHojaExportar(true)}>
+          <Download size={18} aria-hidden /> Backup ahora
+        </button>
+        <button className="btn-suave flex-1" onClick={() => inputRef.current?.click()}>
+          <Upload size={18} aria-hidden /> Restaurar copia
+        </button>
+        <input ref={inputRef} type="file" accept=".enc" className="hidden" onChange={elegirFichero} />
+      </div>
+
+      {hayServidor && (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button className="btn-suave flex-1" onClick={() => setHojaSubir(true)}>
+            <CloudUpload size={18} aria-hidden /> Subir al servidor
+          </button>
+          <button className="btn-suave flex-1" onClick={() => setHojaRemota(true)}>
+            <CloudDownload size={18} aria-hidden /> Copias del servidor
+          </button>
+        </div>
+      )}
+
+      {errorImport && !pasoImport && <p className="text-sm font-medium text-acento">{errorImport}</p>}
+
+      {hojaExportar && (
+        <HojaPassphrase
+          titulo="Backup ahora"
+          explicacion="Elige una contraseña para cifrar la copia. Sin ella, nadie —ni tú— podrá abrirla: apúntala en un sitio seguro, fuera de este dispositivo."
+          textoBoton="Generar y descargar"
+          textoTrabajando="Cifrando…"
+          accion={descargarBackup}
+          onCerrar={() => setHojaExportar(false)}
+          onListo={() => {
+            setHojaExportar(false)
+            mostrarAviso('Copia guardada. Sin la contraseña, nadie —ni tú— puede abrirla: apúntala en un sitio seguro.')
+          }}
+        />
+      )}
+
+      {hojaSubir && (
+        <HojaPassphrase
+          titulo="Subir al servidor"
+          explicacion="La copia se cifra AQUÍ antes de salir: el servidor solo recibe un fichero que no puede abrir. Usa la misma contraseña en todos tus dispositivos para poder restaurarla en cualquiera."
+          textoBoton="Cifrar y subir"
+          textoTrabajando="Cifrando y subiendo…"
+          accion={async (passphrase) => {
+            await subirBackup(passphrase)
+          }}
+          onCerrar={() => setHojaSubir(false)}
+          onListo={() => {
+            setHojaSubir(false)
+            mostrarAviso('Copia subida al servidor.')
+          }}
+        />
+      )}
+
+      {hojaRemota && (
+        <HojaCopiasRemotas
+          onCerrar={() => setHojaRemota(false)}
+          onElegida={async (fichero) => {
+            setHojaRemota(false)
+            await usarFichero(fichero)
+          }}
+        />
+      )}
+
+      {pasoImport && (
+        <HojaConfirmarImport
+          cotejo={pasoImport.cotejo}
+          error={errorImport}
+          restaurando={restaurando}
+          onCancelar={() => {
+            setPasoImport(null)
+            setErrorImport(null)
+          }}
+          onConfirmar={confirmarImport}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Pide la passphrase (dos veces) y ejecuta la acción que se le pase. La usan
+ * tanto «Backup ahora» como «Subir al servidor»: mismo fichero, mismo cifrado,
+ * solo cambia el destino.
+ */
+function HojaPassphrase({
+  titulo,
+  explicacion,
+  textoBoton,
+  textoTrabajando,
+  accion,
+  onCerrar,
+  onListo,
+}: {
+  titulo: string
+  explicacion: string
+  textoBoton: string
+  textoTrabajando: string
+  accion: (passphrase: string) => Promise<void>
+  onCerrar: () => void
+  onListo: () => void
+}) {
+  const [passphrase, setPassphrase] = useState('')
+  const [repetir, setRepetir] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [trabajando, setTrabajando] = useState(false)
+
+  async function ejecutar() {
+    setError(null)
+    if (passphrase.length < 8)
+      return setError('Usa al menos 8 caracteres: es lo único que protege tus datos.')
+    if (passphrase !== repetir) return setError('Las dos contraseñas no coinciden.')
+
+    setTrabajando(true)
+    try {
+      await accion(passphrase)
+      onListo()
+    } catch (err) {
+      setError(
+        err instanceof ErrorWebdav || err instanceof ErrorBackup
+          ? err.message
+          : 'No se pudo completar la operación.',
+      )
+    } finally {
+      setTrabajando(false)
+    }
+  }
+
+  return (
+    <Hoja abierta titulo={titulo} onCerrar={onCerrar}>
+      <div className="space-y-3">
+        <p className="text-sm texto-suave">{explicacion}</p>
+        <label className="block">
+          <span className="etiqueta">Contraseña</span>
+          <input
+            type="password"
+            className="campo"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+        <label className="block">
+          <span className="etiqueta">Repite la contraseña</span>
+          <input
+            type="password"
+            className="campo"
+            value={repetir}
+            onChange={(e) => setRepetir(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+        <button className="btn-primario w-full" onClick={() => void ejecutar()} disabled={trabajando}>
+          {trabajando ? textoTrabajando : textoBoton}
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/** Descarga el `.enc` al dispositivo. */
+async function descargarBackup(passphrase: string): Promise<void> {
+  const { fichero, nombre } = await exportarBackup(passphrase)
+  const blob = new Blob([fichero], { type: 'application/octet-stream' })
+  const url = URL.createObjectURL(blob)
+  const enlace = document.createElement('a')
+  enlace.href = url
+  enlace.download = nombre
+  enlace.click()
+  URL.revokeObjectURL(url)
+  await registrarBackupHecho()
+}
+
+function HojaConfirmarImport({
+  cotejo,
+  error,
+  restaurando,
+  onCancelar,
+  onConfirmar,
+}: {
+  cotejo: Cotejo
+  error: string | null
+  restaurando: boolean
+  onCancelar: () => void
+  onConfirmar: (passphrase: string) => void
+}) {
+  const [passphrase, setPassphrase] = useState('')
+  const tablas = Array.from(
+    new Set([...Object.keys(cotejo.copia), ...Object.keys(cotejo.actual)]),
+  ).sort()
+
+  return (
+    <Hoja abierta titulo="Restaurar copia" onCerrar={onCancelar}>
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 rounded-xl border border-acento/40 bg-acento/10 p-3 text-sm text-acento">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" aria-hidden />
+          <span>
+            Esto sustituye TODOS los datos actuales del dispositivo por los de la copia. No se
+            puede deshacer.
+          </span>
+        </div>
+
+        <p className="text-sm">
+          <span className="texto-suave">Copia del </span>
+          <span className="cifra font-semibold">
+            {new Date(cotejo.cabecera.creado).toLocaleString('es-ES')}
+          </span>
+        </p>
+
+        {cotejo.migra && (
+          <p className="rounded-lg border border-aviso/40 bg-aviso-claro p-2 text-xs text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+            La copia es de una versión anterior de la app: se actualizará automáticamente al
+            restaurarla.
+          </p>
+        )}
+
+        <div className="overflow-hidden rounded-lg border border-borde dark:border-noche-borde">
+          <table className="w-full text-xs">
+            <thead className="bg-agua-claro dark:bg-noche-elevada">
+              <tr>
+                <th className="p-1.5 text-left font-semibold">Tabla</th>
+                <th className="p-1.5 text-right font-semibold">Copia</th>
+                <th className="p-1.5 text-right font-semibold">Actual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tablas.map((t) => (
+                <tr key={t} className="border-t border-borde dark:border-noche-borde">
+                  <td className="p-1.5">{t}</td>
+                  <td className="cifra p-1.5 text-right">{cotejo.copia[t] ?? 0}</td>
+                  <td className="cifra p-1.5 text-right">{cotejo.actual[t] ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <label className="block">
+          <span className="etiqueta">Contraseña de la copia</span>
+          <input
+            type="password"
+            className="campo"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            autoComplete="off"
+          />
+        </label>
+
+        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+
+        <button
+          className="btn-acento w-full"
+          onClick={() => onConfirmar(passphrase)}
+          disabled={restaurando || !passphrase}
+        >
+          {restaurando ? 'Restaurando…' : 'Restaurar y sustituir todo'}
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/** Lista las copias del servidor y baja la elegida. No restaura nada por sí sola. */
+function HojaCopiasRemotas({
+  onCerrar,
+  onElegida,
+}: {
+  onCerrar: () => void
+  onElegida: (fichero: Uint8Array<ArrayBuffer>) => void
+}) {
+  const [estado, setEstado] = useState<EstadoRemoto | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [bajando, setBajando] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelado = false
+    estadoRemoto()
+      .then((e) => !cancelado && setEstado(e))
+      .catch(
+        (err) =>
+          !cancelado &&
+          setError(err instanceof ErrorWebdav ? err.message : 'No se pudo consultar el servidor.'),
+      )
+    return () => {
+      cancelado = true
+    }
+  }, [])
+
+  async function elegir(nombre: string) {
+    setError(null)
+    setBajando(nombre)
+    try {
+      onElegida(await bajarBackup(nombre))
+    } catch (err) {
+      setError(err instanceof ErrorWebdav ? err.message : 'No se pudo descargar la copia.')
+    } finally {
+      setBajando(null)
+    }
+  }
+
+  return (
+    <Hoja abierta titulo="Copias del servidor" onCerrar={onCerrar}>
+      <div className="space-y-3">
+        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+
+        {!estado && !error && <p className="text-sm texto-suave">Consultando el servidor…</p>}
+
+        {estado?.hayMasNueva && (
+          <p className="rounded-lg border border-aviso/40 bg-aviso-claro p-2 text-xs text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+            En el servidor hay una copia más reciente que la última hecha en este dispositivo.
+          </p>
+        )}
+
+        {estado?.copias.length === 0 && (
+          <p className="text-sm texto-suave">
+            No hay ninguna copia de Cuaderno EF en esa carpeta todavía.
+          </p>
+        )}
+
+        <ul className="space-y-2">
+          {estado?.copias.map((c) => (
+            <li key={c.nombre}>
+              <button
+                className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
+                onClick={() => void elegir(c.nombre)}
+                disabled={bajando !== null}
+              >
+                <CloudDownload size={20} className="shrink-0 text-primario dark:text-agua" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="cifra block font-semibold">
+                    {c.fecha.toLocaleString('es-ES')}
+                  </span>
+                  <span className="block text-xs texto-suave">
+                    {bajando === c.nombre ? 'Descargando…' : c.nombre}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <p className="text-xs texto-suave">
+          Al elegir una copia se descarga y se muestra el resumen antes de sustituir nada.
+        </p>
+      </div>
+    </Hoja>
+  )
+}
+
+// ——————————————————————————— Bloque 1: servidor WebDAV ———————————————————————————
+
+function SeccionWebdav({ webdav }: { webdav: ConfigWebdav | undefined }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [borrador, setBorrador] = useState<ConfigWebdav>(
+    webdav ?? { url: '', usuario: '', password: '' },
+  )
+  const [probando, setProbando] = useState(false)
+  const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
+
+  async function probar() {
+    setResultado(null)
+    setProbando(true)
+    try {
+      await probarConexion(borrador)
+      await guardarConfigWebdav(borrador)
+      setResultado({ ok: true, texto: 'Conexión correcta. Servidor guardado.' })
+    } catch (err) {
+      setResultado({
+        ok: false,
+        texto: err instanceof ErrorWebdav ? err.message : 'No se pudo conectar.',
+      })
+    } finally {
+      setProbando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="etiqueta">Dirección de la carpeta</span>
+        <input
+          className="campo"
+          value={borrador.url}
+          onChange={(e) => setBorrador({ ...borrador, url: e.target.value })}
+          placeholder="https://nube.example/remote.php/dav/files/usuario/cuaderno"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+
+      <div className="flex gap-2">
+        <label className="block flex-1">
+          <span className="etiqueta">Usuario</span>
+          <input
+            className="campo"
+            value={borrador.usuario}
+            onChange={(e) => setBorrador({ ...borrador, usuario: e.target.value })}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="block flex-1">
+          <span className="etiqueta">Contraseña</span>
+          <input
+            type="password"
+            className="campo"
+            value={borrador.password}
+            onChange={(e) => setBorrador({ ...borrador, password: e.target.value })}
+            autoComplete="off"
+          />
+        </label>
+      </div>
+
+      <button className="btn-primario w-full" onClick={() => void probar()} disabled={probando}>
+        {probando ? 'Probando…' : 'Probar conexión y guardar'}
+      </button>
+
+      {resultado && (
+        <p
+          className={
+            'text-sm font-medium ' + (resultado.ok ? 'text-lima-oscuro' : 'text-acento')
+          }
+        >
+          {resultado.texto}
+        </p>
+      )}
+
+      {webdav && (
+        <button
+          className="btn-peligro w-full"
+          onClick={() => {
+            void guardarConfigWebdav(undefined)
+            setBorrador({ url: '', usuario: '', password: '' })
+            setResultado(null)
+            mostrarAviso('Servidor quitado.')
+          }}
+        >
+          <Trash2 size={18} aria-hidden /> Quitar servidor
+        </button>
+      )}
+
+      <div className="flex items-start gap-2 rounded-lg border border-aviso/40 bg-aviso-claro p-2.5 text-xs text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+        <span>
+          Al servidor solo sube el fichero ya cifrado: no puede leer tus datos ni conoce la
+          contraseña de la copia. Esa contraseña es distinta de la de este servidor y no se guarda
+          en ningún sitio. La del servidor sí se guarda en este dispositivo, sin cifrar.
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ——————————————————————————— M9: PIN de acceso ———————————————————————————
+
+function SeccionPin({ tienePin }: { tienePin: boolean }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [hoja, setHoja] = useState<'activar' | 'cambiar' | 'desactivar' | null>(null)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-sm">
+        {tienePin ? (
+          <>
+            <Check size={18} className="shrink-0 text-lima-oscuro" aria-hidden />
+            <span className="font-semibold">PIN activado</span>
+          </>
+        ) : (
+          <>
+            <ShieldAlert size={18} className="shrink-0 texto-suave" aria-hidden />
+            <span className="texto-suave">
+              Sin PIN: cualquiera con el móvil desbloqueado puede abrir la app.
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        {!tienePin && (
+          <button className="btn-primario flex-1" onClick={() => setHoja('activar')}>
+            <Lock size={18} aria-hidden /> Activar PIN
+          </button>
+        )}
+        {tienePin && (
+          <>
+            <button className="btn-suave flex-1" onClick={() => setHoja('cambiar')}>
+              Cambiar PIN
+            </button>
+            <button className="btn-peligro flex-1" onClick={() => setHoja('desactivar')}>
+              <Trash2 size={18} aria-hidden /> Desactivar
+            </button>
+          </>
+        )}
+      </div>
+
+      {(hoja === 'activar' || hoja === 'cambiar') && (
+        <HojaDefinirPin
+          pideActual={hoja === 'cambiar'}
+          onCerrar={() => setHoja(null)}
+          onListo={() => {
+            const era = hoja
+            setHoja(null)
+            mostrarAviso(
+              era === 'cambiar'
+                ? 'PIN cambiado.'
+                : 'PIN activado. Se pedirá al abrir la app y tras 5 min de inactividad.',
+            )
+          }}
+        />
+      )}
+
+      {hoja === 'desactivar' && (
+        <HojaDesactivarPin
+          onCerrar={() => setHoja(null)}
+          onListo={() => {
+            setHoja(null)
+            mostrarAviso('PIN desactivado.')
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function CampoPin({
+  etiqueta,
+  valor,
+  onCambio,
+}: {
+  etiqueta: string
+  valor: string
+  onCambio: (v: string) => void
+}) {
+  return (
+    <label className="block">
+      <span className="etiqueta">{etiqueta}</span>
+      <input
+        type="password"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        maxLength={LONGITUD_MAX_PIN}
+        className="campo cifra text-center text-xl tracking-[0.5em]"
+        value={valor}
+        onChange={(e) => onCambio(e.target.value.replace(/[^0-9]/g, '').slice(0, LONGITUD_MAX_PIN))}
+      />
+    </label>
+  )
+}
+
+function HojaDefinirPin({
+  pideActual,
+  onCerrar,
+  onListo,
+}: {
+  pideActual: boolean
+  onCerrar: () => void
+  onListo: () => void
+}) {
+  const [actual, setActual] = useState('')
+  const [nuevo, setNuevo] = useState('')
+  const [repetir, setRepetir] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar() {
+    setError(null)
+    if (pideActual && !(await comprobarPin(actual))) return setError('El PIN actual no es correcto.')
+    if (!pinValido(nuevo))
+      return setError(
+        `El PIN debe tener entre ${LONGITUD_MIN_PIN} y ${LONGITUD_MAX_PIN} dígitos.`,
+      )
+    if (nuevo !== repetir) return setError('Los dos PIN no coinciden.')
+
+    setGuardando(true)
+    try {
+      await definirPin(nuevo)
+      onListo()
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <Hoja abierta titulo={pideActual ? 'Cambiar PIN' : 'Activar PIN'} onCerrar={onCerrar}>
+      <div className="space-y-3">
+        {pideActual && <CampoPin etiqueta="PIN actual" valor={actual} onCambio={setActual} />}
+        <CampoPin etiqueta="PIN nuevo (4 a 6 dígitos)" valor={nuevo} onCambio={setNuevo} />
+        <CampoPin etiqueta="Repite el PIN nuevo" valor={repetir} onCambio={setRepetir} />
+        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+        <button className="btn-primario w-full" onClick={() => void guardar()} disabled={guardando}>
+          {guardando ? 'Guardando…' : 'Guardar PIN'}
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+function HojaDesactivarPin({ onCerrar, onListo }: { onCerrar: () => void; onListo: () => void }) {
+  const [pin, setPin] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [comprobando, setComprobando] = useState(false)
+
+  async function confirmar() {
+    setError(null)
+    setComprobando(true)
+    try {
+      if (!(await quitarPin(pin))) {
+        setError('PIN incorrecto.')
+        return
+      }
+      onListo()
+    } finally {
+      setComprobando(false)
+    }
+  }
+
+  return (
+    <Hoja abierta titulo="Desactivar PIN" onCerrar={onCerrar}>
+      <div className="space-y-3">
+        <p className="text-sm texto-suave">Introduce el PIN actual para desactivarlo.</p>
+        <CampoPin etiqueta="PIN actual" valor={pin} onCambio={setPin} />
+        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+        <button className="btn-peligro w-full" onClick={() => void confirmar()} disabled={comprobando}>
+          {comprobando ? 'Comprobando…' : 'Desactivar PIN'}
+        </button>
+      </div>
+    </Hoja>
   )
 }

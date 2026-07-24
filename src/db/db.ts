@@ -220,8 +220,40 @@ class CuadernoDB extends Dexie {
      * las columnas ya existentes lo tienen `undefined` y no son de tipo cálculo.
      */
     this.version(10).stores({})
+
+    /**
+     * v11 — M9. `Config.pin` pasa de ser el PIN en claro (`string`, nunca usado:
+     * no había pantalla de bloqueo) a `{salt, hash, iteraciones}`. Se descarta
+     * cualquier valor antiguo en vez de intentar convertirlo: guardar el PIN en
+     * claro fue siempre un error, y no hay nada que conservar.
+     */
+    this.version(11)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('config')
+          .toCollection()
+          .modify((c) => {
+            if (typeof c.pin === 'string') delete c.pin
+          })
+      })
+
+    /**
+     * v12 — Bloque 1. `Config.webdav` (servidor propio al que subir el `.enc`)
+     * vive dentro del singleton de config, sin índice: basta con declarar la
+     * versión. Los datos existentes son válidos tal cual, así que no hay
+     * `upgrade()` ni migración espejo en `db/backup.ts`.
+     */
+    this.version(12).stores({})
   }
 }
+
+/**
+ * Versión del esquema con la que se sella cada backup. Debe coincidir SIEMPRE
+ * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
+ * migración en `src/db/backup.ts` si el cambio afecta a los datos.
+ */
+export const ESQUEMA_ACTUAL = 12
 
 export const db = new CuadernoDB()
 

@@ -9,14 +9,14 @@ App personal de gestión docente que **sustituye a Additio con paridad funcional
 ## 1. RESTRICCIONES NO NEGOCIABLES (privacidad)
 
 1. **Local-first estricto.** Todos los datos en IndexedDB del dispositivo. Sin backend, sin cuentas, sin telemetría, sin fuentes ni scripts de CDN en runtime (bundle 100 % autocontenido).
-2. **Ningún dato identificativo sale del dispositivo.** Única llamada de red permitida: API de Anthropic para el agente de voz (§6), siempre con texto pseudonimizado.
-3. API key de Anthropic: la introduce el usuario en Ajustes, se guarda solo en local, jamás en código ni repo.
+2. **Ningún dato identificativo sale del dispositivo en claro.** Solo dos llamadas de red permitidas: (a) API de Anthropic para el agente de voz (§6), siempre con texto pseudonimizado; (b) el servidor WebDAV propio del usuario (§10), y **únicamente** para transportar ficheros de backup ya cifrados. Cualquier otra petición de red está prohibida.
+3. API key de Anthropic: la introduce el usuario en Ajustes, se guarda solo en local, jamás en código ni repo. Mismo trato para las credenciales del WebDAV.
 4. Backups siempre cifrados (AES-GCM, WebCrypto; PBKDF2-SHA256 ≥600k iteraciones). Informes PDF/CSV/XLSX se generan en local bajo acción explícita.
 5. Sin fotos ni audio de alumnos.
 6. Campo `apoyos`: aviso en UI («sin diagnósticos, solo pautas prácticas»); excluido de todo informe exportable.
-7. PIN de acceso (4–6 dígitos), bloqueo tras 5 min.
+7. PIN de acceso (4–6 dígitos), bloqueo tras 5 min. El PIN protege el acceso a la interfaz; **no** cifra la base local (documentado en la propia UI de Ajustes).
 
-**Exclusiones deliberadas respecto a Additio (no implementar):** comunicación con familias/alumnado (canal oficial: Roble), quizzes para alumnado (no hay dispositivos de alumnos en EF), sincronización en la nube (sustituida por export/import cifrado entre dispositivos), integraciones Classroom/Moodle/Drive.
+**Exclusiones deliberadas respecto a Additio (no implementar):** comunicación con familias/alumnado (canal oficial: Roble), quizzes para alumnado (no hay dispositivos de alumnos en EF), sincronización en la nube **de datos legibles** —no hay servidor de la app, ni cuentas, ni mezcla de registros: solo el fichero `.enc` opaco de §10—, integraciones Classroom/Moodle/Drive.
 
 ## 2. STACK
 
@@ -107,7 +107,7 @@ Mapa de paridad (Additio → esta app):
 | Positivos y negativos | Observaciones con signo + contadores rápidos en la vista de grupo |
 | Horario, calendario, plano de clase | M8 horario+calendario con avisos; agrupamientos/equipos (más útil en EF que un plano de pupitres) |
 | Informes personalizados, export Excel/PDF | M7 PDF + XLSX + CSV, plantillas de informe |
-| Offline y sincronización | Offline total; export/import cifrado entre dispositivos |
+| Offline y sincronización | Offline total; export/import cifrado entre dispositivos, a mano o vía WebDAV propio (§10) |
 | Recursos vinculados | Enlaces y notas por sesión/UD (sin nubes de terceros) |
 
 ### M1 Grupos y alumnos
@@ -141,7 +141,7 @@ PDF (informe individual, acta de grupo, comentarios por grupo/trimestre con bot�
 - Herramientas EF: **generador de equipos equilibrados** (aleatorio o con separaciones «no juntar»), selector aleatorio de alumno, cronómetro con intervalos (trabajo/descanso) y marcador de tanteo a pantalla completa. Equipos guardables por sesión.
 
 ### M9 Backup y seguridad
-Backup cifrado export/import (también sirve para pasar datos móvil↔PC). Recordatorio semanal si no hay backup reciente. PIN; log del agente con deshacer.
+Backup cifrado export/import (también sirve para pasar datos móvil↔PC, a mano o por WebDAV §10). Recordatorio semanal si no hay backup reciente. PIN; log del agente con deshacer.
 
 ## 6. M8-bis — AGENTE DE VOZ
 
@@ -167,4 +167,18 @@ Mobile-first a una mano; escritura optimista sin spinners; Deshacer en toda escr
 
 ## 9. QUÉ NO HACER
 
-Sin familias/alumnado, sin quizzes, sin nube ni integraciones externas, sin fotos/audio, sin inventar textos legales, sin colores fuera de tokens, sin dependencias de red en runtime, sin enviar a ninguna API nombres ni contenido de la base de datos.
+Sin familias/alumnado, sin quizzes, sin integraciones externas (Classroom/Moodle/Drive), sin fotos/audio, sin inventar textos legales, sin colores fuera de tokens, sin enviar a ninguna API nombres ni contenido legible de la base de datos. La app debe funcionar entera sin red: las dos únicas conexiones (§1.2) son opcionales y su ausencia nunca bloquea nada.
+
+## 10. WEBDAV — TRANSPORTE DE LA COPIA CIFRADA
+
+Sirve para lo que §9 M9 ya pedía —pasar los datos del móvil al PC— sin cable ni fichero a mano. **No es sincronización**: no hay mezcla de registros, ni resolución de conflictos, ni servidor de la app. Es el mismo `.enc` de M9 subido y bajado entero.
+
+**Invariantes (no negociables):**
+1. Al servidor solo sube el fichero **ya cifrado** por M9. La passphrase de la copia no viaja, no se deriva de las credenciales del servidor y no se guarda en ningún sitio.
+2. Un fichero bajado del servidor entra por el **mismo camino** que uno elegido a mano: `inspeccionarBackup` → cotejo de registros → confirmación explícita → `restaurarBackup`. El servidor no tiene vía rápida, y un fichero manipulado falla en la verificación AES-GCM.
+3. Solo `https` (salvo `localhost`): Basic auth manda las credenciales en cada petición.
+4. Las credenciales del servidor se guardan solo en local, igual que la API key (§1.3).
+
+Verbos usados: `PROPFIND` (listar), `PUT` (subir), `GET` (bajar). Sin biblioteca: `fetch` y poco más (`lib/webdav.ts` es puro y testeable; `db/webdav.ts` lo une con M9).
+
+**Aviso conocido:** un WebDAV que no mande cabeceras CORS rechazará las peticiones del navegador. No es un fallo de la app; hay que habilitarlo en el servidor. El error de red lo dice explícitamente en vez de un «Failed to fetch» opaco.

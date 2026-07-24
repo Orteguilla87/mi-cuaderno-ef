@@ -7,5 +7,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Solo db.test.ts y sus dependientes tocan Dexie; el resto son funciones
+    // puras y no necesitan IndexedDB.
+    setupFiles: ['./src/test/setupIndexedDB.ts'],
   },
 })

@@ -1,12 +1,15 @@
 import { useEffect } from 'react'
 import { AgenteVoz } from './components/AgenteVoz'
+import { BloqueoPin } from './components/BloqueoPin'
 import { BottomNav } from './components/BottomNav'
 import { LimiteError } from './components/LimiteError'
 import { Snackbar } from './components/Snackbar'
 import { useConfig } from './db/config'
 import { sembrarCriterios } from './db/criterios'
 import { obtenerCursoActivo } from './db/curso'
+import { MS_INACTIVIDAD } from './lib/pin'
 import { segmentos, useRuta } from './lib/router'
+import { useBloqueo } from './store/bloqueo'
 import { Ajustes } from './pages/Ajustes'
 import { AlumnoDetalle } from './pages/AlumnoDetalle'
 import { Cuaderno } from './pages/Cuaderno'
@@ -81,6 +84,8 @@ function Contenido({ ruta }: { ruta: string }) {
 export default function App() {
   const ruta = useRuta()
   const config = useConfig()
+  const hayPin = !!config.pin
+  const { bloqueado, bloquear, desbloquear } = useBloqueo()
 
   // Tema y modo pista se aplican en <html> para que alcancen también a los portales.
   useEffect(() => {
@@ -99,6 +104,28 @@ export default function App() {
     void sembrarCriterios()
   }, [])
 
+  // §1.7: bloquea en cuanto se sabe que hay PIN (arranque o al activarlo).
+  useEffect(() => {
+    if (hayPin) bloquear()
+  }, [hayPin, bloquear])
+
+  // §1.7: bloquea tras 5 min sin tocar la pantalla ni el teclado.
+  useEffect(() => {
+    if (!hayPin) return
+    let temporizador: number
+    const reiniciar = () => {
+      window.clearTimeout(temporizador)
+      temporizador = window.setTimeout(bloquear, MS_INACTIVIDAD)
+    }
+    const eventos = ['pointerdown', 'keydown'] as const
+    for (const e of eventos) window.addEventListener(e, reiniciar)
+    reiniciar()
+    return () => {
+      window.clearTimeout(temporizador)
+      for (const e of eventos) window.removeEventListener(e, reiniciar)
+    }
+  }, [hayPin, bloquear])
+
   return (
     <div className="carril-fab mx-auto min-h-dvh max-w-lg">
       {/* key: al cambiar de ruta se reintenta el render en vez de quedarse el error pegado. */}
@@ -108,6 +135,7 @@ export default function App() {
       <AgenteVoz />
       <BottomNav ruta={ruta} />
       <Snackbar />
+      {hayPin && bloqueado && <BloqueoPin onDesbloqueo={desbloquear} />}
     </div>
   )
 }
