@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, ChevronRight, Delete, Minus, Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { useLayoutEffect, useEffect, useRef, useState } from 'react'
 import { guardarValor } from '../db/cuaderno'
 import type { Alumno, Columna, Rubrica, ValorCelda } from '../db/types'
 import { Hoja } from './Hoja'
@@ -39,6 +39,143 @@ function Carita({ boca, className }: { boca: string; className?: string }) {
 
 type Cambios = Parameters<typeof guardarValor>[2]
 
+/** Clase base de toda celda pulsable de la rejilla: altura y centrado comunes. */
+const CLASE_CELDA =
+  'flex h-14 w-full items-center justify-center text-sm font-bold transition active:scale-95'
+
+/**
+ * Celda de caritas con selector, en vez de ciclar por toque.
+ *
+ * Ciclar obligaba a tocar a ciegas hasta dar con la carita buscada. Ahora un
+ * toque abre una hoja pequeña con TODAS las caritas visibles y se fija la que se
+ * pulse. Se cierra sola al elegir, al tocar fuera o con Escape.
+ *
+ * El panel va en `position: fixed` anclado al rectángulo de la celda, no en
+ * `absolute` dentro del `<td>`: la rejilla vive en un contenedor con
+ * `overflow-x-auto` que recortaría un popover interno.
+ */
+function SelectorCaritas({
+  escala,
+  indice,
+  etiquetaCelda,
+  onElegir,
+}: {
+  escala: ReturnType<typeof escalaCaritas>
+  indice: number | undefined
+  etiquetaCelda: string
+  onElegir: (indice: number | undefined) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const anclaRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [coord, setCoord] = useState<{ top: number; left: number } | null>(null)
+
+  const actual = indice != null ? escala[indice] : null
+
+  // Posición: medida tras montar el panel y ajustada al viewport, para que una
+  // celda del borde derecho no lo empuje fuera de pantalla.
+  useLayoutEffect(() => {
+    if (!abierto) return
+    const ancla = anclaRef.current?.getBoundingClientRect()
+    const panel = panelRef.current?.getBoundingClientRect()
+    if (!ancla || !panel) return
+    const margen = 8
+    let left = ancla.left + ancla.width / 2 - panel.width / 2
+    left = Math.max(margen, Math.min(left, window.innerWidth - panel.width - margen))
+    // Debajo de la celda; si no cabe, encima.
+    let top = ancla.bottom + 6
+    if (top + panel.height > window.innerHeight - margen) top = ancla.top - panel.height - 6
+    setCoord({ top: Math.max(margen, top), left })
+  }, [abierto])
+
+  useEffect(() => {
+    if (!abierto) return
+    const alPulsarTecla = (e: KeyboardEvent) => e.key === 'Escape' && setAbierto(false)
+    window.addEventListener('keydown', alPulsarTecla)
+    return () => window.removeEventListener('keydown', alPulsarTecla)
+  }, [abierto])
+
+  function elegir(i: number | undefined) {
+    onElegir(i)
+    setAbierto(false)
+  }
+
+  return (
+    <>
+      <button
+        ref={anclaRef}
+        className={CLASE_CELDA}
+        onClick={() => {
+          setCoord(null)
+          setAbierto(true)
+        }}
+        aria-haspopup="dialog"
+        aria-expanded={abierto}
+        aria-label={`${etiquetaCelda}: ${actual?.etiqueta ?? 'sin valorar'}`}
+      >
+        {actual ? (
+          <Carita boca={actual.boca} className={actual.color} />
+        ) : (
+          <span className="h-7 w-7 rounded-full border-2 border-dashed border-borde dark:border-noche-borde" />
+        )}
+      </button>
+
+      {abierto && (
+        <>
+          {/* Fondo a pantalla completa: recoge el toque fuera para cerrar. */}
+          <button
+            className="fixed inset-0 z-40 cursor-default"
+            aria-label="Cerrar selector"
+            onClick={() => setAbierto(false)}
+          />
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label={etiquetaCelda}
+            style={{
+              top: coord?.top ?? 0,
+              left: coord?.left ?? 0,
+              visibility: coord ? 'visible' : 'hidden',
+            }}
+            className="fixed z-50 flex max-w-[92vw] flex-wrap items-start justify-center gap-1 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+          >
+            {escala.map((c, i) => {
+              const activo = i === indice
+              return (
+                <button
+                  key={i}
+                  onClick={() => elegir(i)}
+                  aria-pressed={activo}
+                  className={
+                    'opcion-carita flex min-h-tap min-w-tap flex-col items-center gap-1 rounded-lg px-2 py-1.5 transition active:scale-95 ' +
+                    (activo
+                      ? 'bg-agua-claro ring-2 ring-primario dark:bg-noche-elevada'
+                      : 'hover:bg-agua-claro dark:hover:bg-noche-elevada')
+                  }
+                >
+                  <Carita boca={c.boca} className={c.color} />
+                  <span className="text-[10px] font-semibold leading-tight texto-suave">
+                    {c.etiqueta}
+                  </span>
+                </button>
+              )
+            })}
+            <button
+              onClick={() => elegir(undefined)}
+              className="opcion-carita flex min-h-tap min-w-tap flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-tinta-tenue transition active:scale-95 hover:bg-agua-claro dark:hover:bg-noche-elevada"
+            >
+              <span className="flex h-[26px] w-[26px] items-center justify-center">
+                <X size={20} aria-hidden />
+              </span>
+              <span className="text-[10px] font-semibold leading-tight">Sin valorar</span>
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
 /**
  * Celda de la rejilla. Los tipos rápidos (lista de control, caritas y
  * positivos/negativos) se editan con un solo toque sobre la propia celda; los
@@ -59,8 +196,7 @@ export function Celda({
   onCambiar: (cambios: Cambios) => void | Promise<void>
   onAbrirEditor: () => void
 }) {
-  const base =
-    'flex h-14 w-full items-center justify-center text-sm font-bold transition active:scale-95'
+  const base = CLASE_CELDA
   const nombre = alumno.alias || alumno.nombre
 
   switch (columna.tipo) {
@@ -84,28 +220,15 @@ export function Celda({
       )
     }
 
-    case 'caritas': {
-      const escala = escalaCaritas(columna.caritas ?? 3)
-      const i = valor?.carita
-      const actual = i != null ? escala[i] : null
+    case 'caritas':
       return (
-        <button
-          className={base}
-          // Ciclo: sin valor → 0 → 1 → … → último → sin valor.
-          onClick={() => {
-            const siguiente = i == null ? 0 : i + 1
-            void onCambiar({ carita: siguiente >= escala.length ? undefined : siguiente })
-          }}
-          aria-label={`${nombre}, ${columna.titulo}: ${actual?.etiqueta ?? 'sin valorar'}`}
-        >
-          {actual ? (
-            <Carita boca={actual.boca} className={actual.color} />
-          ) : (
-            <span className="h-7 w-7 rounded-full border-2 border-dashed border-borde dark:border-noche-borde" />
-          )}
-        </button>
+        <SelectorCaritas
+          escala={escalaCaritas(columna.caritas ?? 3)}
+          indice={valor?.carita}
+          etiquetaCelda={`${nombre}, ${columna.titulo}`}
+          onElegir={(carita) => void onCambiar({ carita })}
+        />
       )
-    }
 
     case 'positivo_negativo': {
       const pos = valor?.positivos ?? 0

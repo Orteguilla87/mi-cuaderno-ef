@@ -245,9 +245,9 @@
     "semantic_hash": "b0461472781e5ddf03260c27252a4592"
   },
   "src/pages/Cuaderno.tsx": {
-    "mtime": 1784844163.510028,
-    "ast_hash": "5ae0fb01e74f2bd1821bca225ba8c92e",
-    "semantic_hash": "5ae0fb01e74f2bd1821bca225ba8c92e"
+    "mtime": 1784846996.7337716,
+    "ast_hash": "4fc60dd0bd45df04fed1cfbd5d1ed4b7",
+    "semantic_hash": ""
   },
   "src/pages/EdicionMasivaAlumnos.tsx": {
     "mtime": 1784796533.565722,

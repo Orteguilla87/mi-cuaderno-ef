@@ -189,3 +189,6 @@ html.pista .btn-suave {
 html.pista .texto-suave {
   @apply text-tinta dark:text-noche-texto;
 }
+html.pista .opcion-carita {
+  @apply min-h-[64px] min-w-[64px];
+}
