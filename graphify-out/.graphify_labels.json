@@ -12,11 +12,16 @@
   "10": "compilerOptions",
   "11": "compilerOptions",
   "12": "nuevoId",
+  "13": "package.json",
   "14": "Juegos.tsx",
   "15": "generar-iconos.mjs",
   "16": "tsconfig.json",
   "17": "tailwind.config.js",
   "18": "postcss.config.js",
   "19": "vite.config.ts",
-  "20": "vitest.config.ts"
+  "20": "vitest.config.ts",
+  "21": "jspdf-autotable",
+  "22": "postcss",
+  "23": "@vitejs/plugin-react",
+  "24": "vitest"
 }

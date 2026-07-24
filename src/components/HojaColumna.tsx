@@ -1,7 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Plus, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { crearColumna, crearRubrica, eliminarColumna, moverColumna, tiposDisponibles } from '../db/cuaderno'
+import {
+  crearColumna,
+  crearRubrica,
+  eliminarColumna,
+  moverColumna,
+  TIPOS_APLICABLES_GRUPO,
+  tiposDisponibles,
+} from '../db/cuaderno'
 import { db } from '../db/db'
 import type { ComponenteCalculo, Columna, Grupo, TipoColumna, Trimestre } from '../db/types'
 import { aISO } from '../lib/fechas'
@@ -18,11 +25,14 @@ export function HojaColumna({
   grupo,
   trimestre,
   onCerrar,
+  onAplicarGrupo,
 }: {
   estado: Columna | 'nueva' | null
   grupo: Grupo | null
   trimestre: Trimestre
   onCerrar: () => void
+  /** Abre «aplicar a todo el grupo» para una columna ya existente. */
+  onAplicarGrupo?: (c: Columna) => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const esNueva = estado === 'nueva'
@@ -310,6 +320,13 @@ export function HojaColumna({
           >
             {esNueva ? 'Crear columna' : 'Guardar cambios'}
           </button>
+
+          {columna && onAplicarGrupo && TIPOS_APLICABLES_GRUPO.includes(columna.tipo) && (
+            <button className="btn-suave w-full" onClick={() => onAplicarGrupo(columna)}>
+              <Users size={18} aria-hidden />
+              Aplicar a todo el grupo
+            </button>
+          )}
 
           {columna && (
             <button className="btn w-full text-acento" onClick={() => void borrar()}>

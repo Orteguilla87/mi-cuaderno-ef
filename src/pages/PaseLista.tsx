@@ -9,7 +9,7 @@ import {
   Undo2,
   X,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { AccionCabecera, Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
 import {
@@ -22,6 +22,7 @@ import {
 import { db } from '../db/db'
 import type { Alumno, Asistencia, EstadoAsistencia } from '../db/types'
 import { useFabCompacto } from '../lib/fabCompacto'
+import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { aISO, etiquetaDia, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -271,25 +272,11 @@ function TarjetaAlumno({
   onChandal: () => void
   onDetalle: () => void
 }) {
-  const temporizador = useRef<number | null>(null)
-  const fueLargo = useRef(false)
-
   const estado = registro?.estado
   const aspecto = estado ? ESTADOS[estado] : null
 
-  // Pulsación larga (500 ms) para el detalle, sin librerías: pointer events
-  // cubren dedo y ratón por igual.
-  function iniciarPulsacion() {
-    fueLargo.current = false
-    temporizador.current = window.setTimeout(() => {
-      fueLargo.current = true
-      onDetalle()
-    }, 500)
-  }
-  function terminarPulsacion() {
-    if (temporizador.current !== null) window.clearTimeout(temporizador.current)
-    temporizador.current = null
-  }
+  // Pulsación larga para el detalle; el toque normal cicla el estado.
+  const larga = usePulsacionLarga(onDetalle)
 
   return (
     <li>
@@ -303,14 +290,11 @@ function TarjetaAlumno({
       >
         <button
           className="text-left"
-          onPointerDown={iniciarPulsacion}
-          onPointerUp={terminarPulsacion}
-          onPointerLeave={terminarPulsacion}
-          onContextMenu={(e) => e.preventDefault()}
+          {...larga.props}
           onClick={() => {
             // Tras una pulsación larga el click también dispara: se ignora para
             // no cambiar el estado sin querer al abrir el detalle.
-            if (fueLargo.current) return
+            if (larga.fueLargo.current) return
             onTocar()
           }}
           aria-label={`${alumno.alias || alumno.nombre}: ${aspecto?.etiqueta ?? 'sin registrar'}`}

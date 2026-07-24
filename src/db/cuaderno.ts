@@ -33,6 +33,13 @@ export const TIPOS_COLUMNA: {
 ]
 
 /**
+ * Tipos a los que se puede aplicar un valor en bloque a todo el grupo: solo los
+ * de valor único y simple. Rúbrica, texto, positivos/negativos y cálculo quedan
+ * fuera.
+ */
+export const TIPOS_APLICABLES_GRUPO: TipoColumna[] = ['numero', 'caritas', 'si_no']
+
+/**
  * Tipos disponibles según la etapa: Infantil no admite números (§6). El cálculo
  * produce una nota numérica, así que tampoco se ofrece en Infantil.
  */
@@ -162,6 +169,68 @@ export async function guardarValor(
   }
   await db.valores.add(nuevo)
   return async () => void (await db.valores.delete(nuevo.id))
+}
+
+/**
+ * Aplica un mismo valor a toda una columna en un solo lote.
+ *
+ * Por defecto solo escribe en los alumnos que aún NO tienen valor; con
+ * `sobrescribir`, también en los que ya lo tienen. Devuelve UNA función de
+ * deshacer para todo el lote (mismo patrón que `eliminarColumna`): guarda el
+ * estado previo de las celdas tocadas y lo restaura de una vez.
+ */
+export async function aplicarAGrupo(
+  columnaId: string,
+  alumnoIds: string[],
+  cambios: Partial<Omit<ValorCelda, 'id' | 'columnaId' | 'alumnoId' | 'actualizado'>>,
+  sobrescribir: boolean,
+): Promise<{ aplicadas: number; deshacer: () => Promise<void> }> {
+  const previos = await db.valores.where('columnaId').equals(columnaId).toArray()
+  const previoPorAlumno = new Map(previos.map((v) => [v.alumnoId, v]))
+
+  const nuevos: ValorCelda[] = []
+  const actualizados: { id: string; antes: ValorCelda }[] = []
+
+  for (const alumnoId of alumnoIds) {
+    const previo = previoPorAlumno.get(alumnoId)
+    if (previo) {
+      if (!sobrescribir) continue
+      actualizados.push({ id: previo.id, antes: { ...previo } })
+    } else {
+      nuevos.push({ id: nuevoId(), columnaId, alumnoId, ...cambios, actualizado: Date.now() })
+    }
+  }
+
+  await db.transaction('rw', db.valores, async () => {
+    if (nuevos.length) await db.valores.bulkAdd(nuevos)
+    for (const { id } of actualizados) {
+      await db.valores.update(id, { ...cambios, actualizado: Date.now() })
+    }
+  })
+
+  const idsNuevos = nuevos.map((v) => v.id)
+  const deshacer = async () => {
+    await db.transaction('rw', db.valores, async () => {
+      if (idsNuevos.length) await db.valores.bulkDelete(idsNuevos)
+      for (const { antes } of actualizados) await db.valores.put(antes)
+    })
+  }
+
+  return { aplicadas: nuevos.length + actualizados.length, deshacer }
+}
+
+/**
+ * Cuántos alumnos recibirían el valor según el modo, para el resumen previo
+ * («Se aplicará a N alumnos») sin tener que escribir nada.
+ */
+export function contarDestinatarios(
+  columnaId: string,
+  alumnoIds: string[],
+  valores: Map<string, ValorCelda>,
+  sobrescribir: boolean,
+): number {
+  if (sobrescribir) return alumnoIds.length
+  return alumnoIds.filter((id) => !valores.get(`${columnaId}|${id}`)).length
 }
 
 /**

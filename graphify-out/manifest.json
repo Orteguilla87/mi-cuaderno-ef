@@ -60,8 +60,8 @@
     "semantic_hash": "60c85a3b68d07466fb0ef4ee85ce569e"
   },
   "src/components/Celda.tsx": {
-    "mtime": 1784874820.3085933,
-    "ast_hash": "438dcf1e8033bd38f50ff297e9205440",
+    "mtime": 1784875386.2462728,
+    "ast_hash": "0b737124a832df533a6e121cbe5e4c4c",
     "semantic_hash": ""
   },
   "src/components/CursoEscolarAjustes.tsx": {
@@ -75,9 +75,9 @@
     "semantic_hash": "13ad1e89947dbae103074680d13ad6d8"
   },
   "src/components/HojaColumna.tsx": {
-    "mtime": 1784796871.100399,
-    "ast_hash": "ebff0a18fe8f79e60b66b4da8c7533d4",
-    "semantic_hash": "ebff0a18fe8f79e60b66b4da8c7533d4"
+    "mtime": 1784875554.1584282,
+    "ast_hash": "72fc0e9dce8c8ac0c2bfef6f7601ff98",
+    "semantic_hash": ""
   },
   "src/components/HojaObservacion.tsx": {
     "mtime": 1784756184.76415,
@@ -125,9 +125,9 @@
     "semantic_hash": "aa890d180dec2f299a39d7d9a8c983c4"
   },
   "src/db/cuaderno.ts": {
-    "mtime": 1784796865.4346604,
-    "ast_hash": "bcf6c1c6fd9a55254fb6c518e71b4830",
-    "semantic_hash": "bcf6c1c6fd9a55254fb6c518e71b4830"
+    "mtime": 1784875569.0945003,
+    "ast_hash": "aedcea96fc189f91ed206a17588288cc",
+    "semantic_hash": ""
   },
   "src/db/curso.ts": {
     "mtime": 1784757338.1594746,
@@ -135,9 +135,9 @@
     "semantic_hash": "5b61e999b588dd38ba9b09642e0cf579"
   },
   "src/db/db.ts": {
-    "mtime": 1784796329.6976354,
-    "ast_hash": "8a0dd9d68244cf88e28d4824e8bd61b7",
-    "semantic_hash": "8a0dd9d68244cf88e28d4824e8bd61b7"
+    "mtime": 1784875234.1648116,
+    "ast_hash": "6bbe9cff58c8c9f1c52dd8762f0bd109",
+    "semantic_hash": ""
   },
   "src/db/equipos.ts": {
     "mtime": 1784796504.087382,
@@ -165,9 +165,9 @@
     "semantic_hash": "489a08e43ac368fa57644975d34c84f1"
   },
   "src/db/types.ts": {
-    "mtime": 1784796861.6575673,
-    "ast_hash": "f36a7cee3d65cfd701e573e325a97b1f",
-    "semantic_hash": "f36a7cee3d65cfd701e573e325a97b1f"
+    "mtime": 1784875227.7354426,
+    "ast_hash": "24cab02b221c5b7b2a6005d882b0311a",
+    "semantic_hash": ""
   },
   "src/lib/calendarioEscolar.ts": {
     "mtime": 1784757571.2530255,
@@ -245,8 +245,8 @@
     "semantic_hash": "b0461472781e5ddf03260c27252a4592"
   },
   "src/pages/Cuaderno.tsx": {
-    "mtime": 1784846996.7337716,
-    "ast_hash": "4fc60dd0bd45df04fed1cfbd5d1ed4b7",
+    "mtime": 1784875462.9474037,
+    "ast_hash": "162d000e8671db3520989db0a33d027c",
     "semantic_hash": ""
   },
   "src/pages/EdicionMasivaAlumnos.tsx": {
@@ -397,6 +397,11 @@
   "public/icon-maskable-512.png": {
     "mtime": 1784708851.401836,
     "ast_hash": "e430a4ce924c63f158856fa285d8b5b7",
+    "semantic_hash": ""
+  },
+  "src/lib/calculoColumna.test.ts": {
+    "mtime": 1784875341.44556,
+    "ast_hash": "cdb995dacfd8de6b89f4c42283044fe7",
     "semantic_hash": ""
   }
 }

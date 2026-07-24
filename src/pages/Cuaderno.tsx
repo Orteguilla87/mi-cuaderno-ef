@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Plus, Settings2, Table2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
-import { Celda, EditorColumna, TablaRubrica } from '../components/Celda'
+import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../components/Celda'
 import { HojaColumna } from '../components/HojaColumna'
 import {
   agruparPorUnidad,
@@ -10,12 +10,14 @@ import {
   columnasDe,
   guardarValor,
   mediaDe,
+  TIPOS_APLICABLES_GRUPO,
   valoresDe,
   type ResultadoCalculo,
 } from '../db/cuaderno'
 import { db } from '../db/db'
 import type { Alumno, Columna, Rubrica, Trimestre, ValorCelda } from '../db/types'
 import { useFabCompacto } from '../lib/fabCompacto'
+import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
 
 export function Cuaderno() {
@@ -27,6 +29,7 @@ export function Cuaderno() {
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
   const [evaluando, setEvaluando] = useState<{ columna: Columna; indice: number } | null>(null)
   const [tablaRubrica, setTablaRubrica] = useState<Columna | null>(null)
+  const [aplicando, setAplicando] = useState<Columna | null>(null)
 
   const grupos = useLiveQuery(async () => {
     const lista = await db.grupos.toArray()
@@ -226,6 +229,7 @@ export function Cuaderno() {
           calculos={calculos}
           onConfigurar={setConfigurando}
           onEvaluar={abrirEditor}
+          onAplicarGrupo={setAplicando}
           onCambiar={cambiar}
         />
       )}
@@ -243,6 +247,17 @@ export function Cuaderno() {
         grupo={grupo}
         trimestre={trimestre}
         onCerrar={() => setConfigurando(null)}
+        onAplicarGrupo={(c) => {
+          setConfigurando(null)
+          setAplicando(c)
+        }}
+      />
+
+      <HojaAplicarGrupo
+        columna={aplicando}
+        alumnos={alumnos ?? []}
+        valores={mapaValores}
+        onCerrar={() => setAplicando(null)}
       />
 
       {evaluando && (
@@ -273,6 +288,48 @@ export function Cuaderno() {
 }
 
 /**
+ * Cabecera de una columna. Toque → configurar; pulsación larga → aplicar un
+ * valor a todo el grupo (solo en los tipos que lo admiten). Es su propio
+ * componente porque la pulsación larga es un hook y no puede vivir en un `.map`.
+ */
+function CabeceraColumna({
+  columna,
+  onConfigurar,
+  onAplicarGrupo,
+}: {
+  columna: Columna
+  onConfigurar: (c: Columna) => void
+  onAplicarGrupo: (c: Columna) => void
+}) {
+  const aplicable = TIPOS_APLICABLES_GRUPO.includes(columna.tipo)
+  const larga = usePulsacionLarga(() => onAplicarGrupo(columna))
+
+  return (
+    <th
+      scope="col"
+      className="min-w-[76px] border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada"
+    >
+      <button
+        className="flex h-full w-full flex-col items-center gap-0.5 px-2 py-2"
+        {...(aplicable ? larga.props : {})}
+        onClick={() => {
+          // Tras la pulsación larga, el click también dispara: se ignora para no
+          // abrir la configuración encima de la hoja de «aplicar a todo».
+          if (aplicable && larga.fueLargo.current) return
+          onConfigurar(columna)
+        }}
+        title={columna.titulo}
+      >
+        <span className="line-clamp-2 text-[11px] font-bold leading-tight text-primario-oscuro dark:text-agua">
+          {columna.titulo}
+        </span>
+        <Settings2 size={12} className="text-tinta-tenue" aria-hidden />
+      </button>
+    </th>
+  )
+}
+
+/**
  * Rejilla táctil. La columna de alumnos va congelada a la izquierda con
  * `position: sticky`, que es lo que permite evaluar en el móvil sin perder de
  * vista de quién es cada fila.
@@ -285,6 +342,7 @@ function Rejilla({
   calculos,
   onConfigurar,
   onEvaluar,
+  onAplicarGrupo,
   onCambiar,
 }: {
   alumnos: Alumno[]
@@ -295,6 +353,8 @@ function Rejilla({
   onConfigurar: (c: Columna) => void
   /** `indice` = fila tocada, para que el recorrido empiece en ese alumno. */
   onEvaluar: (c: Columna, indice: number) => void
+  /** Long-press en la cabecera: aplicar un valor a toda la columna. */
+  onAplicarGrupo: (c: Columna) => void
   onCambiar: (
     columna: Columna,
     alumnoId: string,
@@ -313,22 +373,12 @@ function Rejilla({
               Alumno
             </th>
             {visibles.map((columna) => (
-              <th
+              <CabeceraColumna
                 key={columna.id}
-                scope="col"
-                className="min-w-[76px] border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada"
-              >
-                <button
-                  className="flex h-full w-full flex-col items-center gap-0.5 px-2 py-2"
-                  onClick={() => onConfigurar(columna)}
-                  title={columna.titulo}
-                >
-                  <span className="line-clamp-2 text-[11px] font-bold leading-tight text-primario-oscuro dark:text-agua">
-                    {columna.titulo}
-                  </span>
-                  <Settings2 size={12} className="text-tinta-tenue" aria-hidden />
-                </button>
-              </th>
+                columna={columna}
+                onConfigurar={onConfigurar}
+                onAplicarGrupo={onAplicarGrupo}
+              />
             ))}
           </tr>
         </thead>

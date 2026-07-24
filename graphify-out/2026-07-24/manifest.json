@@ -60,9 +60,9 @@
     "semantic_hash": "60c85a3b68d07466fb0ef4ee85ce569e"
   },
   "src/components/Celda.tsx": {
-    "mtime": 1784796901.6760595,
-    "ast_hash": "a4e003f6540210caf101c41d0205eb0b",
-    "semantic_hash": "a4e003f6540210caf101c41d0205eb0b"
+    "mtime": 1784874820.3085933,
+    "ast_hash": "438dcf1e8033bd38f50ff297e9205440",
+    "semantic_hash": ""
   },
   "src/components/CursoEscolarAjustes.tsx": {
     "mtime": 1784757609.839178,

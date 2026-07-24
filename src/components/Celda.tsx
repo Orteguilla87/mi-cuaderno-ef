@@ -1,8 +1,9 @@
 import { Check, ChevronLeft, ChevronRight, Delete, Minus, Plus, X } from 'lucide-react'
 import { useLayoutEffect, useEffect, useRef, useState } from 'react'
 import type { ResultadoCalculo } from '../db/cuaderno'
-import { guardarValor } from '../db/cuaderno'
+import { aplicarAGrupo, contarDestinatarios, guardarValor } from '../db/cuaderno'
 import type { Alumno, Columna, Rubrica, ValorCelda } from '../db/types'
+import { useUI } from '../store/ui'
 import { Hoja } from './Hoja'
 
 /**
@@ -407,13 +408,30 @@ export function EditorColumna({
         )}
 
         {columna.tipo === 'texto' && (
-          <textarea
-            className="campo h-32 resize-none py-2"
-            value={valor?.texto ?? ''}
-            onChange={(e) => guardar({ texto: e.target.value })}
-            placeholder="Anotación para este alumno"
-            autoFocus
-          />
+          <>
+            <textarea
+              className="campo h-32 resize-none py-2"
+              value={valor?.texto ?? ''}
+              onChange={(e) => guardar({ texto: e.target.value })}
+              placeholder="Anotación para este alumno"
+              autoFocus
+            />
+            {/* El texto ya se guarda en cada pulsación; este botón solo salta al
+                siguiente alumno, para anotar a toda la clase seguida. */}
+            <button className="btn-primario w-full" onClick={avanzar}>
+              {indice + 1 < alumnos.length ? (
+                <>
+                  Guardar y siguiente
+                  <ChevronRight size={18} aria-hidden />
+                </>
+              ) : (
+                <>
+                  <Check size={18} aria-hidden />
+                  Hecho
+                </>
+              )}
+            </button>
+          </>
         )}
 
       </div>
@@ -539,6 +557,12 @@ function TecladoNumerico({
 }) {
   const [buffer, setBuffer] = useState('')
   const mostrado = buffer || (valor != null ? String(valor) : '')
+  const contenedorRef = useRef<HTMLDivElement>(null)
+
+  // Foco al montar para capturar el teclado físico sin robarlo en cada tecla.
+  useEffect(() => {
+    contenedorRef.current?.focus()
+  }, [])
 
   function pulsar(tecla: string) {
     if (tecla === ',') {
@@ -559,8 +583,24 @@ function TecladoNumerico({
     onValor(Number(acotado.toFixed(escala.decimales)))
   }
 
+  // En escritorio se teclea con el teclado físico: Enter guarda y salta al
+  // siguiente alumno (vía onValor→avanzar), como el botón «Guardar». Los
+  // dígitos y la coma alimentan el mismo buffer que los botones en pantalla.
+  function alPulsarTecla(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (mostrado) confirmar()
+    } else if (e.key === 'Backspace') {
+      setBuffer((b) => b.slice(0, -1))
+    } else if (/^[0-9]$/.test(e.key)) {
+      pulsar(e.key)
+    } else if (e.key === ',' || e.key === '.') {
+      pulsar(',')
+    }
+  }
+
   return (
-    <div>
+    <div ref={contenedorRef} onKeyDown={alPulsarTecla} tabIndex={0} className="outline-none">
       <div className="mb-2 flex items-center justify-center rounded-xl border-2 border-borde py-3 dark:border-noche-borde">
         <span className="cifra text-3xl font-bold">{mostrado || '—'}</span>
         <span className="ml-2 text-sm texto-suave">
@@ -610,5 +650,180 @@ function TecladoNumerico({
         </button>
       </div>
     </div>
+  )
+}
+
+/**
+ * «Aplicar a todo el grupo»: pone el mismo valor en toda una columna de un solo
+ * gesto. Por defecto solo a quien aún no tiene nota; sobrescribir a los demás es
+ * una casilla aparte. Muestra el recuento antes de aplicar y deja deshacer el
+ * lote entero con un toque (§7.2).
+ */
+export function HojaAplicarGrupo({
+  columna,
+  alumnos,
+  valores,
+  onCerrar,
+}: {
+  columna: Columna | null
+  alumnos: Alumno[]
+  valores: Map<string, ValorCelda>
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [sobrescribir, setSobrescribir] = useState(false)
+  const [numero, setNumero] = useState('')
+  const [carita, setCarita] = useState<number | null>(null)
+  const [marcado, setMarcado] = useState<boolean | null>(null)
+
+  // Reinicia al abrir una columna distinta.
+  useEffect(() => {
+    setSobrescribir(false)
+    setNumero('')
+    setCarita(null)
+    setMarcado(null)
+  }, [columna?.id])
+
+  if (!columna) return null
+
+  const ids = alumnos.map((a) => a.id)
+  const destinatarios = contarDestinatarios(columna.id, ids, valores, sobrescribir)
+  const conNota = ids.length - contarDestinatarios(columna.id, ids, valores, false)
+
+  const escala = columna.tipo === 'numero' ? (columna.escala ?? { min: 0, max: 10, decimales: 1 }) : null
+  const caritas = columna.tipo === 'caritas' ? escalaCaritas(columna.caritas ?? 3) : null
+
+  // El valor elegido según el tipo; null si aún no hay valor que aplicar.
+  const cambios: Cambios | null = (() => {
+    if (columna.tipo === 'numero') {
+      if (numero === '') return null
+      const n = Number(numero.replace(',', '.'))
+      if (!Number.isFinite(n)) return null
+      const acotado = Math.min(escala!.max, Math.max(escala!.min, n))
+      return { numero: Number(acotado.toFixed(escala!.decimales)) }
+    }
+    if (columna.tipo === 'caritas') return carita == null ? null : { carita }
+    if (columna.tipo === 'si_no') return marcado == null ? null : { marcado }
+    return null
+  })()
+
+  async function aplicar() {
+    if (!cambios || destinatarios === 0) return
+    const { aplicadas, deshacer } = await aplicarAGrupo(columna!.id, ids, cambios, sobrescribir)
+    onCerrar()
+    mostrarAviso(`Aplicado a ${aplicadas} ${aplicadas === 1 ? 'alumno' : 'alumnos'}`, deshacer)
+  }
+
+  return (
+    <Hoja abierta={!!columna} titulo={`Aplicar a todo el grupo · ${columna.titulo}`} onCerrar={onCerrar}>
+      <div className="space-y-4">
+        {columna.tipo === 'numero' && (
+          <div>
+            <label className="etiqueta" htmlFor="aplicar-numero">
+              Nota para todos
+            </label>
+            <input
+              id="aplicar-numero"
+              type="number"
+              inputMode="decimal"
+              className="campo cifra text-center text-2xl"
+              value={numero}
+              min={escala!.min}
+              max={escala!.max}
+              onChange={(e) => setNumero(e.target.value)}
+              autoFocus
+            />
+            <p className="mt-1 text-xs texto-suave">
+              Entre {escala!.min} y {escala!.max}.
+            </p>
+          </div>
+        )}
+
+        {columna.tipo === 'caritas' && caritas && (
+          <div>
+            <span className="etiqueta">Carita para todos</span>
+            <div className="flex flex-wrap gap-2">
+              {caritas.map((c, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCarita(i)}
+                  aria-pressed={carita === i}
+                  className={
+                    'flex min-h-tap flex-col items-center gap-1 rounded-lg px-3 py-1.5 transition ' +
+                    (carita === i
+                      ? 'bg-agua-claro ring-2 ring-primario dark:bg-noche-elevada'
+                      : 'hover:bg-agua-claro dark:hover:bg-noche-elevada')
+                  }
+                >
+                  <Carita boca={c.boca} className={c.color} />
+                  <span className="text-[10px] font-semibold texto-suave">{c.etiqueta}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {columna.tipo === 'si_no' && (
+          <div>
+            <span className="etiqueta">Marca para todos</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setMarcado(true)}
+                className={marcado === true ? 'btn-primario' : 'btn-suave'}
+              >
+                <Check size={18} aria-hidden />
+                Conseguido
+              </button>
+              <button
+                onClick={() => setMarcado(false)}
+                className={marcado === false ? 'btn-acento' : 'btn-suave'}
+              >
+                <X size={18} aria-hidden />
+                No conseguido
+              </button>
+            </div>
+          </div>
+        )}
+
+        <label className="flex items-center gap-3">
+          <button
+            role="switch"
+            aria-checked={sobrescribir}
+            onClick={() => setSobrescribir((v) => !v)}
+            className={
+              'relative h-8 w-14 shrink-0 rounded-full transition ' +
+              (sobrescribir ? 'bg-primario' : 'bg-borde dark:bg-noche-borde')
+            }
+          >
+            <span
+              className={
+                'absolute top-1 h-6 w-6 rounded-full bg-white transition-all ' +
+                (sobrescribir ? 'left-7' : 'left-1')
+              }
+            />
+          </button>
+          <span className="text-sm">
+            <span className="font-semibold">Sobrescribir existentes</span>
+            <span className="block texto-suave">
+              {conNota} {conNota === 1 ? 'alumno ya tiene' : 'alumnos ya tienen'} nota en esta columna.
+            </span>
+          </span>
+        </label>
+
+        <div className="panel-agua text-sm">
+          {destinatarios === 0
+            ? 'No hay alumnos a los que aplicar. Marca «sobrescribir» para reemplazar los que ya tienen nota.'
+            : `Se aplicará a ${destinatarios} ${destinatarios === 1 ? 'alumno' : 'alumnos'}.`}
+        </div>
+
+        <button
+          className="btn-primario w-full"
+          onClick={() => void aplicar()}
+          disabled={!cambios || destinatarios === 0}
+        >
+          Aplicar a {destinatarios} {destinatarios === 1 ? 'alumno' : 'alumnos'}
+        </button>
+      </div>
+    </Hoja>
   )
 }
