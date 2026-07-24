@@ -235,8 +235,18 @@ export type TipoColumna =
   | 'si_no'
   | 'rubrica'
   | 'texto'
+  | 'calculo'
 
 export const TIPOS_NUMERICOS: TipoColumna[] = ['numero']
+
+/**
+ * Una columna que entra en un cálculo, con su peso. Los pesos se normalizan al
+ * promediar (no tienen por qué sumar 100), igual que los pesos de rúbrica.
+ */
+export interface ComponenteCalculo {
+  columnaId: Id
+  pesoPct: number
+}
 
 export interface Columna {
   id: Id
@@ -257,6 +267,8 @@ export interface Columna {
   caritas?: 3 | 5
   // — tipo 'rubrica' —
   rubricaId?: Id
+  // — tipo 'calculo' —
+  calculo?: { componentes: ComponenteCalculo[] }
 }
 
 export interface NivelRubrica {

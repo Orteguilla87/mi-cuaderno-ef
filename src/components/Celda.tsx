@@ -1,5 +1,6 @@
 import { Check, ChevronLeft, ChevronRight, Delete, Minus, Plus, X } from 'lucide-react'
 import { useLayoutEffect, useEffect, useRef, useState } from 'react'
+import type { ResultadoCalculo } from '../db/cuaderno'
 import { guardarValor } from '../db/cuaderno'
 import type { Alumno, Columna, Rubrica, ValorCelda } from '../db/types'
 import { Hoja } from './Hoja'
@@ -186,6 +187,7 @@ export function Celda({
   alumno,
   valor,
   rubrica,
+  calculado,
   onCambiar,
   onAbrirEditor,
 }: {
@@ -193,6 +195,8 @@ export function Celda({
   alumno: Alumno
   valor?: ValorCelda
   rubrica?: Rubrica
+  /** Resultado de una columna de tipo 'calculo'; lo aporta la rejilla. */
+  calculado?: ResultadoCalculo
   onCambiar: (cambios: Cambios) => void | Promise<void>
   onAbrirEditor: () => void
 }) {
@@ -304,6 +308,28 @@ export function Celda({
           </span>
         </button>
       )
+
+    case 'calculo': {
+      // Solo lectura: la nota sale de otras columnas. Mismo color condicional
+      // que 'numero' (suspenso < 5 sobre 10) y aviso de media parcial.
+      const n = calculado?.valor ?? null
+      const suspenso = n != null && n < 5
+      const parcial =
+        calculado != null && calculado.contadas < calculado.total && calculado.total > 0
+      return (
+        <div
+          className={base + ' flex-col gap-0 ' + (suspenso ? 'text-acento' : '')}
+          aria-label={`${nombre}, ${columna.titulo}: ${n == null ? 'sin datos' : n.toFixed(1)}`}
+        >
+          <span className="cifra text-lg">{n == null ? '·' : n.toFixed(1)}</span>
+          {parcial && (
+            <span className="cifra text-[9px] font-semibold texto-suave">
+              {calculado!.contadas}/{calculado!.total}
+            </span>
+          )}
+        </div>
+      )
+    }
   }
 }
 

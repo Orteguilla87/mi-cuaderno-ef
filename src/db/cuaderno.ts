@@ -25,11 +25,20 @@ export const TIPOS_COLUMNA: {
   { tipo: 'si_no', etiqueta: 'Lista de control', descripcion: 'Conseguido o no conseguido' },
   { tipo: 'rubrica', etiqueta: 'Rúbrica', descripcion: 'Varios criterios con niveles' },
   { tipo: 'texto', etiqueta: 'Texto', descripcion: 'Anotación libre por alumno' },
+  {
+    tipo: 'calculo',
+    etiqueta: 'Cálculo',
+    descripcion: 'Media ponderada de otras columnas',
+  },
 ]
 
-/** Tipos disponibles según la etapa: Infantil no admite números (§6). */
+/**
+ * Tipos disponibles según la etapa: Infantil no admite números (§6). El cálculo
+ * produce una nota numérica, así que tampoco se ofrece en Infantil.
+ */
 export function tiposDisponibles(etapa: Etapa): typeof TIPOS_COLUMNA {
-  if (etapa === 'infantil') return TIPOS_COLUMNA.filter((t) => !TIPOS_NUMERICOS.includes(t.tipo))
+  if (etapa === 'infantil')
+    return TIPOS_COLUMNA.filter((t) => !TIPOS_NUMERICOS.includes(t.tipo) && t.tipo !== 'calculo')
   return TIPOS_COLUMNA
 }
 
@@ -44,6 +53,7 @@ export async function crearColumna(datos: {
   escala?: Columna['escala']
   caritas?: 3 | 5
   rubricaId?: string
+  calculo?: Columna['calculo']
 }): Promise<string> {
   const existentes = await db.columnas
     .where('[grupoId+trimestre]')
@@ -63,6 +73,7 @@ export async function crearColumna(datos: {
     escala: datos.tipo === 'numero' ? (datos.escala ?? { min: 0, max: 10, decimales: 1 }) : undefined,
     caritas: datos.tipo === 'caritas' ? (datos.caritas ?? 3) : undefined,
     rubricaId: datos.tipo === 'rubrica' ? datos.rubricaId : undefined,
+    calculo: datos.tipo === 'calculo' ? (datos.calculo ?? { componentes: [] }) : undefined,
   }
   await db.columnas.add(columna)
   return columna.id
@@ -203,8 +214,91 @@ export function valorNormalizado(
       return pesos === 0 ? null : suma / pesos
     }
     default:
-      return null // positivo_negativo y texto no son promediables
+      // positivo_negativo, texto y calculo no se auto-normalizan aquí. El de
+      // cálculo se resuelve con `calcularColumna`, que necesita el resto de
+      // columnas y no cabe en esta firma.
+      return null
   }
+}
+
+/**
+ * Resultado de una columna calculada para un alumno.
+ * `total` = componentes de la fórmula; `contadas` = los que tenían nota. La
+ * media es parcial cuando `contadas < total`.
+ */
+export interface ResultadoCalculo {
+  valor: number | null
+  contadas: number
+  total: number
+}
+
+/**
+ * Valor 0–10 de una columna de cálculo para un alumno: media ponderada de sus
+ * columnas componentes.
+ *
+ * Extiende el mismo motor que ya normaliza cualquier celda a 0–10
+ * (`valorNormalizado`) y promedia con pesos como las rúbricas: NO es un sistema
+ * de fórmulas paralelo.
+ *
+ * - Pesos normalizados siempre: se reparten proporcionalmente aunque no sumen
+ *   100 (con todos a 0, pesan por igual). Misma regla que la media de rúbrica.
+ * - Una nota ausente excluye ese componente y renormaliza el resto de pesos.
+ * - Encadenado: un componente puede ser a su vez de tipo cálculo; se resuelve
+ *   recursivamente, con memoización por columna·alumno y detección de ciclos
+ *   (una referencia circular devuelve `null` en vez de colgar).
+ */
+export function calcularColumna(
+  columna: Columna,
+  columnasPorId: Map<string, Columna>,
+  valores: Map<string, ValorCelda>,
+  alumnoId: string,
+  rubricas: Map<string, Rubrica>,
+  memo: Map<string, ResultadoCalculo> = new Map(),
+  enCurso: Set<string> = new Set(),
+): ResultadoCalculo {
+  const claveMemo = `${columna.id}|${alumnoId}`
+  const cacheado = memo.get(claveMemo)
+  if (cacheado) return cacheado
+
+  const componentes = columna.calculo?.componentes ?? []
+  const total = componentes.length
+
+  // Ciclo: la columna se está resolviendo más arriba en la pila. Cortar aquí
+  // evita la recursión infinita; el resultado inválido se propaga como null.
+  if (enCurso.has(columna.id)) return { valor: null, contadas: 0, total }
+  enCurso.add(columna.id)
+
+  let suma = 0
+  let pesos = 0
+  let contadas = 0
+
+  for (const comp of componentes) {
+    const col = columnasPorId.get(comp.columnaId)
+    if (!col) continue
+
+    let normal: number | null
+    if (col.tipo === 'calculo') {
+      normal = calcularColumna(col, columnasPorId, valores, alumnoId, rubricas, memo, enCurso).valor
+    } else {
+      const v = valores.get(`${col.id}|${alumnoId}`)
+      normal = valorNormalizado(col, v, col.rubricaId ? rubricas.get(col.rubricaId) : undefined)
+    }
+    if (normal == null) continue
+
+    const peso = comp.pesoPct > 0 ? comp.pesoPct : 1
+    suma += normal * peso
+    pesos += peso
+    contadas++
+  }
+
+  enCurso.delete(columna.id)
+  const resultado: ResultadoCalculo = {
+    valor: pesos === 0 ? null : suma / pesos,
+    contadas,
+    total,
+  }
+  memo.set(claveMemo, resultado)
+  return resultado
 }
 
 export interface MediaAlumno {
@@ -227,6 +321,9 @@ export function mediaDe(
   let suma = 0
   let contadas = 0
   for (const c of columnas) {
+    // Las columnas de cálculo se saltan: ya son una media de otras columnas de
+    // la unidad, así que promediarlas otra vez contaría esas notas dos veces.
+    if (c.tipo === 'calculo') continue
     const v = valores.get(`${c.id}|${alumnoId}`)
     const n = valorNormalizado(c, v, c.rubricaId ? rubricas.get(c.rubricaId) : undefined)
     if (n == null) continue

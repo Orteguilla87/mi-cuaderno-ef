@@ -1,9 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { crearColumna, crearRubrica, eliminarColumna, moverColumna, tiposDisponibles } from '../db/cuaderno'
 import { db } from '../db/db'
-import type { Columna, Grupo, TipoColumna, Trimestre } from '../db/types'
+import type { ComponenteCalculo, Columna, Grupo, TipoColumna, Trimestre } from '../db/types'
 import { aISO } from '../lib/fechas'
 import { useUI } from '../store/ui'
 import { Hoja } from './Hoja'
@@ -34,10 +34,22 @@ export function HojaColumna({
   const [rubricaId, setRubricaId] = useState('')
   const [caritas, setCaritas] = useState<3 | 5>(3)
   const [max, setMax] = useState(10)
+  const [componentes, setComponentes] = useState<ComponenteCalculo[]>([])
   const [editandoRubrica, setEditandoRubrica] = useState<string | null>(null)
 
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
   const rubricas = useLiveQuery(() => db.rubricas.toArray(), [])
+  // Columnas del mismo grupo y trimestre, candidatas a entrar en un cálculo
+  // (todas menos ella misma y menos otras de cálculo que la referencien).
+  const hermanas = useLiveQuery(
+    async () =>
+      grupo
+        ? (await db.columnas.where('[grupoId+trimestre]').equals([grupo.id, trimestre]).toArray()).sort(
+            (a, b) => a.orden - b.orden,
+          )
+        : [],
+    [grupo?.id, trimestre],
+  )
 
   const tipos = grupo ? tiposDisponibles(grupo.etapa) : []
 
@@ -50,6 +62,7 @@ export function HojaColumna({
       setRubricaId(columna.rubricaId ?? '')
       setCaritas(columna.caritas ?? 3)
       setMax(columna.escala?.max ?? 10)
+      setComponentes(columna.calculo?.componentes ?? [])
     } else {
       setTitulo('')
       // Infantil no ofrece números, así que el tipo por defecto no puede serlo.
@@ -58,24 +71,33 @@ export function HojaColumna({
       setRubricaId('')
       setCaritas(3)
       setMax(10)
+      setComponentes([])
     }
   }, [estado])
 
   if (!estado || !grupo) return null
 
+  // Un cálculo sin componentes no promedia nada: se exige al menos uno.
+  const guardable = !((tipo === 'rubrica' && !rubricaId) || (tipo === 'calculo' && componentes.length === 0))
+
   async function guardar() {
-    if (tipo === 'rubrica' && !rubricaId) return
+    if (!guardable) return
 
     if (esNueva) {
+      // Título por defecto «Cálculo N» sobre las columnas de cálculo ya creadas.
+      const nCalculos = (hermanas ?? []).filter((c) => c.tipo === 'calculo').length
+      const tituloPorDefecto =
+        tipo === 'calculo' ? `Cálculo ${nCalculos + 1}` : tipos.find((t) => t.tipo === tipo)?.etiqueta || 'Columna'
       await crearColumna({
         grupoId: grupo!.id,
         trimestre,
-        titulo: titulo || tipos.find((t) => t.tipo === tipo)?.etiqueta || 'Columna',
+        titulo: titulo || tituloPorDefecto,
         tipo,
         udId: udId || undefined,
         rubricaId: rubricaId || undefined,
         caritas,
         escala: { min: 0, max, decimales: 1 },
+        calculo: tipo === 'calculo' ? { componentes } : undefined,
         fecha: aISO(),
       })
     } else if (columna) {
@@ -85,6 +107,8 @@ export function HojaColumna({
         rubricaId: rubricaId || undefined,
         caritas,
         escala: columna.tipo === 'numero' ? { min: 0, max, decimales: 1 } : undefined,
+        // El cálculo es el único tipo cuyos parámetros se editan tras crearlo.
+        calculo: columna.tipo === 'calculo' ? { componentes } : undefined,
       })
     }
     onCerrar()
@@ -228,6 +252,16 @@ export function HojaColumna({
             </div>
           )}
 
+          {tipo === 'calculo' && (
+            <EditorCalculo
+              componentes={componentes}
+              onCambio={setComponentes}
+              // Ella misma nunca es componente de sí misma; las de cálculo sí
+              // pueden encadenarse (el motor detecta ciclos).
+              candidatas={(hermanas ?? []).filter((c) => c.id !== columna?.id)}
+            />
+          )}
+
           <div>
             <label className="etiqueta" htmlFor="col-ud">
               Unidad didáctica
@@ -272,7 +306,7 @@ export function HojaColumna({
           <button
             className="btn-primario w-full"
             onClick={() => void guardar()}
-            disabled={tipo === 'rubrica' && !rubricaId}
+            disabled={!guardable}
           >
             {esNueva ? 'Crear columna' : 'Guardar cambios'}
           </button>
@@ -291,5 +325,98 @@ export function HojaColumna({
         onCerrar={() => setEditandoRubrica(null)}
       />
     </>
+  )
+}
+
+/**
+ * Selector de columnas y pesos de una columna de cálculo. Cada columna elegida
+ * entra en la media ponderada; los pesos se normalizan al calcular (no tienen
+ * por qué sumar 100), así que aquí solo se avisa de la suma, no se bloquea.
+ */
+function EditorCalculo({
+  componentes,
+  candidatas,
+  onCambio,
+}: {
+  componentes: ComponenteCalculo[]
+  candidatas: Columna[]
+  onCambio: (comps: ComponenteCalculo[]) => void
+}) {
+  // Solo se promedian columnas con valor sobre 10; texto y positivos/negativos
+  // no entran (el motor los descarta), así que no se ofrecen como componentes.
+  const PROMEDIABLES: TipoColumna[] = ['numero', 'caritas', 'si_no', 'rubrica', 'calculo']
+  const elegibles = candidatas.filter((c) => PROMEDIABLES.includes(c.tipo))
+
+  const pesoDe = (id: string) => componentes.find((c) => c.columnaId === id)?.pesoPct
+  const marcada = (id: string) => pesoDe(id) !== undefined
+  const suma = componentes.reduce((n, c) => n + (c.pesoPct || 0), 0)
+
+  function alternar(id: string) {
+    if (marcada(id)) onCambio(componentes.filter((c) => c.columnaId !== id))
+    // Peso por defecto: reparto a partes iguales sobre las que habrá.
+    else onCambio([...componentes, { columnaId: id, pesoPct: Math.round(100 / (componentes.length + 1)) }])
+  }
+
+  function cambiarPeso(id: string, pesoPct: number) {
+    onCambio(componentes.map((c) => (c.columnaId === id ? { ...c, pesoPct } : c)))
+  }
+
+  return (
+    <div>
+      <span className="etiqueta">Columnas del cálculo</span>
+      {elegibles.length === 0 ? (
+        <p className="text-sm texto-suave">
+          No hay otras columnas promediables en este trimestre todavía. Crea antes las columnas de
+          nota, caritas, lista de control o rúbrica.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-2">
+            {elegibles.map((c) => (
+              <li key={c.id} className="flex items-center gap-2">
+                <button
+                  onClick={() => alternar(c.id)}
+                  aria-pressed={marcada(c.id)}
+                  className={
+                    'flex min-h-tap flex-1 items-center gap-2 rounded-xl border-2 px-3 text-left transition ' +
+                    (marcada(c.id)
+                      ? 'border-primario bg-agua-claro dark:bg-noche-elevada'
+                      : 'border-borde dark:border-noche-borde')
+                  }
+                >
+                  <span
+                    className={
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded ' +
+                      (marcada(c.id) ? 'bg-primario text-white' : 'border-2 border-borde dark:border-noche-borde')
+                    }
+                  >
+                    {marcada(c.id) && <Check size={14} strokeWidth={3} aria-hidden />}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{c.titulo}</span>
+                </button>
+                {marcada(c.id) && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      className="campo cifra w-20 text-center"
+                      value={pesoDe(c.id)}
+                      onChange={(e) => cambiarPeso(c.id, Number(e.target.value))}
+                      aria-label={`Peso de ${c.titulo} en porcentaje`}
+                    />
+                    <span className="text-sm texto-suave">%</span>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs texto-suave">
+            {componentes.length === 0
+              ? 'Elige al menos una columna.'
+              : `Los pesos suman ${suma}%. No tienen por qué sumar 100: se reparten proporcionalmente. Si a un alumno le falta alguna nota, esa columna se excluye y el resto se reajusta.`}
+          </p>
+        </>
+      )}
+    </div>
   )
 }

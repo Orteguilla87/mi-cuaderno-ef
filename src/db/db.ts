@@ -213,6 +213,13 @@ class CuadernoDB extends Dexie {
       vinculos: 'id, grupoId, alumnoA, alumnoB, [grupoId+alumnoA], [grupoId+alumnoB]',
       equipos: 'id, grupoId, fecha, udId',
     })
+
+    /**
+     * v10 — columnas calculadas. El campo `calculo` (componentes + pesos) vive
+     * dentro de `Columna`, no indexado, así que basta con declarar la versión;
+     * las columnas ya existentes lo tienen `undefined` y no son de tipo cálculo.
+     */
+    this.version(10).stores({})
   }
 }
 

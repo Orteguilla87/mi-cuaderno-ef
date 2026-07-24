@@ -6,13 +6,15 @@ import { Celda, EditorColumna, TablaRubrica } from '../components/Celda'
 import { HojaColumna } from '../components/HojaColumna'
 import {
   agruparPorUnidad,
+  calcularColumna,
   columnasDe,
   guardarValor,
   mediaDe,
   valoresDe,
+  type ResultadoCalculo,
 } from '../db/cuaderno'
 import { db } from '../db/db'
-import type { Alumno, Columna, Rubrica, Trimestre } from '../db/types'
+import type { Alumno, Columna, Rubrica, Trimestre, ValorCelda } from '../db/types'
 import { useFabCompacto } from '../lib/fabCompacto'
 import { navegar } from '../lib/router'
 
@@ -58,6 +60,35 @@ export function Cuaderno() {
   }, [])
 
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
+
+  const columnasPorId = useMemo(
+    () => new Map((columnas ?? []).map((c) => [c.id, c] as const)),
+    [columnas],
+  )
+
+  /**
+   * Resultado de cada columna de cálculo por alumno, en un solo pase.
+   *
+   * Recalcula solo cuando cambian columnas, notas o rúbricas —y `valores` viene
+   * de `useLiveQuery`, así que Dexie lo reemite al escribir una nota: el
+   * recálculo es automático—. El memo se comparte por alumno para que encadenar
+   * cálculos no recompute los componentes. Con ~25 alumnos son unos cientos de
+   * operaciones: no necesita más.
+   */
+  const calculos = useMemo(() => {
+    const res = new Map<string, ResultadoCalculo>()
+    const calcCols = (columnas ?? []).filter((c) => c.tipo === 'calculo')
+    if (calcCols.length === 0) return res
+    const vals = valores ?? new Map<string, ValorCelda>()
+    const rubs = rubricas ?? new Map<string, Rubrica>()
+    for (const a of alumnos ?? []) {
+      const memo = new Map<string, ResultadoCalculo>()
+      for (const c of calcCols) {
+        res.set(`${c.id}|${a.id}`, calcularColumna(c, columnasPorId, vals, a.id, rubs, memo))
+      }
+    }
+    return res
+  }, [columnas, alumnos, valores, rubricas, columnasPorId])
 
   // La rúbrica siempre se abre en tabla (alumno × criterio): nunca se separa
   // en columnas sueltas de la rejilla, así que aquí es siempre una columna 1:1.
@@ -192,6 +223,7 @@ export function Cuaderno() {
           visibles={visibles}
           valores={mapaValores}
           rubricas={mapaRubricas}
+          calculos={calculos}
           onConfigurar={setConfigurando}
           onEvaluar={abrirEditor}
           onCambiar={cambiar}
@@ -250,6 +282,7 @@ function Rejilla({
   visibles,
   valores,
   rubricas,
+  calculos,
   onConfigurar,
   onEvaluar,
   onCambiar,
@@ -258,6 +291,7 @@ function Rejilla({
   visibles: Columna[]
   valores: Map<string, import('../db/types').ValorCelda>
   rubricas: Map<string, Rubrica>
+  calculos: Map<string, ResultadoCalculo>
   onConfigurar: (c: Columna) => void
   /** `indice` = fila tocada, para que el recorrido empiece en ese alumno. */
   onEvaluar: (c: Columna, indice: number) => void
@@ -326,6 +360,11 @@ function Rejilla({
                     alumno={a}
                     valor={valores.get(`${columna.id}|${a.id}`)}
                     rubrica={columna.rubricaId ? rubricas.get(columna.rubricaId) : undefined}
+                    calculado={
+                      columna.tipo === 'calculo'
+                        ? calculos.get(`${columna.id}|${a.id}`)
+                        : undefined
+                    }
                     // Escritura optimista sin aviso (§7): un toque suelto no
                     // necesita confirmación, igual que en el pase de lista.
                     onCambiar={(cambios) => void onCambiar(columna, a.id, cambios)}

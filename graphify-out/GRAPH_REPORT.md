@@ -1,16 +1,16 @@
 # Graph Report - cuaderno-ef  (2026-07-24)
 
 ## Corpus Check
-- 76 files · ~52,500 words
+- 76 files · ~52,946 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 559 nodes · 1493 edges · 22 communities (21 shown, 1 thin omitted)
+- 560 nodes · 1494 edges · 20 communities (19 shown, 1 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 4 edges (avg confidence: 0.73)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5b96ebe9`
+- Built from commit: `f39acc02`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -28,11 +28,9 @@
 - compilerOptions
 - compilerOptions
 - nuevoId
-- Ajustes.tsx
 - Juegos.tsx
 - generar-iconos.mjs
 - tsconfig.json
-- LimiteError
 
 ## God Nodes (most connected - your core abstractions)
 1. `useUI` - 54 edges
@@ -53,35 +51,35 @@
   src/lib/informes.ts → package.json
 - `exportarNotasXLSX()` --references--> `xlsx`  [EXTRACTED]
   src/lib/informes.ts → package.json
-- `responderConsulta()` --calls--> `resumirAsistencia()`  [EXTRACTED]
-  src/components/AgenteVoz.tsx → src/db/asistencia.ts
-- `HojaPegarCalendario()` --calls--> `useUI`  [EXTRACTED]
-  src/components/CursoEscolarAjustes.tsx → src/store/ui.ts
+- `Hoy()` --indirect_call--> `leerCursoActivo()`  [INFERRED]
+  src/pages/Hoy.tsx → src/db/curso.ts
+- `grupoQueTocaEn()` --calls--> `diaLectivo()`  [EXTRACTED]
+  src/lib/pseudonimizacion.ts → src/lib/fechas.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (22 total, 1 thin omitted)
+## Communities (20 total, 1 thin omitted)
 
 ### Community 0 - "planificador.ts"
 Cohesion: 0.08
-Nodes (57): CursoEscolarAjustes(), HojaPegarCalendario(), nuevoId(), aplicarPlantillaSesion(), copiarPlanificacion(), crearSesion(), crearUnidad(), duplicarSesion() (+49 more)
+Nodes (59): BadgeEtapa(), aplicarPlantillaSesion(), copiarPlanificacion(), crearSesion(), crearUnidad(), duplicarSesion(), duplicarUnidad(), editarSesion() (+51 more)
 
 ### Community 1 - "App.tsx"
-Cohesion: 0.07
-Nodes (39): Contenido(), AgenteVoz(), BadgeEtapa(), BottomNav(), PESTANAS, AccionCabecera(), Cabecera(), Snackbar() (+31 more)
+Cohesion: 0.06
+Nodes (35): App(), Contenido(), HojaAgente(), BottomNav(), PESTANAS, AccionCabecera(), Cabecera(), Estado (+27 more)
 
 ### Community 2 - "useUI"
-Cohesion: 0.07
-Nodes (39): Hoja(), HojaObservacion(), SIGNOS, TIPOS, duplicarRubrica(), contadoresPorAlumno(), ContadorSigno, FiltroObservaciones (+31 more)
+Cohesion: 0.06
+Nodes (46): AgenteVoz(), CursoEscolarAjustes(), HojaPegarCalendario(), Hoja(), HojaObservacion(), SIGNOS, TIPOS, Snackbar() (+38 more)
 
 ### Community 3 - "EquiposGenerador.tsx"
 Cohesion: 0.09
-Nodes (30): EquipoPizarra, Pizarra(), alumnosGenerables(), crearVinculo(), equiposGuardados(), guardarEquipo(), historialEquipos(), vinculosDelGrupo() (+22 more)
+Nodes (30): EquipoPizarra, Pizarra(), alumnosGenerables(), equiposGuardados(), guardarEquipo(), historialEquipos(), vinculosDelGrupo(), ConfigGeneracionEquipos (+22 more)
 
 ### Community 4 - "cuaderno.ts"
-Cohesion: 0.07
-Nodes (58): Cambios, CARITAS, CARITAS_5, Celda(), EditorColumna(), escalaCaritas(), TablaRubrica(), HojaColumna() (+50 more)
+Cohesion: 0.06
+Nodes (63): Cambios, CARITAS, CARITAS_5, Celda(), EditorColumna(), escalaCaritas(), TablaRubrica(), HojaColumna() (+55 more)
 
 ### Community 5 - "types.ts"
 Cohesion: 0.09
@@ -89,7 +87,7 @@ Nodes (21): 1. RESTRICCIONES NO NEGOCIABLES (privacidad), 2. STACK, 3.1 Tokens d
 
 ### Community 6 - "db"
 Cohesion: 0.11
-Nodes (30): Fase, responderConsulta(), AccionId, AccionResuelta, apilarDeshacer(), deshacerUltimaDelAgente(), ejecutarAccion(), estadoAsistenciaDeTexto() (+22 more)
+Nodes (32): Fase, AccionId, AccionResuelta, apilarDeshacer(), deshacerUltimaDelAgente(), ejecutarAccion(), estadoAsistenciaDeTexto(), interpretarLocal() (+24 more)
 
 ### Community 7 - "devDependencies"
 Cohesion: 0.06
@@ -100,8 +98,8 @@ Cohesion: 0.10
 Nodes (31): dexie, dexie-react-hooks, fuse.js, jspdf, jspdf-autotable, lucide-react, dependencies, dexie (+23 more)
 
 ### Community 9 - "Infantil.tsx"
-Cohesion: 0.10
-Nodes (23): App(), AreaInfantilJson, cicloDeCurso(), CicloPrimariaJson, CompetenciaInfantilJson, CriterioInfantilJson, CriterioPrimariaJson, criteriosDeGrupo() (+15 more)
+Cohesion: 0.11
+Nodes (22): AreaInfantilJson, cicloDeCurso(), CicloPrimariaJson, CompetenciaInfantilJson, CriterioInfantilJson, CriterioPrimariaJson, criteriosDeGrupo(), criteriosInfantil() (+14 more)
 
 ### Community 10 - "compilerOptions"
 Cohesion: 0.08
@@ -112,24 +110,16 @@ Cohesion: 0.10
 Nodes (19): ES2023, node, vite.config.ts, compilerOptions, allowImportingTsExtensions, isolatedModules, lib, module (+11 more)
 
 ### Community 12 - "nuevoId"
-Cohesion: 0.18
-Nodes (15): HojaAgente(), alternarChandal(), ciclarEstado(), CICLO, leerAsistenciaGrupo(), marcarTodosPresentes(), ResumenAsistencia, siguienteEstado() (+7 more)
-
-### Community 13 - "Ajustes.tsx"
-Cohesion: 0.20
-Nodes (9): CONFIG_POR_DEFECTO, guardarConfig(), leerConfig(), useConfig(), BandasOficiales, ModoMedia, Ajustes(), ClaveApi() (+1 more)
+Cohesion: 0.16
+Nodes (16): alternarChandal(), ciclarEstado(), CICLO, leerAsistenciaGrupo(), marcarTodosPresentes(), ResumenAsistencia, siguienteEstado(), columnasDe() (+8 more)
 
 ### Community 14 - "Juegos.tsx"
-Cohesion: 0.21
-Nodes (15): ALIAS, aLista(), anadirAlBanco(), analizarJuegos(), aTexto(), buscarJuegos(), CAMPOS, facetas() (+7 more)
+Cohesion: 0.23
+Nodes (15): db, ALIAS, aLista(), anadirAlBanco(), analizarJuegos(), aTexto(), buscarJuegos(), CAMPOS (+7 more)
 
 ### Community 15 - "generar-iconos.mjs"
 Cohesion: 0.31
 Nodes (8): BLANCO, crc32(), dibujar(), png(), PRIMARIO, PUBLIC, RAIZ, trozo()
-
-### Community 21 - "LimiteError"
-Cohesion: 0.29
-Nodes (3): Estado, LimiteError, Props
 
 ## Knowledge Gaps
 - **152 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+147 more)
@@ -144,12 +134,12 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `name`, `private`, `version` to the rest of the system?**
   _152 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `planificador.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.0784313725490196 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07806841046277666 - nodes in this community are weakly interconnected._
 - **Should `App.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.07305669199298656 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.061016949152542375 - nodes in this community are weakly interconnected._
 - **Should `useUI` be split into smaller, more focused modules?**
-  _Cohesion score 0.07102040816326531 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06384180790960452 - nodes in this community are weakly interconnected._
 - **Should `EquiposGenerador.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.09059233449477352 - nodes in this community are weakly interconnected._
 - **Should `cuaderno.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.0710085933966531 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06 - nodes in this community are weakly interconnected._

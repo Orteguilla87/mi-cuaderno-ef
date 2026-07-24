@@ -736,8 +736,8 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "src_app_app",
-      "community": 9,
-      "community_name": "Infantil.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "app()"
     },
     {
@@ -758,8 +758,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_components_agentevoz_agentevoz",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "agentevoz()"
     },
     {
@@ -780,8 +780,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "src_components_agentevoz_hojaagente",
-      "community": 12,
-      "community_name": "nuevoId",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "hojaagente()"
     },
     {
@@ -802,8 +802,8 @@
       "source_location": "L276",
       "_origin": "ast",
       "id": "src_components_agentevoz_responderconsulta",
-      "community": 6,
-      "community_name": "db",
+      "community": 8,
+      "community_name": "informes.ts",
       "norm_label": "responderconsulta()"
     },
     {
@@ -813,8 +813,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_components_badge",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 0,
+      "community_name": "planificador.ts",
       "norm_label": "badge.tsx"
     },
     {
@@ -824,8 +824,8 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "src_components_badge_badgeetapa",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 0,
+      "community_name": "planificador.ts",
       "norm_label": "badgeetapa()"
     },
     {
@@ -961,10 +961,21 @@
       "norm_label": "cambios"
     },
     {
+      "label": "SelectorCaritas()",
+      "file_type": "code",
+      "source_file": "src/components/Celda.tsx",
+      "source_location": "L57",
+      "_origin": "ast",
+      "id": "src_components_celda_selectorcaritas",
+      "community": 4,
+      "community_name": "cuaderno.ts",
+      "norm_label": "selectorcaritas()"
+    },
+    {
       "label": "Celda()",
       "file_type": "code",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L47",
+      "source_location": "L184",
       "_origin": "ast",
       "id": "src_components_celda_celda",
       "community": 4,
@@ -975,7 +986,7 @@
       "label": "EditorColumna()",
       "file_type": "code",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L192",
+      "source_location": "L315",
       "_origin": "ast",
       "id": "src_components_celda_editorcolumna",
       "community": 4,
@@ -986,7 +997,7 @@
       "label": "TablaRubrica()",
       "file_type": "code",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L280",
+      "source_location": "L403",
       "_origin": "ast",
       "id": "src_components_celda_tablarubrica",
       "community": 4,
@@ -997,7 +1008,7 @@
       "label": "TecladoNumerico()",
       "file_type": "code",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L380",
+      "source_location": "L503",
       "_origin": "ast",
       "id": "src_components_celda_tecladonumerico",
       "community": 4,
@@ -1011,8 +1022,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_components_cursoescolarajustes",
-      "community": 0,
-      "community_name": "planificador.ts",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "cursoescolarajustes.tsx"
     },
     {
@@ -1022,8 +1033,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_components_cursoescolarajustes_cursoescolarajustes",
-      "community": 0,
-      "community_name": "planificador.ts",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "cursoescolarajustes()"
     },
     {
@@ -1033,8 +1044,8 @@
       "source_location": "L140",
       "_origin": "ast",
       "id": "src_components_cursoescolarajustes_hojapegarcalendario",
-      "community": 0,
-      "community_name": "planificador.ts",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "hojapegarcalendario()"
     },
     {
@@ -1132,8 +1143,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_components_limiteerror",
-      "community": 21,
-      "community_name": "LimiteError",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "limiteerror.tsx"
     },
     {
@@ -1143,8 +1154,8 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "src_components_limiteerror_props",
-      "community": 21,
-      "community_name": "LimiteError",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "props"
     },
     {
@@ -1154,8 +1165,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_components_limiteerror_estado",
-      "community": 21,
-      "community_name": "LimiteError",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "estado"
     },
     {
@@ -1165,8 +1176,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_components_limiteerror_limiteerror",
-      "community": 21,
-      "community_name": "LimiteError",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "limiteerror"
     },
     {
@@ -1176,8 +1187,8 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_components_limiteerror_limiteerror_getderivedstatefromerror",
-      "community": 21,
-      "community_name": "LimiteError",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": ".getderivedstatefromerror()"
     },
     {
@@ -1187,8 +1198,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_components_limiteerror_limiteerror_componentdidcatch",
-      "community": 21,
-      "community_name": "LimiteError",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": ".componentdidcatch()"
     },
     {
@@ -1198,8 +1209,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_components_limiteerror_limiteerror_render",
-      "community": 21,
-      "community_name": "LimiteError",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": ".render()"
     },
     {
@@ -1242,8 +1253,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_components_snackbar",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "snackbar.tsx"
     },
     {
@@ -1253,8 +1264,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_components_snackbar_snackbar",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "snackbar()"
     },
     {
@@ -1550,8 +1561,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_db_config",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "config.ts"
     },
     {
@@ -1561,8 +1572,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_db_config_config_por_defecto",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "config_por_defecto"
     },
     {
@@ -1572,8 +1583,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_db_config_leerconfig",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "leerconfig()"
     },
     {
@@ -1583,8 +1594,8 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "src_db_config_guardarconfig",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "guardarconfig()"
     },
     {
@@ -1594,8 +1605,8 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "src_db_config_useconfig",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "useconfig()"
     },
     {
@@ -1792,8 +1803,8 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "src_db_cuaderno_columnasde",
-      "community": 4,
-      "community_name": "cuaderno.ts",
+      "community": 12,
+      "community_name": "nuevoId",
       "norm_label": "columnasde()"
     },
     {
@@ -1803,8 +1814,8 @@
       "source_location": "L119",
       "_origin": "ast",
       "id": "src_db_cuaderno_valoresde",
-      "community": 4,
-      "community_name": "cuaderno.ts",
+      "community": 12,
+      "community_name": "nuevoId",
       "norm_label": "valoresde()"
     },
     {
@@ -1891,8 +1902,8 @@
       "source_location": "L281",
       "_origin": "ast",
       "id": "src_db_cuaderno_duplicarrubrica",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "duplicarrubrica()"
     },
     {
@@ -1935,8 +1946,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_db_curso_leercursoactivo",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "leercursoactivo()"
     },
     {
@@ -1979,8 +1990,8 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "src_db_db_cuadernodb_constructor",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": ".constructor()"
     },
     {
@@ -1990,8 +2001,8 @@
       "source_location": "L219",
       "_origin": "ast",
       "id": "src_db_db_db",
-      "community": 6,
-      "community_name": "db",
+      "community": 14,
+      "community_name": "Juegos.tsx",
       "norm_label": "db"
     },
     {
@@ -2001,8 +2012,8 @@
       "source_location": "L222",
       "_origin": "ast",
       "id": "src_db_db_nuevoid",
-      "community": 0,
-      "community_name": "planificador.ts",
+      "community": 6,
+      "community_name": "db",
       "norm_label": "nuevoid()"
     },
     {
@@ -2045,8 +2056,8 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_db_equipos_crearvinculo",
-      "community": 3,
-      "community_name": "EquiposGenerador.tsx",
+      "community": 6,
+      "community_name": "db",
       "norm_label": "crearvinculo()"
     },
     {
@@ -2111,8 +2122,8 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "src_db_equipos_sugerirnivelesdesdemedia",
-      "community": 4,
-      "community_name": "cuaderno.ts",
+      "community": 12,
+      "community_name": "nuevoId",
       "norm_label": "sugerirnivelesdesdemedia()"
     },
     {
@@ -2419,8 +2430,8 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "src_db_observaciones_buscarobservaciones",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "buscarobservaciones()"
     },
     {
@@ -2573,8 +2584,8 @@
       "source_location": "L273",
       "_origin": "ast",
       "id": "src_db_planificador_unidadaplantilla",
-      "community": 0,
-      "community_name": "planificador.ts",
+      "community": 6,
+      "community_name": "db",
       "norm_label": "unidadaplantilla()"
     },
     {
@@ -2760,8 +2771,8 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "src_db_types_franjahorario",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "franjahorario"
     },
     {
@@ -2914,8 +2925,8 @@
       "source_location": "L161",
       "_origin": "ast",
       "id": "src_db_types_juego",
-      "community": 4,
-      "community_name": "cuaderno.ts",
+      "community": 14,
+      "community_name": "Juegos.tsx",
       "norm_label": "juego"
     },
     {
@@ -3024,8 +3035,8 @@
       "source_location": "L262",
       "_origin": "ast",
       "id": "src_db_types_nivelrubrica",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "nivelrubrica"
     },
     {
@@ -3035,8 +3046,8 @@
       "source_location": "L268",
       "_origin": "ast",
       "id": "src_db_types_criteriorubrica",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "criteriorubrica"
     },
     {
@@ -3189,8 +3200,8 @@
       "source_location": "L411",
       "_origin": "ast",
       "id": "src_db_types_modomedia",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "modomedia"
     },
     {
@@ -3200,8 +3211,8 @@
       "source_location": "L414",
       "_origin": "ast",
       "id": "src_db_types_bandasoficiales",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "bandasoficiales"
     },
     {
@@ -3475,8 +3486,8 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "src_lib_fechas_etiquetadia",
-      "community": 12,
-      "community_name": "nuevoId",
+      "community": 0,
+      "community_name": "planificador.ts",
       "norm_label": "etiquetadia()"
     },
     {
@@ -3728,8 +3739,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_horas",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "horas.ts"
     },
     {
@@ -3739,8 +3750,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "src_lib_horas_sumarminutos",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "sumarminutos()"
     },
     {
@@ -4058,8 +4069,8 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_lib_router_navegar",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 0,
+      "community_name": "planificador.ts",
       "norm_label": "navegar()"
     },
     {
@@ -4102,8 +4113,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_rubricatabla_test",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "rubricatabla.test.ts"
     },
     {
@@ -4113,8 +4124,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_rubricatabla",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "rubricatabla.ts"
     },
     {
@@ -4124,8 +4135,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_lib_rubricatabla_nivelimportado",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "nivelimportado"
     },
     {
@@ -4135,8 +4146,8 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "src_lib_rubricatabla_criterioimportado",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "criterioimportado"
     },
     {
@@ -4146,8 +4157,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_lib_rubricatabla_tablarubricaimportada",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "tablarubricaimportada"
     },
     {
@@ -4157,8 +4168,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_lib_rubricatabla_parseartablarubrica",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "parseartablarubrica()"
     },
     {
@@ -4179,8 +4190,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_pages_ajustes",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "ajustes.tsx"
     },
     {
@@ -4190,8 +4201,8 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_pages_ajustes_ajustes",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "ajustes()"
     },
     {
@@ -4201,8 +4212,8 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "src_pages_ajustes_colorespetos",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "colorespetos()"
     },
     {
@@ -4212,8 +4223,8 @@
       "source_location": "L191",
       "_origin": "ast",
       "id": "src_pages_ajustes_seccion",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "seccion()"
     },
     {
@@ -4223,8 +4234,8 @@
       "source_location": "L212",
       "_origin": "ast",
       "id": "src_pages_ajustes_fila",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "fila()"
     },
     {
@@ -4234,8 +4245,8 @@
       "source_location": "L232",
       "_origin": "ast",
       "id": "src_pages_ajustes_interruptor",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "interruptor()"
     },
     {
@@ -4245,8 +4256,8 @@
       "source_location": "L262",
       "_origin": "ast",
       "id": "src_pages_ajustes_editorbandas",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "editorbandas()"
     },
     {
@@ -4256,8 +4267,8 @@
       "source_location": "L298",
       "_origin": "ast",
       "id": "src_pages_ajustes_claveapi",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "claveapi()"
     },
     {
@@ -4267,8 +4278,8 @@
       "source_location": "L330",
       "_origin": "ast",
       "id": "src_pages_ajustes_estadisticas",
-      "community": 13,
-      "community_name": "Ajustes.tsx",
+      "community": 1,
+      "community_name": "App.tsx",
       "norm_label": "estadisticas()"
     },
     {
@@ -4333,8 +4344,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_pages_cuaderno_cuaderno",
-      "community": 4,
-      "community_name": "cuaderno.ts",
+      "community": 12,
+      "community_name": "nuevoId",
       "norm_label": "cuaderno()"
     },
     {
@@ -4476,8 +4487,8 @@
       "source_location": "L350",
       "_origin": "ast",
       "id": "src_pages_equiposgenerador_configuracionpaso",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 3,
+      "community_name": "EquiposGenerador.tsx",
       "norm_label": "configuracionpaso()"
     },
     {
@@ -4575,8 +4586,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_pages_grupos",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "grupos.tsx"
     },
     {
@@ -4586,8 +4597,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_pages_grupos_colores",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "colores"
     },
     {
@@ -4597,8 +4608,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_pages_grupos_dias",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "dias"
     },
     {
@@ -4608,8 +4619,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_pages_grupos_grupos",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "grupos()"
     },
     {
@@ -4619,8 +4630,8 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "src_pages_grupos_hojanuevogrupo",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "hojanuevogrupo()"
     },
     {
@@ -4630,8 +4641,8 @@
       "source_location": "L222",
       "_origin": "ast",
       "id": "src_pages_grupos_editorhorario",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "editorhorario()"
     },
     {
@@ -4707,8 +4718,8 @@
       "source_location": "L146",
       "_origin": "ast",
       "id": "src_pages_hoy_tarjetaclase",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 0,
+      "community_name": "planificador.ts",
       "norm_label": "tarjetaclase()"
     },
     {
@@ -4806,8 +4817,8 @@
       "source_location": "L196",
       "_origin": "ast",
       "id": "src_pages_informes_comentariosgrupo",
-      "community": 8,
-      "community_name": "informes.ts",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "comentariosgrupo()"
     },
     {
@@ -4839,8 +4850,8 @@
       "source_location": "L173",
       "_origin": "ast",
       "id": "src_pages_juegos_detallejuego",
-      "community": 14,
-      "community_name": "Juegos.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "detallejuego()"
     },
     {
@@ -4850,8 +4861,8 @@
       "source_location": "L236",
       "_origin": "ast",
       "id": "src_pages_juegos_hojaimportarjuegos",
-      "community": 14,
-      "community_name": "Juegos.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "hojaimportarjuegos()"
     },
     {
@@ -4894,8 +4905,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_pages_observaciones",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "observaciones.tsx"
     },
     {
@@ -4905,8 +4916,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_pages_observaciones_tipos",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "tipos"
     },
     {
@@ -4916,8 +4927,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_pages_observaciones_aspecto_signo",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "aspecto_signo"
     },
     {
@@ -4927,8 +4938,8 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_pages_observaciones_observaciones",
-      "community": 1,
-      "community_name": "App.tsx",
+      "community": 2,
+      "community_name": "useUI",
       "norm_label": "observaciones()"
     },
     {
@@ -4971,8 +4982,8 @@
       "source_location": "L207",
       "_origin": "ast",
       "id": "src_pages_paselista_barrafecha",
-      "community": 12,
-      "community_name": "nuevoId",
+      "community": 0,
+      "community_name": "planificador.ts",
       "norm_label": "barrafecha()"
     },
     {
@@ -5048,8 +5059,8 @@
       "source_location": "L347",
       "_origin": "ast",
       "id": "src_pages_plangrupo_hojacopiarplan",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 0,
+      "community_name": "planificador.ts",
       "norm_label": "hojacopiarplan()"
     },
     {
@@ -5147,8 +5158,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_pages_rubricas",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "rubricas.tsx"
     },
     {
@@ -5158,8 +5169,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "src_pages_rubricas_rubricas",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "rubricas()"
     },
     {
@@ -5169,8 +5180,8 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "src_pages_rubricas_aplicartablaimportada",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 6,
+      "community_name": "db",
       "norm_label": "aplicartablaimportada()"
     },
     {
@@ -5180,8 +5191,8 @@
       "source_location": "L156",
       "_origin": "ast",
       "id": "src_pages_rubricas_hojaimportartabla",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "hojaimportartabla()"
     },
     {
@@ -5191,8 +5202,8 @@
       "source_location": "L261",
       "_origin": "ast",
       "id": "src_pages_rubricas_hojaeditarrubrica",
-      "community": 2,
-      "community_name": "useUI",
+      "community": 4,
+      "community_name": "cuaderno.ts",
       "norm_label": "hojaeditarrubrica()"
     },
     {
@@ -8982,7 +8993,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L47",
+      "source_location": "L184",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_components_celda",
@@ -8993,7 +9004,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L192",
+      "source_location": "L315",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_components_celda",
@@ -9015,7 +9026,18 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L280",
+      "source_location": "L57",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_components_celda",
+      "target": "src_components_celda_selectorcaritas",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/components/Celda.tsx",
+      "source_location": "L403",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_components_celda",
@@ -9026,7 +9048,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L380",
+      "source_location": "L503",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_components_celda",
@@ -9158,7 +9180,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L88",
+      "source_location": "L226",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_components_celda_celda",
@@ -9183,7 +9205,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/Celda.tsx",
-      "source_location": "L211",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_components_celda_editorcolumna",
@@ -23613,5 +23635,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "5b96ebe90fe9c5b94953fd662982bc65b92a3004"
+  "built_at_commit": "f39acc0244e1d9c39c6b8dc200b029f9db743d91"
 }
