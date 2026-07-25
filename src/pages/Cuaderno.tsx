@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   ClipboardX,
   Copy,
+  Minus,
   Plus,
   Settings2,
   Shuffle,
@@ -31,6 +32,7 @@ import {
 } from '../db/cuaderno'
 import { db } from '../db/db'
 import type { Alumno, Columna, Grupo, Rubrica, Trimestre, ValorCelda } from '../db/types'
+import { crearObservacion, contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
@@ -83,6 +85,11 @@ export function Cuaderno() {
   }, [])
 
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
+
+  const contadoresObs = useLiveQuery(
+    async () => (idEfectivo ? contadoresPorAlumno(idEfectivo) : new Map<string, ContadorSigno>()),
+    [idEfectivo],
+  )
 
   const columnasPorId = useMemo(
     () => new Map((columnas ?? []).map((c) => [c.id, c] as const)),
@@ -328,6 +335,8 @@ export function Cuaderno() {
           valores={mapaValores}
           rubricas={mapaRubricas}
           calculos={calculos}
+          contadoresObs={contadoresObs ?? new Map()}
+          grupoId={idEfectivo!}
           onConfigurar={setConfigurando}
           onEvaluar={abrirEditor}
           onAplicarGrupo={setAplicando}
@@ -450,6 +459,8 @@ function Rejilla({
   valores,
   rubricas,
   calculos,
+  contadoresObs,
+  grupoId,
   onConfigurar,
   onEvaluar,
   onAplicarGrupo,
@@ -460,6 +471,8 @@ function Rejilla({
   valores: Map<string, import('../db/types').ValorCelda>
   rubricas: Map<string, Rubrica>
   calculos: Map<string, ResultadoCalculo>
+  contadoresObs: Map<string, ContadorSigno>
+  grupoId: string
   onConfigurar: (c: Columna) => void
   /** `indice` = fila tocada, para que el recorrido empiece en ese alumno. */
   onEvaluar: (c: Columna, indice: number) => void
@@ -471,6 +484,21 @@ function Rejilla({
     cambios: Parameters<typeof guardarValor>[2],
   ) => Promise<() => Promise<void>>
 }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+
+  async function observar(alumno: Alumno, signo: '+' | '-') {
+    const nombre = alumno.alias || alumno.nombre
+    const { deshacer } = await crearObservacion({
+      grupoId,
+      alumnoId: alumno.id,
+      tipo: 'conducta',
+      signo,
+      texto: '',
+      tags: [],
+    })
+    mostrarAviso(`${signo === '+' ? 'Positivo' : 'Negativo'} a ${nombre}`, deshacer)
+  }
+
   return (
     // En escritorio la rejilla acota su propia altura y hace scroll interno:
     // así la cabecera de columnas puede quedarse fija (`lg:sticky lg:top-0`)
@@ -481,7 +509,7 @@ function Rejilla({
         <thead>
           <tr>
             <th
-              className="sticky left-0 z-20 min-w-[140px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua lg:top-0"
+              className="sticky left-0 z-20 min-w-[196px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua lg:top-0"
               scope="col"
             >
               Alumno
@@ -498,24 +526,51 @@ function Rejilla({
         </thead>
 
         <tbody>
-          {alumnos.map((a, fila) => (
+          {alumnos.map((a, fila) => {
+            const nombre = a.alias || a.nombre
+            const contador = contadoresObs.get(a.id)
+            return (
             <tr key={a.id} className={fila % 2 ? 'bg-agua-claro/30 dark:bg-noche-elevada/30' : ''}>
               <th
                 scope="row"
                 className={
-                  'sticky left-0 z-10 min-w-[140px] border-b border-r border-borde px-3 py-2 text-left text-sm font-semibold dark:border-noche-borde ' +
+                  'sticky left-0 z-10 min-w-[196px] border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold dark:border-noche-borde ' +
                   (fila % 2
                     ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
                     : 'bg-superficie dark:bg-noche-superficie')
                 }
               >
-                <button
-                  className="block max-h-tap w-full max-w-[140px] truncate text-left underline-offset-2 active:underline"
-                  onClick={() => navegar(`/alumnos/${a.id}`)}
-                  aria-label={`Abrir ficha de ${a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}`}
-                >
-                  {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    className="min-w-0 flex-1 truncate text-left underline-offset-2 active:underline"
+                    onClick={() => navegar(`/alumnos/${a.id}`)}
+                    aria-label={`Abrir ficha de ${a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}`}
+                  >
+                    {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
+                  </button>
+                  <button
+                    onClick={() => void observar(a, '+')}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-lima/20 text-lima-oscuro transition active:scale-95 dark:text-lima"
+                    aria-label={`Observación positiva para ${nombre}`}
+                  >
+                    <Plus size={16} strokeWidth={3} aria-hidden />
+                  </button>
+                  <button
+                    onClick={() => void observar(a, '-')}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-acento/15 text-acento transition active:scale-95"
+                    aria-label={`Observación negativa para ${nombre}`}
+                  >
+                    <Minus size={16} strokeWidth={3} aria-hidden />
+                  </button>
+                </div>
+                {contador && (contador.positivos > 0 || contador.negativos > 0) && (
+                  <div className="cifra mt-0.5 flex items-center gap-1.5 text-xs font-bold">
+                    {contador.positivos > 0 && (
+                      <span className="text-lima-oscuro dark:text-lima">+{contador.positivos}</span>
+                    )}
+                    {contador.negativos > 0 && <span className="text-acento">−{contador.negativos}</span>}
+                  </div>
+                )}
               </th>
 
               {visibles.map((columna) => (
@@ -541,7 +596,8 @@ function Rejilla({
                 </td>
               ))}
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>
