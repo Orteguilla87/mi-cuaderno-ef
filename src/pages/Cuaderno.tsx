@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Settings2, Shuffle, Table2 } from 'lucide-react'
+import { ClipboardCheck, Plus, Settings2, Shuffle, Table2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../components/Celda'
@@ -160,9 +160,23 @@ export function Cuaderno() {
         acciones={
           <div className="flex gap-2">
             {idEfectivo && (
-              <button className="btn-suave" onClick={() => setSorteando(true)}>
+              <button
+                className="btn-suave w-11 px-0"
+                onClick={() => navegar(`/asistencia/${idEfectivo}`)}
+                title="Pasar lista"
+                aria-label="Pasar lista"
+              >
+                <ClipboardCheck size={18} aria-hidden />
+              </button>
+            )}
+            {idEfectivo && (
+              <button
+                className="btn-suave w-11 px-0"
+                onClick={() => setSorteando(true)}
+                title="Alumno aleatorio"
+                aria-label="Alumno aleatorio"
+              >
                 <Shuffle size={18} aria-hidden />
-                Sorteo
               </button>
             )}
             <button className="btn-suave" onClick={() => setConfigurando('nueva')}>
