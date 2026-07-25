@@ -5,6 +5,7 @@ import { resumirAsistencia } from '../db/asistencia'
 import { db } from '../db/db'
 import type { Alumno, Asistencia, Columna, Grupo, Observacion, Rubrica, Trimestre, ValorCelda } from '../db/types'
 import { valorNormalizado } from '../db/cuaderno'
+import { descargarArchivo } from './descargar'
 import { formatoLargo } from './fechas'
 
 /**
@@ -195,11 +196,5 @@ export async function exportarAsistenciaCSV(grupo: Grupo, alumnos: Alumno[]): Pr
   }
   const hoja = XLSX.utils.json_to_sheet(filas)
   const csv = XLSX.utils.sheet_to_csv(hoja)
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const enlace = document.createElement('a')
-  enlace.href = url
-  enlace.download = nombreArchivo(`asistencia_${grupo.nombre}`, 'csv')
-  enlace.click()
-  URL.revokeObjectURL(url)
+  descargarArchivo('﻿' + csv, nombreArchivo(`asistencia_${grupo.nombre}`, 'csv'), 'text/csv;charset=utf-8')
 }

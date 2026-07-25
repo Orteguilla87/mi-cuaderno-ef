@@ -39,6 +39,7 @@ import {
   type EstadoRemoto,
 } from '../db/webdav'
 import { ErrorBackup } from '../lib/backup'
+import { crearDescarga, soportaCryptoSubtle } from '../lib/descargar'
 import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN, pinValido } from '../lib/pin'
 import { useUI } from '../store/ui'
 
@@ -508,14 +509,23 @@ function SeccionBackup({ config }: { config: ReturnType<typeof useConfig> }) {
         <HojaPassphrase
           titulo="Backup ahora"
           explicacion="Elige una contraseña para cifrar la copia. Sin ella, nadie —ni tú— podrá abrirla: apúntala en un sitio seguro, fuera de este dispositivo."
-          textoBoton="Generar y descargar"
+          textoBoton="Cifrar copia"
           textoTrabajando="Cifrando…"
-          accion={descargarBackup}
+          accion={prepararDescargaBackup}
           onCerrar={() => setHojaExportar(false)}
-          onListo={() => {
-            setHojaExportar(false)
-            mostrarAviso('Copia guardada. Sin la contraseña, nadie —ni tú— puede abrirla: apúntala en un sitio seguro.')
-          }}
+          onListo={() => setHojaExportar(false)}
+          renderResultado={(resultado) => (
+            <ResultadoDescargaBackup
+              resultado={resultado}
+              onDescargado={() => {
+                void registrarBackupHecho()
+                mostrarAviso(
+                  'Copia guardada. Sin la contraseña, nadie —ni tú— puede abrirla: apúntala en un sitio seguro.',
+                )
+              }}
+              onListo={() => setHojaExportar(false)}
+            />
+          )}
         />
       )}
 
@@ -566,8 +576,14 @@ function SeccionBackup({ config }: { config: ReturnType<typeof useConfig> }) {
  * Pide la passphrase (dos veces) y ejecuta la acción que se le pase. La usan
  * tanto «Backup ahora» como «Subir al servidor»: mismo fichero, mismo cifrado,
  * solo cambia el destino.
+ *
+ * `renderResultado`, si se pasa, sustituye el cierre automático: en vez de
+ * llamar a `onListo` nada más terminar `accion`, se muestra lo que devuelva
+ * (por ejemplo el enlace de descarga real, para que el toque del usuario
+ * sobre ÉL sea el gesto que dispara la descarga, no un `.click()` disparado
+ * por código bastante después de que el usuario tocó otro botón).
  */
-function HojaPassphrase({
+function HojaPassphrase<T = void>({
   titulo,
   explicacion,
   textoBoton,
@@ -575,30 +591,43 @@ function HojaPassphrase({
   accion,
   onCerrar,
   onListo,
+  renderResultado,
 }: {
   titulo: string
   explicacion: string
   textoBoton: string
   textoTrabajando: string
-  accion: (passphrase: string) => Promise<void>
+  accion: (passphrase: string) => Promise<T>
   onCerrar: () => void
   onListo: () => void
+  renderResultado?: (resultado: T) => React.ReactNode
 }) {
   const [passphrase, setPassphrase] = useState('')
   const [repetir, setRepetir] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [trabajando, setTrabajando] = useState(false)
+  const [resultado, setResultado] = useState<T | null>(null)
+
+  useEffect(() => {
+    return () => {
+      const conRevocar = resultado as { revocar?: () => void } | null
+      conRevocar?.revocar?.()
+    }
+  }, [resultado])
 
   async function ejecutar() {
     setError(null)
     if (passphrase.length < 8)
       return setError('Usa al menos 8 caracteres: es lo único que protege tus datos.')
     if (passphrase !== repetir) return setError('Las dos contraseñas no coinciden.')
+    if (!soportaCryptoSubtle())
+      return setError('Este navegador no permite cifrar aquí: hace falta https (o localhost).')
 
     setTrabajando(true)
     try {
-      await accion(passphrase)
-      onListo()
+      const r = await accion(passphrase)
+      if (renderResultado) setResultado(r)
+      else onListo()
     } catch (err) {
       setError(
         err instanceof ErrorWebdav || err instanceof ErrorBackup
@@ -612,48 +641,86 @@ function HojaPassphrase({
 
   return (
     <Hoja abierta titulo={titulo} onCerrar={onCerrar}>
-      <div className="space-y-3">
-        <p className="text-sm texto-suave">{explicacion}</p>
-        <label className="block">
-          <span className="etiqueta">Contraseña</span>
-          <input
-            type="password"
-            className="campo"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            autoComplete="new-password"
-          />
-        </label>
-        <label className="block">
-          <span className="etiqueta">Repite la contraseña</span>
-          <input
-            type="password"
-            className="campo"
-            value={repetir}
-            onChange={(e) => setRepetir(e.target.value)}
-            autoComplete="new-password"
-          />
-        </label>
-        {error && <p className="text-sm font-medium text-acento">{error}</p>}
-        <button className="btn-primario w-full" onClick={() => void ejecutar()} disabled={trabajando}>
-          {trabajando ? textoTrabajando : textoBoton}
-        </button>
-      </div>
+      {resultado !== null && renderResultado ? (
+        renderResultado(resultado)
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm texto-suave">{explicacion}</p>
+          <label className="block">
+            <span className="etiqueta">Contraseña</span>
+            <input
+              type="password"
+              className="campo"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              autoComplete="new-password"
+            />
+          </label>
+          <label className="block">
+            <span className="etiqueta">Repite la contraseña</span>
+            <input
+              type="password"
+              className="campo"
+              value={repetir}
+              onChange={(e) => setRepetir(e.target.value)}
+              autoComplete="new-password"
+            />
+          </label>
+          {error && <p className="text-sm font-medium text-acento">{error}</p>}
+          <button className="btn-primario w-full" onClick={() => void ejecutar()} disabled={trabajando}>
+            {trabajando ? textoTrabajando : textoBoton}
+          </button>
+        </div>
+      )}
     </Hoja>
   )
 }
 
-/** Descarga el `.enc` al dispositivo. */
-async function descargarBackup(passphrase: string): Promise<void> {
+/** Cifra el backup y prepara su descarga; no la dispara (eso lo hace el enlace que ve el usuario). */
+async function prepararDescargaBackup(
+  passphrase: string,
+): Promise<{ url: string; nombre: string; revocar: () => void }> {
   const { fichero, nombre } = await exportarBackup(passphrase)
-  const blob = new Blob([fichero], { type: 'application/octet-stream' })
-  const url = URL.createObjectURL(blob)
-  const enlace = document.createElement('a')
-  enlace.href = url
-  enlace.download = nombre
-  enlace.click()
-  URL.revokeObjectURL(url)
-  await registrarBackupHecho()
+  return crearDescarga(fichero, nombre, 'application/octet-stream')
+}
+
+/** Enlace de descarga real: el toque del usuario aquí ES el gesto que la dispara. */
+function ResultadoDescargaBackup({
+  resultado,
+  onDescargado,
+  onListo,
+}: {
+  resultado: { url: string; nombre: string }
+  onDescargado: () => void
+  onListo: () => void
+}) {
+  const [descargado, setDescargado] = useState(false)
+  return (
+    <div className="space-y-3">
+      <p className="text-sm texto-suave">
+        Copia cifrada. Toca para guardarla en el dispositivo — en Android, mantener pulsado también
+        ofrece «Descargar enlace».
+      </p>
+      <a
+        href={resultado.url}
+        download={resultado.nombre}
+        className="btn-primario flex min-h-tap w-full items-center justify-center gap-2"
+        onClick={() => {
+          if (descargado) return
+          setDescargado(true)
+          onDescargado()
+        }}
+      >
+        <Download size={18} aria-hidden /> Guardar {resultado.nombre}
+      </a>
+      {descargado && (
+        <p className="text-sm font-medium text-lima-oscuro dark:text-lima">Descarga iniciada.</p>
+      )}
+      <button className="btn-suave w-full" onClick={onListo}>
+        Listo
+      </button>
+    </div>
+  )
 }
 
 function HojaConfirmarImport({
