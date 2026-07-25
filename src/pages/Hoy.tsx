@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  Share2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
@@ -27,6 +28,7 @@ import {
   NOMBRES_DIA,
   sumarDias,
 } from '../lib/fechas'
+import { generarPlanDelDia } from '../lib/informes'
 import { navegar } from '../lib/router'
 
 interface Clase {
@@ -175,6 +177,21 @@ export function Hoy() {
                 ))}
               </ul>
             </section>
+
+            {clases && clases.length > 0 && (
+              <button
+                className="btn-suave w-full"
+                onClick={() =>
+                  void generarPlanDelDia(
+                    hoy,
+                    clases.map((c) => ({ grupo: c.grupo, horaInicio: c.horaInicio, horaFin: c.horaFin, sesion: c.sesion })),
+                  )
+                }
+              >
+                <Share2 size={18} aria-hidden />
+                Compartir el día (PDF)
+              </button>
+            )}
           </>
         )}
       </div>

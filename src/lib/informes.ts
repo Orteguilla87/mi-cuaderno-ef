@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { resumirAsistencia } from '../db/asistencia'
 import { db } from '../db/db'
-import type { Alumno, Asistencia, Columna, Grupo, Observacion, Rubrica, Trimestre, ValorCelda } from '../db/types'
+import type { Alumno, Asistencia, Columna, Grupo, Observacion, Rubrica, Sesion, Trimestre, ValorCelda } from '../db/types'
 import { valorNormalizado } from '../db/cuaderno'
 import { descargarArchivo } from './descargar'
 import { formatoLargo } from './fechas'
@@ -197,4 +197,111 @@ export async function exportarAsistenciaCSV(grupo: Grupo, alumnos: Alumno[]): Pr
   const hoja = XLSX.utils.json_to_sheet(filas)
   const csv = XLSX.utils.sheet_to_csv(hoja)
   descargarArchivo('﻿' + csv, nombreArchivo(`asistencia_${grupo.nombre}`, 'csv'), 'text/csv;charset=utf-8')
+}
+
+// ——— Plan del día (PDF) ———
+
+export interface PlanClase {
+  grupo: Grupo
+  horaInicio: string
+  horaFin: string
+  sesion?: Sesion
+}
+
+/**
+ * Plan del día para dejárselo a un sustituto. Solo planificación: no recibe
+ * alumnado ni lee `apoyos`/observaciones, así que no puede filtrarse nada
+ * personal (§1.6/§9).
+ */
+export async function generarPlanDelDia(fecha: string, clases: PlanClase[]): Promise<void> {
+  const doc = new jsPDF()
+  doc.setFontSize(14)
+  doc.text('Planificación del día', 14, 16)
+  doc.setFontSize(10)
+  doc.text(formatoLargo(fecha), 14, 22)
+
+  const idsJuegos = new Set<string>()
+  for (const c of clases) {
+    for (const j of c.sesion?.juegos ?? []) idsJuegos.add(j.gameId)
+  }
+  const juegos = idsJuegos.size > 0 ? await db.juegos.bulkGet([...idsJuegos]) : []
+  const descripcionPorId = new Map(
+    juegos.filter((j): j is NonNullable<typeof j> => !!j).map((j) => [j.id, j.descripcion]),
+  )
+
+  let y = 30
+  const clasesOrdenadas = [...clases].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
+
+  for (const c of clasesOrdenadas) {
+    if (y > 260) {
+      doc.addPage()
+      y = 20
+    }
+
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`${c.horaInicio}–${c.horaFin} · ${c.grupo.nombre}`, 14, y)
+    doc.setFont('helvetica', 'normal')
+    y += 6
+
+    if (c.sesion?.titulo) {
+      doc.setFontSize(10)
+      doc.text(c.sesion.titulo, 14, y)
+      y += 5
+    }
+
+    if (!c.sesion) {
+      doc.setFontSize(9)
+      doc.setTextColor(120)
+      doc.text('Sin planificación', 14, y)
+      doc.setTextColor(0)
+      y += 8
+      continue
+    }
+
+    const campos: { etiqueta: string; texto: string }[] = []
+    if (c.sesion.juegos.length > 0) {
+      campos.push({
+        etiqueta: 'Juegos',
+        texto: c.sesion.juegos
+          .map((j) => {
+            const desc = descripcionPorId.get(j.gameId)
+            return desc ? `${j.nombre} — ${desc}` : j.nombre
+          })
+          .join('\n'),
+      })
+    }
+    if (c.sesion.notas) campos.push({ etiqueta: 'Notas', texto: c.sesion.notas })
+    if (c.sesion.recursosNecesarios)
+      campos.push({ etiqueta: 'Recursos necesarios', texto: c.sesion.recursosNecesarios })
+    if (c.sesion.recursos.length > 0)
+      campos.push({
+        etiqueta: 'Enlaces y notas',
+        texto: c.sesion.recursos.map((r) => r.valor).join(' · '),
+      })
+    if (c.sesion.comentarios) campos.push({ etiqueta: 'Comentarios', texto: c.sesion.comentarios })
+
+    if (campos.length === 0) {
+      doc.setFontSize(9)
+      doc.setTextColor(120)
+      doc.text('Sin más detalle', 14, y)
+      doc.setTextColor(0)
+      y += 8
+      continue
+    }
+
+    doc.setFontSize(9)
+    for (const campo of campos) {
+      const lineas = doc.splitTextToSize(`${campo.etiqueta}: ${campo.texto}`, 180)
+      if (y + lineas.length * 4.5 > 280) {
+        doc.addPage()
+        y = 20
+      }
+      doc.text(lineas, 14, y)
+      y += lineas.length * 4.5 + 2
+    }
+    y += 4
+  }
+
+  doc.save(nombreArchivo('plan_del_dia', 'pdf'))
 }
