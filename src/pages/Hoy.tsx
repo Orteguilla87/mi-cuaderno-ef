@@ -1,13 +1,31 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarOff, Check, ChevronDown, ClipboardCheck, Clock } from 'lucide-react'
+import {
+  CalendarOff,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Clock,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { ValoracionSesion } from '../components/ValoracionSesion'
 import { leerAsistenciaGrupo } from '../db/asistencia'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
+import { crearSesion, lunesDe, semanaActual, semanaDe, type HuecoSemana } from '../db/planificador'
 import type { Grupo, Sesion } from '../db/types'
-import { aISO, diaLectivo, formatoLargo, horaActual, NOMBRES_DIA } from '../lib/fechas'
+import {
+  aISO,
+  diaLectivo,
+  formatoCorto,
+  formatoLargo,
+  horaActual,
+  NOMBRES_DIA,
+  sumarDias,
+} from '../lib/fechas'
 import { navegar } from '../lib/router'
 
 interface Clase {
@@ -20,6 +38,7 @@ interface Clase {
 }
 
 export function Hoy() {
+  const [vista, setVista] = useState<'dia' | 'semana'>('dia')
   const hoy = aISO()
   // Se refresca solo cada minuto: «en curso» y «siguiente» dependen de la hora,
   // y el maestro deja la pantalla abierta durante la clase.
@@ -79,8 +98,28 @@ export function Hoy() {
             {formatoLargo(hoy)} · {ahora}
           </span>
         }
+        acciones={
+          <div className="flex rounded-lg border border-white/35 p-0.5">
+            {(['dia', 'semana'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setVista(v)}
+                aria-pressed={vista === v}
+                className={
+                  'rounded-md px-3 py-1 text-sm font-semibold ' +
+                  (vista === v ? 'bg-white text-primario' : 'text-white/90')
+                }
+              >
+                {v === 'dia' ? 'Día' : 'Semana'}
+              </button>
+            ))}
+          </div>
+        }
       />
 
+      {vista === 'semana' ? (
+        <VistaSemanaHoy hoy={hoy} />
+      ) : (
       <div className="space-y-4 p-4">
         {dia === null || esFestivo ? (
           <div className="tarjeta text-center">
@@ -139,7 +178,157 @@ export function Hoy() {
           </>
         )}
       </div>
+      )}
     </>
+  )
+}
+
+/**
+ * Vista semanal de «Hoy» (Bloque 5): sesiones plegadas por defecto, solo con
+ * cabecera. Al desplegar, únicamente los campos que tienen contenido — nada
+ * de secciones vacías ni guiones.
+ */
+function VistaSemanaHoy({ hoy }: { hoy: string }) {
+  const [lunes, setLunes] = useState(semanaActual)
+  const huecos = useLiveQuery(() => semanaDe(lunes), [lunes])
+
+  const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
+
+  return (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center gap-2">
+        <button
+          className="btn-suave px-3"
+          onClick={() => setLunes(sumarDias(lunes, -7))}
+          aria-label="Semana anterior"
+        >
+          <ChevronLeft size={20} aria-hidden />
+        </button>
+        <button className="btn-fantasma flex-1" onClick={() => setLunes(lunesDe(hoy))}>
+          Semana actual
+        </button>
+        <button
+          className="btn-suave px-3"
+          onClick={() => setLunes(sumarDias(lunes, 7))}
+          aria-label="Semana siguiente"
+        >
+          <ChevronRight size={20} aria-hidden />
+        </button>
+      </div>
+
+      {huecos?.length === 0 && (
+        <div className="tarjeta text-center">
+          <p className="text-base font-semibold">Sin clases esta semana</p>
+          <p className="mt-1 text-sm texto-suave">
+            Añade el horario en la ficha de cada grupo y aparecerán aquí.
+          </p>
+        </div>
+      )}
+
+      {[1, 2, 3, 4, 5].map((d) => {
+        const delDia = porDia(d)
+        if (delDia.length === 0) return null
+        const fecha = sumarDias(lunes, d - 1)
+        return (
+          <section key={d}>
+            <h2 className="text-lg font-bold">
+              {NOMBRES_DIA[d - 1]}{' '}
+              <span className="cifra text-sm font-normal texto-suave">{formatoCorto(fecha)}</span>
+              {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
+            </h2>
+            <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+            <ul className="space-y-2">
+              {delDia.map((h) => (
+                <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                  <TarjetaSesionSemana hueco={h} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
+function TarjetaSesionSemana({ hueco }: { hueco: HuecoSemana }) {
+  const [abierta, setAbierta] = useState(false)
+  const { grupo, fecha, horaInicio, horaFin, sesion } = hueco
+
+  const campos: { etiqueta: string; texto: string }[] = []
+  if (sesion?.notas) campos.push({ etiqueta: 'Notas', texto: sesion.notas })
+  if (sesion?.recursosNecesarios)
+    campos.push({ etiqueta: 'Recursos necesarios', texto: sesion.recursosNecesarios })
+  if (sesion?.comentarios) campos.push({ etiqueta: 'Comentarios', texto: sesion.comentarios })
+  if (sesion?.juegos.length)
+    campos.push({ etiqueta: 'Juegos', texto: sesion.juegos.map((j) => j.nombre).join(', ') })
+  if (sesion?.recursos.length)
+    campos.push({
+      etiqueta: 'Enlaces y notas',
+      texto: sesion.recursos.map((r) => r.valor).join(' · '),
+    })
+
+  async function editar() {
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    navegar(`/sesiones/${id}`)
+  }
+
+  async function valorar(v: 1 | 2 | 3 | 4 | 5 | undefined) {
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    await db.sesiones.update(id, { valoracion: v })
+  }
+
+  return (
+    <div className="tarjeta">
+      <button
+        onClick={() => setAbierta((v) => !v)}
+        className="flex w-full items-center gap-3 text-left"
+        aria-expanded={abierta}
+      >
+        <span
+          className="h-10 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: grupo.color }}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate font-bold">{grupo.nombre}</span>
+            <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
+          </span>
+          <span className="cifra mt-0.5 block truncate text-sm texto-suave">
+            {horaInicio}–{horaFin}
+            {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
+          </span>
+        </span>
+        <ChevronDown
+          size={20}
+          className={
+            'shrink-0 texto-suave ' + (abierta ? 'rotate-180 transition-transform' : 'transition-transform')
+          }
+          aria-hidden
+        />
+      </button>
+
+      {abierta && (
+        <div className="mt-3 space-y-3 border-t border-borde pt-3 dark:border-noche-borde">
+          {campos.map((c) => (
+            <p key={c.etiqueta} className="text-sm">
+              <span className="font-bold">{c.etiqueta}: </span>
+              {c.texto}
+            </p>
+          ))}
+
+          <div>
+            <p className="etiqueta">Valoración</p>
+            <ValoracionSesion valor={sesion?.valoracion} onCambio={(v) => void valorar(v)} />
+          </div>
+
+          <button className="btn-suave w-full" onClick={() => void editar()}>
+            Editar
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

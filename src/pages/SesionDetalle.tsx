@@ -8,7 +8,6 @@ import {
   Save,
   Shuffle,
   StickyNote,
-  Star,
   Trash2,
   X,
 } from 'lucide-react'
@@ -16,6 +15,7 @@ import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
+import { ValoracionSesion } from '../components/ValoracionSesion'
 import { db } from '../db/db'
 import {
   duplicarSesion,
@@ -272,27 +272,10 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
         <section>
           <h2 className="text-lg font-bold">Cómo ha ido</h2>
           <div className="linea-pista mb-2 mt-1.5" aria-hidden />
-          <div className="flex gap-1">
-            {([1, 2, 3, 4, 5] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => actualizar({ valoracion: sesion.valoracion === v ? undefined : v })}
-                className="flex min-h-tap flex-1 items-center justify-center"
-                aria-label={`Valorar con ${v}`}
-                aria-pressed={sesion.valoracion === v}
-              >
-                <Star
-                  size={28}
-                  className={
-                    sesion.valoracion && v <= sesion.valoracion
-                      ? 'fill-lima text-lima-oscuro'
-                      : 'text-tinta-tenue'
-                  }
-                  aria-hidden
-                />
-              </button>
-            ))}
-          </div>
+          <ValoracionSesion
+            valor={sesion.valoracion}
+            onCambio={(valoracion) => actualizar({ valoracion })}
+          />
         </section>
 
         <section>
