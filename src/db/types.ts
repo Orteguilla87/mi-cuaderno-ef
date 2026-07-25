@@ -110,6 +110,14 @@ export interface Equipo {
   equipos: EquipoGenerado[]
 }
 
+/** Ciclo del sorteo «Alumno aleatorio» del Cuaderno. Uno vivo por grupo (`id` = `grupoId`). */
+export interface CicloAleatorio {
+  id: Id
+  grupoId: Id
+  yaSalieron: Id[]
+  actualizado: string
+}
+
 export type EstadoAsistencia = 'presente' | 'falta' | 'retraso' | 'justificada'
 
 export interface Asistencia {

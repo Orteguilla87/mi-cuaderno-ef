@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Settings2, Table2 } from 'lucide-react'
+import { Plus, Settings2, Shuffle, Table2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../components/Celda'
 import { HojaColumna } from '../components/HojaColumna'
+import { SorteoAlumno } from '../components/SorteoAlumno'
 import {
   agruparPorUnidad,
   calcularColumna,
@@ -26,6 +27,7 @@ export function Cuaderno() {
   const [evaluando, setEvaluando] = useState<{ columna: Columna; indice: number } | null>(null)
   const [tablaRubrica, setTablaRubrica] = useState<Columna | null>(null)
   const [aplicando, setAplicando] = useState<Columna | null>(null)
+  const [sorteando, setSorteando] = useState(false)
 
   const grupos = useLiveQuery(async () => {
     const lista = await db.grupos.toArray()
@@ -145,12 +147,24 @@ export function Cuaderno() {
         titulo="Cuaderno"
         subtitulo={grupo ? `${grupo.nombre} · ${trimestre}.º trimestre` : undefined}
         acciones={
-          <button className="btn-suave" onClick={() => setConfigurando('nueva')}>
-            <Plus size={18} aria-hidden />
-            Columna
-          </button>
+          <div className="flex gap-2">
+            {idEfectivo && (
+              <button className="btn-suave" onClick={() => setSorteando(true)}>
+                <Shuffle size={18} aria-hidden />
+                Sorteo
+              </button>
+            )}
+            <button className="btn-suave" onClick={() => setConfigurando('nueva')}>
+              <Plus size={18} aria-hidden />
+              Columna
+            </button>
+          </div>
         }
       />
+
+      {sorteando && idEfectivo && (
+        <SorteoAlumno grupoId={idEfectivo} onCerrar={() => setSorteando(false)} />
+      )}
 
       <div className="space-y-3 p-4 pb-2">
         <div className="flex flex-wrap gap-2">

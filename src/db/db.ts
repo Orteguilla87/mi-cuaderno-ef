@@ -5,6 +5,7 @@ import type {
   Alumno,
   Asistencia,
   Calificacion,
+  CicloAleatorio,
   Columna,
   Criterio,
   ComentarioBanco,
@@ -54,6 +55,7 @@ class CuadernoDB extends Dexie {
   criterios!: EntityTable<Criterio, 'id'>
   vinculos!: EntityTable<Vinculo, 'id'>
   equipos!: EntityTable<Equipo, 'id'>
+  ciclosAleatorios!: EntityTable<CicloAleatorio, 'id'>
   config!: EntityTable<Config, 'id'>
   accionesAgente!: EntityTable<AccionAgente, 'id'>
 
@@ -245,6 +247,15 @@ class CuadernoDB extends Dexie {
      * `upgrade()` ni migración espejo en `db/backup.ts`.
      */
     this.version(12).stores({})
+
+    /**
+     * v13 — Bloque 4. Ciclo persistente del sorteo «Alumno aleatorio» del
+     * Cuaderno: un registro vivo por grupo (`id` = `grupoId`), para que
+     * sobreviva a recargas y a cerrar la app.
+     */
+    this.version(13).stores({
+      ciclosAleatorios: 'id, grupoId',
+    })
   }
 }
 
@@ -253,7 +264,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 12
+export const ESQUEMA_ACTUAL = 13
 
 export const db = new CuadernoDB()
 
