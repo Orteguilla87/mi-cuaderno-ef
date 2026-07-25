@@ -1,6 +1,7 @@
 import { Delete, Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { comprobarPin } from '../db/pin'
+import { useCapaAbierta } from '../lib/capas'
 import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN } from '../lib/pin'
 
 /**
@@ -12,6 +13,7 @@ export function BloqueoPin({ onDesbloqueo }: { onDesbloqueo: () => void }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState(false)
   const [comprobando, setComprobando] = useState(false)
+  useCapaAbierta(true)
 
   useEffect(() => {
     if (pin.length < LONGITUD_MIN_PIN) return
@@ -53,7 +55,7 @@ export function BloqueoPin({ onDesbloqueo }: { onDesbloqueo: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 bg-primario px-6 text-white dark:bg-primario-oscuro">
+    <div className="fixed inset-0 z-bloqueo flex flex-col items-center justify-center gap-8 bg-primario px-6 text-white dark:bg-primario-oscuro">
       <div className="flex flex-col items-center gap-2">
         <Lock size={32} aria-hidden />
         <h1 className="text-xl font-bold">Cuaderno bloqueado</h1>

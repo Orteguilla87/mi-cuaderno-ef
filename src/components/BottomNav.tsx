@@ -49,7 +49,7 @@ export function BottomNav({ ruta }: { ruta: string }) {
   const raiz = ruta.split('/')[1] || 'hoy'
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] dark:border-noche-borde dark:bg-noche-superficie">
+    <nav className="fixed inset-x-0 bottom-0 z-nav border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] dark:border-noche-borde dark:bg-noche-superficie">
       <ul className="mx-auto flex max-w-lg px-1">
         {PESTANAS.map(({ ruta: r, etiqueta, Icono, incluye }) => {
           const activa = r === `/${raiz}` || !!incluye?.includes(raiz)

@@ -25,24 +25,26 @@ import { Hoja } from './Hoja'
  */
 export function AgenteVoz() {
   const [abierta, setAbierta] = useState(false)
-  const compacto = useUI((s) => s.fabCompacto)
+  const capasAbiertas = useUI((s) => s.capasAbiertas)
+  // Con una hoja, la pizarra o el bloqueo por PIN encima, el FAB solo estorba
+  // (tapaba justo lo que esas capas quieren que se vea o se pulse): se retira
+  // en vez de disputar el z-index con ellas.
+  const oculto = capasAbiertas > 0
 
   return (
     <>
       <button
         onClick={() => setAbierta(true)}
-        // En las pantallas densas (rejilla, pase de lista) el FAB es quien
-        // cede: se contrae para no comerse celdas ni botones de la pantalla.
-        // El tamaño sale de los tokens de capa, no de un número suelto, para
-        // que `bottom` y el hueco reservado sigan cuadrando.
-        style={{
-          height: compacto ? 'var(--alto-fab-compacto)' : 'var(--alto-fab)',
-          width: compacto ? 'var(--alto-fab-compacto)' : 'var(--alto-fab)',
-        }}
-        className="capa-fab fixed right-4 z-40 flex items-center justify-center rounded-full bg-acento text-white shadow-lg shadow-acento/30 transition-all active:scale-95"
+        style={{ height: 'var(--alto-fab)', width: 'var(--alto-fab)' }}
+        className={
+          'capa-fab fixed right-4 z-fab flex items-center justify-center rounded-full bg-acento text-white shadow-lg shadow-acento/30 transition-opacity active:scale-95 ' +
+          (oculto ? 'pointer-events-none opacity-0' : 'opacity-100')
+        }
         aria-label="Agente de voz"
+        aria-hidden={oculto}
+        tabIndex={oculto ? -1 : 0}
       >
-        <Mic size={compacto ? 18 : 24} aria-hidden />
+        <Mic size={24} aria-hidden />
       </button>
       <HojaAgente abierta={abierta} onCerrar={() => setAbierta(false)} />
     </>

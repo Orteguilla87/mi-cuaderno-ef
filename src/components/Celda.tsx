@@ -126,7 +126,7 @@ function SelectorCaritas({
         <>
           {/* Fondo a pantalla completa: recoge el toque fuera para cerrar. */}
           <button
-            className="fixed inset-0 z-40 cursor-default"
+            className="fixed inset-0 z-fab cursor-default"
             aria-label="Cerrar selector"
             onClick={() => setAbierto(false)}
           />
@@ -139,7 +139,7 @@ function SelectorCaritas({
               left: coord?.left ?? 0,
               visibility: coord ? 'visible' : 'hidden',
             }}
-            className="fixed z-50 flex max-w-[92vw] flex-wrap items-start justify-center gap-1 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+            className="fixed z-hoja flex max-w-[92vw] flex-wrap items-start justify-center gap-1 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
           >
             {escala.map((c, i) => {
               const activo = i === indice

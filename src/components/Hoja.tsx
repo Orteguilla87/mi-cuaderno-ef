@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { useCapaAbierta } from '../lib/capas'
 
 /** Hoja inferior (bottom sheet): patrón de diálogo a una mano en móvil. */
 export function Hoja({
@@ -12,6 +13,8 @@ export function Hoja({
   onCerrar: () => void
   children: ReactNode
 }) {
+  useCapaAbierta(abierta)
+
   useEffect(() => {
     if (!abierta) return
     const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar()
@@ -23,7 +26,7 @@ export function Hoja({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-primario-oscuro/50 backdrop-blur-sm"
+      className="fixed inset-0 z-hoja flex items-end justify-center bg-primario-oscuro/50 backdrop-blur-sm"
       onClick={onCerrar}
     >
       <div

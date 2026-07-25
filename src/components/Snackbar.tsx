@@ -13,7 +13,7 @@ export function Snackbar() {
   if (!aviso) return null
 
   return (
-    <div className="capa-aviso pointer-events-none fixed inset-x-0 z-50 flex justify-center px-3">
+    <div className="capa-aviso pointer-events-none fixed inset-x-0 z-aviso flex justify-center px-3">
       <div
         // key: el aviso nuevo reemplaza al anterior, y al remontar se reinicia
         // la animación de entrada en vez de cambiar el texto en silencio.

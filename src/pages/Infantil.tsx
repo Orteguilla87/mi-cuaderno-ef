@@ -178,7 +178,7 @@ function RejillaInfantil({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="carril-fab-derecha overflow-x-auto">
       <table className="w-max border-separate border-spacing-0">
         <thead>
           <tr>

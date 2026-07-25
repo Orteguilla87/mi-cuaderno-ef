@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useState } from 'react'
+import { useCapaAbierta } from '../lib/capas'
 
 export interface EquipoPizarra {
   nombre: string
@@ -20,13 +21,14 @@ export function Pizarra({
   onCerrar: () => void
 }) {
   const [revelados, setRevelados] = useState<Set<number>>(new Set())
+  useCapaAbierta(true)
 
   function revelar(i: number) {
     setRevelados((prev) => new Set(prev).add(i))
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-primario-oscuro p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo">
+    <div className="fixed inset-0 z-modal flex flex-col bg-primario-oscuro p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo">
       <button
         onClick={onCerrar}
         className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"

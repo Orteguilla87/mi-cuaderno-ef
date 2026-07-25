@@ -19,6 +19,19 @@
     --alto-fab: 3.5rem;
     --alto-fab-compacto: 2.5rem;
     --holgura-capa: 0.5rem;
+
+    /* ——— Escala de capas ———
+       Un solo origen para todo lo que flota por encima del contenido. El FAB
+       y las hojas inferiores empataban antes a z-40 los dos: el empate lo
+       resolvía el orden del DOM, así que el FAB podía pintarse encima de
+       cualquier hoja abierta (Ajustes, el editor de una celda…). Aquí cada
+       capa tiene su propio escalón y nadie más lo repite a mano. */
+    --z-nav: 30;
+    --z-fab: 40;
+    --z-hoja: 50;
+    --z-aviso: 60;
+    --z-modal: 70;
+    --z-bloqueo: 80;
   }
   html.dark {
     color-scheme: dark;
@@ -142,6 +155,13 @@
   /* El FAB se apoya justo encima de la navegación. */
   .capa-fab {
     bottom: calc(var(--alto-nav) + var(--holgura-capa) + env(safe-area-inset-bottom));
+  }
+
+  /* Reserva a la derecha para tablas con scroll horizontal (Cuaderno,
+     Infantil): sin esto, el FAB —fijo a la derecha de la pantalla— tapa la
+     última columna de notas al llegar al final del scroll. */
+  .carril-fab-derecha {
+    padding-right: calc(var(--alto-fab) + var(--holgura-capa) * 2);
   }
 
   /* El aviso, encima del FAB. Usa siempre la altura del FAB grande aunque esté

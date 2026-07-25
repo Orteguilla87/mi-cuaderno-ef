@@ -13,11 +13,15 @@ interface EstadoUI {
   mostrarAviso: (texto: string, deshacer?: () => void | Promise<void>) => void
   cerrarAviso: (id: number) => void
   /**
-   * El FAB de voz cede el sitio: las pantallas donde estorba (rejilla del
-   * cuaderno, pase de lista) lo ponen en compacto mientras están montadas.
+   * Cuántas hojas/pantallas completas hay abiertas a la vez (Hoja, Pizarra,
+   * BloqueoPin). El FAB de voz cede el sitio y se oculta mientras el contador
+   * sea mayor que 0: es un contador, no un booleano, porque una hoja puede
+   * abrir otra encima (p. ej. el editor de una celda desde dentro de otra
+   * hoja) y solo debe reaparecer cuando se cierra la última.
    */
-  fabCompacto: boolean
-  setFabCompacto: (v: boolean) => void
+  capasAbiertas: number
+  abrirCapa: () => void
+  cerrarCapa: () => void
 }
 
 let siguienteId = 1
@@ -59,6 +63,7 @@ export const useUI = create<EstadoUI>((set) => ({
     cancelarTemporizador()
     set((s) => (s.aviso?.id === id ? { aviso: null } : {}))
   },
-  fabCompacto: false,
-  setFabCompacto: (v) => set({ fabCompacto: v }),
+  capasAbiertas: 0,
+  abrirCapa: () => set((s) => ({ capasAbiertas: s.capasAbiertas + 1 })),
+  cerrarCapa: () => set((s) => ({ capasAbiertas: Math.max(0, s.capasAbiertas - 1) })),
 }))

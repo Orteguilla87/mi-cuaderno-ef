@@ -68,6 +68,17 @@ export default {
       minHeight: { tap: '48px' },
       minWidth: { tap: '48px' },
       borderRadius: { xl2: '1.25rem' },
+      // Escala de capas de src/index.css: un solo origen para nav/FAB/hojas/
+      // avisos/pantallas completas/bloqueo por PIN, para que no se repita un
+      // z-40 suelto en cada componente y acabe empatando con otro.
+      zIndex: {
+        nav: 'var(--z-nav)',
+        fab: 'var(--z-fab)',
+        hoja: 'var(--z-hoja)',
+        aviso: 'var(--z-aviso)',
+        modal: 'var(--z-modal)',
+        bloqueo: 'var(--z-bloqueo)',
+      },
     },
   },
   plugins: [],

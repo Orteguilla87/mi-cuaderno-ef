@@ -16,14 +16,10 @@ import {
 } from '../db/cuaderno'
 import { db } from '../db/db'
 import type { Alumno, Columna, Rubrica, Trimestre, ValorCelda } from '../db/types'
-import { useFabCompacto } from '../lib/fabCompacto'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
 
 export function Cuaderno() {
-  // La rejilla llega hasta el borde derecho: el FAB a tamaño completo tapaba la
-  // última columna de notas.
-  useFabCompacto()
   const [grupoId, setGrupoId] = useState<string | null>(null)
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
@@ -362,7 +358,7 @@ function Rejilla({
   ) => Promise<() => Promise<void>>
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="carril-fab-derecha overflow-x-auto">
       <table className="w-max border-separate border-spacing-0">
         <thead>
           <tr>
