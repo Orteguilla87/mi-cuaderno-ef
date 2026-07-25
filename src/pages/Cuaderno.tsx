@@ -1,9 +1,19 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ClipboardCheck, Plus, Settings2, Shuffle, Table2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import {
+  Clipboard,
+  ClipboardCheck,
+  ClipboardX,
+  Copy,
+  Plus,
+  Settings2,
+  Shuffle,
+  Table2,
+} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../components/Celda'
 import { EstadoVacio } from '../components/EstadoVacio'
+import { Hoja } from '../components/Hoja'
 import { HojaColumna } from '../components/HojaColumna'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import {
@@ -12,16 +22,26 @@ import {
   columnasDe,
   guardarValor,
   mediaDe,
+  pegarColumnas,
   TIPOS_APLICABLES_GRUPO,
+  validarPegado,
   valoresDe,
   type ResultadoCalculo,
+  type ResultadoValidacionPegado,
 } from '../db/cuaderno'
 import { db } from '../db/db'
-import type { Alumno, Columna, Rubrica, Trimestre, ValorCelda } from '../db/types'
+import type { Alumno, Columna, Grupo, Rubrica, Trimestre, ValorCelda } from '../db/types'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
+import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
+import { useUI } from '../store/ui'
 
 export function Cuaderno() {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const copiadas = usePortapapelesColumnas((s) => s.copiadas)
+  const copiarColumnas = usePortapapelesColumnas((s) => s.copiar)
+  const limpiarPortapapelesColumnas = usePortapapelesColumnas((s) => s.limpiar)
+
   const [grupoId, setGrupoId] = useState<string | null>(null)
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
@@ -29,6 +49,7 @@ export function Cuaderno() {
   const [tablaRubrica, setTablaRubrica] = useState<Columna | null>(null)
   const [aplicando, setAplicando] = useState<Columna | null>(null)
   const [sorteando, setSorteando] = useState(false)
+  const [pegando, setPegando] = useState(false)
 
   const grupos = useLiveQuery(async () => {
     const lista = await db.grupos.toArray()
@@ -183,6 +204,23 @@ export function Cuaderno() {
               <Plus size={18} aria-hidden />
               Columna
             </button>
+            {idEfectivo && grupo && visibles.length > 0 && (
+              <button
+                className="btn-suave w-11 px-0"
+                onClick={() => {
+                  copiarColumnas({
+                    columnas: visibles,
+                    etapaOrigen: grupo.etapa,
+                    origenResumen: `${visibles.length} ${visibles.length === 1 ? 'columna' : 'columnas'} de ${grupo.nombre}`,
+                  })
+                  mostrarAviso(`Estructura de ${grupo.nombre} copiada`)
+                }}
+                title="Copiar estructura del grupo"
+                aria-label="Copiar estructura del grupo"
+              >
+                <Copy size={18} aria-hidden />
+              </button>
+            )}
           </div>
         }
       />
@@ -226,6 +264,33 @@ export function Cuaderno() {
             </button>
           ))}
         </div>
+
+        {copiadas && (
+          <div className="panel-agua flex items-center gap-2 text-sm">
+            <Clipboard size={16} className="shrink-0 text-primario dark:text-agua" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">
+              Copiado: <strong>{copiadas.origenResumen}</strong>
+            </span>
+            {idEfectivo && (
+              <button
+                onClick={() => setPegando(true)}
+                className="flex min-h-tap min-w-tap items-center justify-center text-primario dark:text-agua"
+                aria-label="Pegar aquí"
+                title="Pegar aquí"
+              >
+                <Clipboard size={18} aria-hidden />
+              </button>
+            )}
+            <button
+              onClick={limpiarPortapapelesColumnas}
+              className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+              aria-label="Descartar lo copiado"
+              title="Descartar lo copiado"
+            >
+              <ClipboardX size={18} aria-hidden />
+            </button>
+          </div>
+        )}
       </div>
 
       {alumnos?.length === 0 ? (
@@ -317,6 +382,15 @@ export function Cuaderno() {
           valores={mapaValores}
           onCambiar={cambiar}
           onCerrar={() => setTablaRubrica(null)}
+        />
+      )}
+
+      {pegando && idEfectivo && grupo && copiadas && (
+        <HojaPegarColumnas
+          copiadas={copiadas}
+          grupo={grupo}
+          trimestre={trimestre}
+          onCerrar={() => setPegando(false)}
         />
       )}
     </>
@@ -540,5 +614,112 @@ function MediasPorUnidad({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Confirmación de pegado de columnas (Bloque 3): valida antes de escribir
+ * (etapa compatible + criterios del ciclo destino) y solo entonces muestra el
+ * resumen «Se crearán N columnas». Nunca toca `db.valores`: solo estructura.
+ */
+function HojaPegarColumnas({
+  copiadas,
+  grupo,
+  trimestre,
+  onCerrar,
+}: {
+  copiadas: import('../store/portapapelesColumnas').ColumnasCopiadas
+  grupo: Grupo
+  trimestre: Trimestre
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [validacion, setValidacion] = useState<ResultadoValidacionPegado | null>(null)
+
+  useEffect(() => {
+    let cancelado = false
+    setValidacion(null)
+    void validarPegado(copiadas.columnas, copiadas.etapaOrigen, grupo.etapa, grupo.nivel).then(
+      (r) => {
+        if (!cancelado) setValidacion(r)
+      },
+    )
+    return () => {
+      cancelado = true
+    }
+  }, [copiadas, grupo.etapa, grupo.nivel])
+
+  async function pegar() {
+    const resultado = await pegarColumnas(
+      grupo.id,
+      trimestre,
+      copiadas.columnas,
+      copiadas.etapaOrigen,
+      grupo.etapa,
+      grupo.nivel,
+    )
+    onCerrar()
+    if (resultado.creadas > 0) {
+      mostrarAviso(
+        `${resultado.creadas} ${resultado.creadas === 1 ? 'columna creada' : 'columnas creadas'}`,
+        resultado.deshacer,
+      )
+    }
+  }
+
+  return (
+    <Hoja abierta titulo="Pegar columnas" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        {!validacion ? (
+          <p className="text-sm texto-suave">Comprobando…</p>
+        ) : !validacion.permitido ? (
+          <>
+            <p className="text-sm text-acento">{validacion.motivo}</p>
+            <button className="btn-suave w-full" onClick={onCerrar}>
+              Entendido
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="panel-agua text-sm">
+              {validacion.aPegar.length === 0
+                ? 'No queda ninguna columna que se pueda pegar aquí.'
+                : `Se ${validacion.aPegar.length === 1 ? 'creará' : 'crearán'} ${validacion.aPegar.length} ${validacion.aPegar.length === 1 ? 'columna' : 'columnas'} en ${grupo.nombre} · ${trimestre}.º trimestre.`}
+            </div>
+
+            {validacion.criteriosNoEncajan.length > 0 && (
+              <div className="rounded-xl2 border border-acento/30 bg-acento/5 p-3 text-sm">
+                <p className="font-bold text-acento">
+                  {validacion.criteriosNoEncajan.length === 1
+                    ? 'No encaja en el ciclo destino:'
+                    : 'No encajan en el ciclo destino:'}
+                </p>
+                <ul className="mt-1 list-disc pl-4">
+                  {validacion.criteriosNoEncajan.map((titulo) => (
+                    <li key={titulo}>{titulo}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs texto-suave">
+                  Su criterio no existe en {grupo.nombre}; se pegará el resto.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button className="btn-suave" onClick={onCerrar}>
+                Cancelar
+              </button>
+              <button
+                className="btn-primario"
+                onClick={() => void pegar()}
+                disabled={validacion.aPegar.length === 0}
+              >
+                Pegar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Hoja>
   )
 }

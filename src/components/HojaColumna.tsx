@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, ChevronLeft, ChevronRight, Plus, Trash2, Users } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy, Plus, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
   crearColumna,
@@ -12,6 +12,7 @@ import {
 import { db } from '../db/db'
 import type { ComponenteCalculo, Columna, Grupo, TipoColumna, Trimestre } from '../db/types'
 import { aISO } from '../lib/fechas'
+import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { useUI } from '../store/ui'
 import { Hoja } from './Hoja'
 import { HojaConfirmar } from './HojaConfirmar'
@@ -36,6 +37,7 @@ export function HojaColumna({
   onAplicarGrupo?: (c: Columna) => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const copiarColumnas = usePortapapelesColumnas((s) => s.copiar)
   const esNueva = estado === 'nueva'
   const columna = esNueva ? null : estado
 
@@ -131,6 +133,16 @@ export function HojaColumna({
     const deshacer = await eliminarColumna(columna.id)
     onCerrar()
     mostrarAviso(`Columna «${columna.titulo}» eliminada`, deshacer)
+  }
+
+  function copiarEstaColumna() {
+    if (!columna || !grupo) return
+    copiarColumnas({
+      columnas: [columna],
+      etapaOrigen: grupo.etapa,
+      origenResumen: `«${columna.titulo}» de ${grupo.nombre}`,
+    })
+    mostrarAviso(`Columna «${columna.titulo}» copiada`)
   }
 
   async function nuevaRubrica() {
@@ -327,6 +339,13 @@ export function HojaColumna({
             <button className="btn-suave w-full" onClick={() => onAplicarGrupo(columna)}>
               <Users size={18} aria-hidden />
               Aplicar a todo el grupo
+            </button>
+          )}
+
+          {columna && (
+            <button className="btn-suave w-full" onClick={copiarEstaColumna}>
+              <Copy size={18} aria-hidden />
+              Copiar esta columna
             </button>
           )}
 

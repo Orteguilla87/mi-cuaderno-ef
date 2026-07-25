@@ -1,3 +1,4 @@
+import { criteriosDeGrupo } from './criterios'
 import { db, nuevoId } from './db'
 import type {
   Columna,
@@ -470,4 +471,119 @@ export async function duplicarRubrica(rubricaId: string): Promise<string | null>
   }
   await db.rubricas.add(copia)
   return copia.id
+}
+
+// ——— Copiar/pegar estructura de columnas (Bloque 3) ———
+
+export interface ResultadoValidacionPegado {
+  /** false si la etapa de origen y destino no coinciden: no se pega nada. */
+  permitido: boolean
+  motivo?: string
+  /** Columnas que sí se pegarían. */
+  aPegar: Columna[]
+  /** Títulos de las columnas apartadas por tener un criterio que no existe en el ciclo destino. */
+  criteriosNoEncajan: string[]
+}
+
+/**
+ * Valida qué se podría pegar sin escribir nada: para el resumen previo
+ * («Se crearán N columnas») y para el propio `pegarColumnas`.
+ *
+ * REGLA DURA: Infantil y Primaria no comparten columnas (§ petición del
+ * usuario): la evaluación de Infantil es cualitativa y sus columnas no
+ * admiten números, así que mezclar etapas no tiene sentido y se bloquea del
+ * todo, sin pegar ni una.
+ */
+export async function validarPegado(
+  columnas: Columna[],
+  etapaOrigen: Etapa,
+  etapaDestino: Etapa,
+  nivelDestino: number,
+): Promise<ResultadoValidacionPegado> {
+  if (etapaOrigen !== etapaDestino) {
+    return {
+      permitido: false,
+      motivo: `No se puede pegar de ${etapaOrigen === 'infantil' ? 'Infantil' : 'Primaria'} a ${etapaDestino === 'infantil' ? 'Infantil' : 'Primaria'}: la evaluación de Infantil es cualitativa y no comparte estructura con Primaria.`,
+      aPegar: [],
+      criteriosNoEncajan: [],
+    }
+  }
+
+  const validos = new Set((await criteriosDeGrupo(etapaDestino, nivelDestino)).map((c) => c.codigo))
+  const aPegar: Columna[] = []
+  const criteriosNoEncajan: string[] = []
+  for (const c of columnas) {
+    if (c.criterioCodigo && !validos.has(c.criterioCodigo)) {
+      criteriosNoEncajan.push(c.titulo)
+      continue
+    }
+    aPegar.push(c)
+  }
+
+  return { permitido: true, aPegar, criteriosNoEncajan }
+}
+
+export interface ResultadoPegado {
+  creadas: number
+  criteriosNoEncajan: string[]
+  motivo?: string
+  deshacer: () => Promise<void>
+}
+
+/**
+ * Pega una estructura de columnas copiada en otro grupo/trimestre. Solo
+ * estructura — nunca se leen ni se copian `db.valores` (las calificaciones no
+ * se pegan jamás).
+ *
+ * Las columnas de tipo 'calculo' remapean `componentes.columnaId` al id nuevo
+ * de la columna del propio lote; un componente que apunte fuera del lote (p.
+ * ej. al copiar una sola columna de cálculo) se descarta, porque su
+ * referencia no existiría en el destino. `udId` se deja fuera: la unidad
+ * didáctica está ligada a un nivel y trimestre concretos, distintos del
+ * destino.
+ */
+export async function pegarColumnas(
+  grupoId: string,
+  trimestre: Trimestre,
+  columnas: Columna[],
+  etapaOrigen: Etapa,
+  etapaDestino: Etapa,
+  nivelDestino: number,
+): Promise<ResultadoPegado> {
+  const validacion = await validarPegado(columnas, etapaOrigen, etapaDestino, nivelDestino)
+  if (!validacion.permitido) {
+    return { creadas: 0, criteriosNoEncajan: [], motivo: validacion.motivo, deshacer: async () => {} }
+  }
+
+  const existentes = await db.columnas
+    .where('[grupoId+trimestre]')
+    .equals([grupoId, trimestre])
+    .toArray()
+  let orden = existentes.length
+
+  const mapaIds = new Map(validacion.aPegar.map((c) => [c.id, nuevoId()]))
+  const nuevas: Columna[] = validacion.aPegar.map((c) => ({
+    ...c,
+    id: mapaIds.get(c.id)!,
+    grupoId,
+    trimestre,
+    orden: orden++,
+    udId: undefined,
+    calculo: c.calculo
+      ? {
+          componentes: c.calculo.componentes
+            .filter((comp) => mapaIds.has(comp.columnaId))
+            .map((comp) => ({ ...comp, columnaId: mapaIds.get(comp.columnaId)! })),
+        }
+      : undefined,
+  }))
+
+  if (nuevas.length > 0) await db.columnas.bulkAdd(nuevas)
+
+  const idsCreadas = nuevas.map((c) => c.id)
+  return {
+    creadas: nuevas.length,
+    criteriosNoEncajan: validacion.criteriosNoEncajan,
+    deshacer: async () => void (await db.columnas.bulkDelete(idsCreadas)),
+  }
 }
