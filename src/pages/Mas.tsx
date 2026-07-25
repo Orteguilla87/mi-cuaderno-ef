@@ -1,94 +1,19 @@
-import {
-  BarChart3,
-  CalendarRange,
-  ChevronRight,
-  Dices,
-  FileText,
-  ListChecks,
-  MessageSquareText,
-  Settings,
-  Timer,
-  type LucideIcon,
-} from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Cabecera } from '../components/Cabecera'
+import { ENTRADAS_MAS } from '../lib/navegacion'
 import { navegar } from '../lib/router'
 
 /**
  * §5: «Más» recoge lo que no cabe en las cuatro pestañas de uso diario.
  * Son pantallas de escritorio o de preparación, no de pista.
  */
-const ENTRADAS: {
-  ruta: string
-  titulo: string
-  descripcion: string
-  Icono: LucideIcon
-  disponible: boolean
-}[] = [
-  {
-    ruta: '/rubricas',
-    titulo: 'Rúbricas',
-    descripcion: 'Banco de rúbricas reutilizables en el cuaderno',
-    Icono: ListChecks,
-    disponible: true,
-  },
-  {
-    ruta: '/juegos',
-    titulo: 'Banco de juegos',
-    descripcion: 'Importar, buscar y filtrar juegos de EF',
-    Icono: Dices,
-    disponible: true,
-  },
-  {
-    ruta: '/observaciones',
-    titulo: 'Observaciones',
-    descripcion: 'Timeline de todos los grupos, con filtros',
-    Icono: MessageSquareText,
-    disponible: true,
-  },
-  {
-    ruta: '/evaluacion',
-    titulo: 'Evaluación final',
-    descripcion: 'Nota de curso, conversión oficial y comentarios',
-    Icono: BarChart3,
-    disponible: false,
-  },
-  {
-    ruta: '/informes',
-    titulo: 'Informes',
-    descripcion: 'PDF, XLSX y CSV para pasar a Raíces',
-    Icono: FileText,
-    disponible: true,
-  },
-  {
-    ruta: '/calendario',
-    titulo: 'Calendario',
-    descripcion: 'Horario, festivos, eventos y avisos',
-    Icono: CalendarRange,
-    disponible: false,
-  },
-  {
-    ruta: '/herramientas',
-    titulo: 'Herramientas',
-    descripcion: 'Equipos, cronómetro, marcador y selector',
-    Icono: Timer,
-    disponible: true,
-  },
-  {
-    ruta: '/ajustes',
-    titulo: 'Ajustes',
-    descripcion: 'Curso, evaluación, aspecto y copia de seguridad',
-    Icono: Settings,
-    disponible: true,
-  },
-]
-
 export function Mas() {
   return (
     <>
       <Cabecera titulo="Más" />
 
       <ul className="space-y-3 p-4">
-        {ENTRADAS.map(({ ruta, titulo, descripcion, Icono, disponible }) => (
+        {ENTRADAS_MAS.map(({ ruta, titulo, descripcion, Icono, disponible }) => (
           <li key={ruta}>
             <button
               onClick={() => navegar(ruta)}

@@ -163,7 +163,7 @@ export function Hoy() {
             <section>
               <h2 className="text-lg font-bold">Jornada completa</h2>
               <div className="linea-pista mb-3 mt-1.5" aria-hidden />
-              <ul className="space-y-2">
+              <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
                 {clases?.map((c) => (
                   <li key={`${c.grupo.id}-${c.horaInicio}`}>
                     <TarjetaClase
@@ -237,7 +237,7 @@ function VistaSemanaHoy({ hoy }: { hoy: string }) {
               {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
             </h2>
             <div className="linea-pista mb-2 mt-1.5" aria-hidden />
-            <ul className="space-y-2">
+            <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
               {delDia.map((h) => (
                 <li key={`${h.grupo.id}-${h.horaInicio}`}>
                   <TarjetaSesionSemana hueco={h} />

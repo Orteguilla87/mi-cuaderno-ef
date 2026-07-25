@@ -1,57 +1,31 @@
-import {
-  CalendarDays,
-  ClipboardList,
-  MoreHorizontal,
-  Table2,
-  Users,
-  type LucideIcon,
-} from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
+import { PESTANAS, type Pestana } from '../lib/navegacion'
 import { navegar } from '../lib/router'
 
 /**
  * Navegación inferior de §5: Hoy · Cuaderno · Grupos · Planificador · Más.
  *
  * Iconos de `lucide-react` (§3), nunca emojis: el emoji cambia de forma y color
- * en cada plataforma y rompe la identidad de la app.
+ * en cada plataforma y rompe la identidad de la app. Las cuatro primeras
+ * pestañas vienen de `lib/navegacion.ts`, compartido con `NavLateral`
+ * (Bloque 6): un solo origen de rutas para las dos presentaciones.
  */
-const PESTANAS: {
-  ruta: string
-  etiqueta: string
-  Icono: LucideIcon
-  /** Secciones que, sin ser la pestaña, la mantienen marcada como activa. */
-  incluye?: string[]
-}[] = [
-  { ruta: '/hoy', etiqueta: 'Hoy', Icono: CalendarDays },
-  { ruta: '/cuaderno', etiqueta: 'Cuaderno', Icono: Table2, incluye: ['rubricas'] },
-  {
-    ruta: '/grupos',
-    etiqueta: 'Grupos',
-    Icono: Users,
-    incluye: ['alumnos', 'asistencia', 'observaciones', 'infantil'],
-  },
-  {
-    ruta: '/planificador',
-    etiqueta: 'Planificador',
-    Icono: ClipboardList,
-    incluye: ['sesiones', 'juegos'],
-  },
-  {
-    ruta: '/mas',
-    etiqueta: 'Más',
-    Icono: MoreHorizontal,
-    // Todo lo que cuelga de «Más» deja la pestaña marcada, para que el usuario
-    // sepa de dónde ha salido la pantalla en la que está.
-    incluye: ['evaluacion', 'informes', 'calendario', 'herramientas', 'equipos', 'ajustes'],
-  },
-]
+const PESTANA_MAS: Pestana = {
+  ruta: '/mas',
+  etiqueta: 'Más',
+  Icono: MoreHorizontal,
+  // Todo lo que cuelga de «Más» deja la pestaña marcada, para que el usuario
+  // sepa de dónde ha salido la pantalla en la que está.
+  incluye: ['evaluacion', 'informes', 'calendario', 'herramientas', 'equipos', 'ajustes'],
+}
 
 export function BottomNav({ ruta }: { ruta: string }) {
   const raiz = ruta.split('/')[1] || 'hoy'
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-nav border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] dark:border-noche-borde dark:bg-noche-superficie">
+    <nav className="fixed inset-x-0 bottom-0 z-nav border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] dark:border-noche-borde dark:bg-noche-superficie lg:hidden">
       <ul className="mx-auto flex max-w-lg px-1">
-        {PESTANAS.map(({ ruta: r, etiqueta, Icono, incluye }) => {
+        {[...PESTANAS, PESTANA_MAS].map(({ ruta: r, etiqueta, Icono, incluye }) => {
           const activa = r === `/${raiz}` || !!incluye?.includes(raiz)
           return (
             <li key={r} className="flex-1">

@@ -47,7 +47,7 @@ export function Grupos() {
         }
       />
 
-      <div className="space-y-3 p-4">
+      <div className="p-4">
         {grupos?.length === 0 && (
           <div className="tarjeta text-center">
             <p className="text-base font-semibold">Todavía no hay grupos</p>
@@ -60,6 +60,7 @@ export function Grupos() {
           </div>
         )}
 
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {grupos?.map((g) => (
           <button
             key={g.id}
@@ -88,6 +89,7 @@ export function Grupos() {
             </span>
           </button>
         ))}
+        </div>
       </div>
 
       <HojaNuevoGrupo abierta={abierta} onCerrar={() => setAbierta(false)} orden={grupos?.length ?? 0} />

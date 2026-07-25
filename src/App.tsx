@@ -3,6 +3,7 @@ import { AgenteVoz } from './components/AgenteVoz'
 import { BloqueoPin } from './components/BloqueoPin'
 import { BottomNav } from './components/BottomNav'
 import { LimiteError } from './components/LimiteError'
+import { NavLateral } from './components/NavLateral'
 import { Snackbar } from './components/Snackbar'
 import { useConfig } from './db/config'
 import { sembrarCriterios } from './db/criterios'
@@ -127,11 +128,14 @@ export default function App() {
   }, [hayPin, bloquear])
 
   return (
-    <div className="carril-fab mx-auto min-h-dvh max-w-lg">
-      {/* key: al cambiar de ruta se reintenta el render en vez de quedarse el error pegado. */}
-      <LimiteError key={ruta}>
-        <Contenido ruta={ruta} />
-      </LimiteError>
+    <div className="min-h-dvh lg:pl-60">
+      <NavLateral ruta={ruta} />
+      <div className="carril-fab mx-auto max-w-lg md:max-w-3xl lg:max-w-7xl lg:px-6">
+        {/* key: al cambiar de ruta se reintenta el render en vez de quedarse el error pegado. */}
+        <LimiteError key={ruta}>
+          <Contenido ruta={ruta} />
+        </LimiteError>
+      </div>
       <AgenteVoz />
       <BottomNav ruta={ruta} />
       <Snackbar />

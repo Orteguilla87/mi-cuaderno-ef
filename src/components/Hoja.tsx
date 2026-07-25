@@ -26,11 +26,11 @@ export function Hoja({
 
   return (
     <div
-      className="fixed inset-0 z-hoja flex items-end justify-center bg-primario-oscuro/50 backdrop-blur-sm"
+      className="fixed inset-0 z-hoja flex items-end justify-center bg-primario-oscuro/50 backdrop-blur-sm lg:items-center"
       onClick={onCerrar}
     >
       <div
-        className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-hueso p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo"
+        className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-hueso p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo lg:rounded-3xl lg:pb-4"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

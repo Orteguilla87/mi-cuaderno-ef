@@ -33,6 +33,15 @@
     --z-modal: 70;
     --z-bloqueo: 80;
   }
+  /* En escritorio (Bloque 6) la barra inferior desaparece (`lg:hidden` en
+     `BottomNav`): la capa fija inferior ya no reserva su altura, solo la
+     del FAB. Un único punto de cambio, igual que el resto de la escala. */
+  @media (min-width: 1024px) {
+    :root {
+      --alto-nav: 0px;
+    }
+  }
+
   html.dark {
     color-scheme: dark;
   }
