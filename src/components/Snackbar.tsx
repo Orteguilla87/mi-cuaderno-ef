@@ -20,11 +20,13 @@ export function Snackbar() {
         key={aviso.id}
         className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl bg-primario-oscuro px-4 py-3 text-white shadow-xl"
         role="status"
+        aria-atomic="true"
       >
         <span className="flex-1 text-sm font-medium">{aviso.texto}</span>
         {aviso.deshacer && (
           <button
-            className="min-h-tap rounded-lg px-3 font-bold text-agua active:bg-white/15"
+            className="min-h-tap rounded-xl px-3 font-bold text-agua transition active:bg-white/15
+                       focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50"
             onClick={async () => {
               cerrarAviso(aviso.id)
               await aviso.deshacer!()

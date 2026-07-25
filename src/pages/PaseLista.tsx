@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { AccionCabecera, Cabecera } from '../components/Cabecera'
+import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import {
   alternarChandal,
@@ -79,7 +80,21 @@ export function PaseLista({ grupoId, fecha }: { grupoId: string; fecha?: string 
     [alumnos, dia],
   )
 
-  if (grupo === undefined || alumnos === undefined) return null
+  if (grupo === undefined || alumnos === undefined) {
+    return (
+      <>
+        <Cabecera titulo="Pase de lista" />
+        <div className="space-y-2 p-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-16 animate-pulse rounded-xl2 bg-agua-claro dark:bg-noche-elevada"
+            />
+          ))}
+        </div>
+      </>
+    )
+  }
   if (grupo === null) {
     return (
       <>
@@ -138,7 +153,7 @@ export function PaseLista({ grupoId, fecha }: { grupoId: string; fecha?: string 
           pila.length > 0 && (
             <AccionCabecera onClick={deshacer}>
               <Undo2 size={18} aria-hidden />
-              <span className="ml-1.5">Deshacer</span>
+              <span className="ml-1.5">Deshacer{pila.length > 1 ? ` (${pila.length})` : ''}</span>
             </AccionCabecera>
           )
         }
@@ -148,18 +163,18 @@ export function PaseLista({ grupoId, fecha }: { grupoId: string; fecha?: string 
         <BarraFecha dia={dia} onIr={irA} />
 
         {alumnos.length === 0 ? (
-          <div className="tarjeta text-center">
-            <p className="text-base font-semibold">Grupo sin alumnado</p>
-            <p className="mt-1 text-sm texto-suave">
-              Importa el listado de clase antes de pasar lista.
-            </p>
-            <button
-              className="btn-primario mt-4 w-full"
-              onClick={() => navegar(`/grupos/${grupoId}`)}
-            >
-              Ir al grupo
-            </button>
-          </div>
+          <EstadoVacio
+            titulo="Grupo sin alumnado"
+            descripcion="Importa el listado de clase antes de pasar lista."
+            accion={
+              <button
+                className="btn-primario w-full"
+                onClick={() => navegar(`/grupos/${grupoId}`)}
+              >
+                Ir al grupo
+              </button>
+            }
+          />
         ) : (
           <>
             {sinRegistrar > 0 && (
@@ -242,7 +257,7 @@ function Resumen({
             <dd className={`cifra text-xl font-bold ${d.clase} dark:text-noche-texto`}>
               {d.valor}
             </dd>
-            <dt className="text-[11px] texto-suave">{d.etiqueta}</dt>
+            <dt className="text-xs texto-suave">{d.etiqueta}</dt>
           </div>
         ))}
       </dl>
@@ -317,7 +332,8 @@ function TarjetaAlumno({
         <button
           onClick={onChandal}
           className={
-            'absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-lg transition ' +
+            'absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-xl transition ' +
+            'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
             (registro && !registro.chandal
               ? 'bg-acento text-white'
               : registro?.chandal

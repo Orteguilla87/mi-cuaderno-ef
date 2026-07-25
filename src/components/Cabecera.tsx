@@ -24,7 +24,8 @@ export function Cabecera({
         {atras && (
           <button
             onClick={volver}
-            className="-ml-3 flex min-h-tap min-w-tap items-center justify-center rounded-full text-white/90 active:bg-white/15"
+            className="-ml-3 flex min-h-tap min-w-tap items-center justify-center rounded-full text-white/90 transition active:bg-white/15
+                       focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50"
             aria-label="Volver"
           >
             <ChevronLeft size={28} aria-hidden />
@@ -54,10 +55,13 @@ export function AccionCabecera({
     <button
       onClick={onClick}
       className={
-        'inline-flex min-h-tap items-center justify-center rounded-xl px-4 text-base font-semibold transition active:scale-[0.98] ' +
+        // `.btn` da estructura, foco y active:scale; aquí solo se añade el
+        // color, porque vive sobre fondo primario y ninguna variante del
+        // sistema (pensadas para fondo claro) tiene contraste ahí.
+        'btn focus-visible:ring-offset-primario dark:focus-visible:ring-offset-primario-oscuro ' +
         (destacada
           ? 'bg-acento text-white shadow-sm'
-          : 'border border-white/35 text-white active:bg-white/15')
+          : 'border border-white/35 text-white active:bg-white/15 focus-visible:ring-white/50')
       }
     >
       {children}

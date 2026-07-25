@@ -225,7 +225,7 @@ function ColoresPetos({ coloresPetos }: { coloresPetos: string[] }) {
               type="color"
               value={c}
               onChange={(e) => cambiar(i, e.target.value)}
-              className="h-12 w-full cursor-pointer rounded-lg border border-borde dark:border-noche-borde"
+              className="h-12 w-full cursor-pointer rounded-xl border border-borde dark:border-noche-borde"
               aria-label={`Color de peto ${i + 1}`}
             />
           </label>
@@ -254,7 +254,7 @@ function Seccion({
     <section className="tarjeta space-y-4">
       <div>
         <h2 className="text-lg font-bold">{titulo}</h2>
-        <div className="linea-pista mt-1.5" aria-hidden />
+        <div className="linea-pista mb-2 mt-1.5" aria-hidden />
         {ayuda && <p className="mt-2 text-sm texto-suave">{ayuda}</p>}
       </div>
       {children}
@@ -398,9 +398,9 @@ function Estadisticas() {
         ['Registros de asistencia', datos.asistencias],
         ['Observaciones', datos.observaciones],
       ].map(([etiqueta, valor]) => (
-        <div key={String(etiqueta)} className="rounded-lg bg-agua-claro p-2 dark:bg-noche-elevada">
+        <div key={String(etiqueta)} className="rounded-xl bg-agua-claro p-2 dark:bg-noche-elevada">
           <dt className="text-xs texto-suave">{etiqueta}</dt>
-          <dd className="text-lg font-bold">{valor}</dd>
+          <dd className="cifra text-lg font-bold">{valor}</dd>
         </div>
       ))}
     </dl>
@@ -466,7 +466,7 @@ function SeccionBackup({ config }: { config: ReturnType<typeof useConfig> }) {
   return (
     <div className="space-y-3">
       {avisar && (
-        <div className="flex items-start gap-2 rounded-lg border border-aviso/40 bg-aviso-claro p-2.5 text-sm text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+        <div className="aviso flex items-start gap-2">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" aria-hidden />
           <span>
             {dias === null
@@ -489,7 +489,14 @@ function SeccionBackup({ config }: { config: ReturnType<typeof useConfig> }) {
         <button className="btn-suave flex-1" onClick={() => inputRef.current?.click()}>
           <Upload size={18} aria-hidden /> Restaurar copia
         </button>
-        <input ref={inputRef} type="file" accept=".enc" className="hidden" onChange={elegirFichero} />
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".enc"
+          className="hidden"
+          onChange={elegirFichero}
+          aria-label="Fichero de copia de seguridad cifrada"
+        />
       </div>
 
       {hayServidor && (
@@ -503,7 +510,11 @@ function SeccionBackup({ config }: { config: ReturnType<typeof useConfig> }) {
         </div>
       )}
 
-      {errorImport && !pasoImport && <p className="text-sm font-medium text-acento">{errorImport}</p>}
+      {errorImport && !pasoImport && (
+        <p role="alert" className="text-sm font-medium text-acento">
+          {errorImport}
+        </p>
+      )}
 
       {hojaExportar && (
         <HojaPassphrase
@@ -666,7 +677,11 @@ function HojaPassphrase<T = void>({
               autoComplete="new-password"
             />
           </label>
-          {error && <p className="text-sm font-medium text-acento">{error}</p>}
+          {error && (
+          <p role="alert" className="text-sm font-medium text-acento">
+            {error}
+          </p>
+        )}
           <button className="btn-primario w-full" onClick={() => void ejecutar()} disabled={trabajando}>
             {trabajando ? textoTrabajando : textoBoton}
           </button>
@@ -760,19 +775,26 @@ function HojaConfirmarImport({
         </p>
 
         {cotejo.migra && (
-          <p className="rounded-lg border border-aviso/40 bg-aviso-claro p-2 text-xs text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+          <p className="aviso text-xs">
             La copia es de una versión anterior de la app: se actualizará automáticamente al
             restaurarla.
           </p>
         )}
 
-        <div className="overflow-hidden rounded-lg border border-borde dark:border-noche-borde">
+        <div className="overflow-hidden rounded-xl border border-borde dark:border-noche-borde">
           <table className="w-full text-xs">
+            <caption className="sr-only">Cotejo de registros entre la copia y los datos actuales</caption>
             <thead className="bg-agua-claro dark:bg-noche-elevada">
               <tr>
-                <th className="p-1.5 text-left font-semibold">Tabla</th>
-                <th className="p-1.5 text-right font-semibold">Copia</th>
-                <th className="p-1.5 text-right font-semibold">Actual</th>
+                <th scope="col" className="p-1.5 text-left font-semibold">
+                  Tabla
+                </th>
+                <th scope="col" className="p-1.5 text-right font-semibold">
+                  Copia
+                </th>
+                <th scope="col" className="p-1.5 text-right font-semibold">
+                  Actual
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -798,7 +820,11 @@ function HojaConfirmarImport({
           />
         </label>
 
-        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm font-medium text-acento">
+            {error}
+          </p>
+        )}
 
         <button
           className="btn-acento w-full"
@@ -853,12 +879,16 @@ function HojaCopiasRemotas({
   return (
     <Hoja abierta titulo="Copias del servidor" onCerrar={onCerrar}>
       <div className="space-y-3">
-        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm font-medium text-acento">
+            {error}
+          </p>
+        )}
 
         {!estado && !error && <p className="text-sm texto-suave">Consultando el servidor…</p>}
 
         {estado?.hayMasNueva && (
-          <p className="rounded-lg border border-aviso/40 bg-aviso-claro p-2 text-xs text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+          <p className="aviso text-xs">
             En el servidor hay una copia más reciente que la última hecha en este dispositivo.
           </p>
         )}
@@ -991,7 +1021,7 @@ function SeccionWebdav({ webdav }: { webdav: ConfigWebdav | undefined }) {
         </button>
       )}
 
-      <div className="flex items-start gap-2 rounded-lg border border-aviso/40 bg-aviso-claro p-2.5 text-xs text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+      <div className="aviso flex items-start gap-2 text-xs">
         <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
         <span>
           Al servidor solo sube el fichero ya cifrado: no puede leer tus datos ni conoce la
@@ -1139,7 +1169,11 @@ function HojaDefinirPin({
         {pideActual && <CampoPin etiqueta="PIN actual" valor={actual} onCambio={setActual} />}
         <CampoPin etiqueta="PIN nuevo (4 a 6 dígitos)" valor={nuevo} onCambio={setNuevo} />
         <CampoPin etiqueta="Repite el PIN nuevo" valor={repetir} onCambio={setRepetir} />
-        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm font-medium text-acento">
+            {error}
+          </p>
+        )}
         <button className="btn-primario w-full" onClick={() => void guardar()} disabled={guardando}>
           {guardando ? 'Guardando…' : 'Guardar PIN'}
         </button>
@@ -1172,7 +1206,11 @@ function HojaDesactivarPin({ onCerrar, onListo }: { onCerrar: () => void; onList
       <div className="space-y-3">
         <p className="text-sm texto-suave">Introduce el PIN actual para desactivarlo.</p>
         <CampoPin etiqueta="PIN actual" valor={pin} onCambio={setPin} />
-        {error && <p className="text-sm font-medium text-acento">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm font-medium text-acento">
+            {error}
+          </p>
+        )}
         <button className="btn-peligro w-full" onClick={() => void confirmar()} disabled={comprobando}>
           {comprobando ? 'Comprobando…' : 'Desactivar PIN'}
         </button>

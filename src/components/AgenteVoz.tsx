@@ -61,6 +61,10 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const config = useConfig()
   const [fase, setFase] = useState<Fase>({ paso: 'dictado', texto: '' })
+  // Cubre la llamada de red a la API y la escritura de confirmar(): sin esto
+  // el botón sigue pulsable durante el `await` y un segundo toque duplica la
+  // acción (doble observación, doble asistencia…).
+  const [procesando, setProcesando] = useState(false)
 
   const alumnos = useLiveQuery(async () => (await db.alumnos.toArray()).filter((a) => a.activo), []) ?? []
   const grupos = useLiveQuery(() => db.grupos.toArray(), []) ?? []
@@ -71,39 +75,56 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
   }
 
   async function procesar(texto: string) {
-    if (!texto.trim()) return
+    if (!texto.trim() || procesando) return
+    setProcesando(true)
+    let degradadoALocal = false
 
-    if (config.apiKey) {
-      try {
-        const r = await interpretarConApi(texto, alumnos, grupos, {
-          apiKey: config.apiKey,
-          modelo: config.modeloAgente,
-        })
-        if (r) {
-          const mapa = construirMapaTokens(alumnos, grupos)
-          const { alumno, grupo } = resolverTokens(r.input, mapa)
-          if (r.accion === 'consultar') {
-            setFase({ paso: 'respuesta', texto: await responderConsulta(r.input, alumno) })
-            return
+    try {
+      if (config.apiKey) {
+        try {
+          const r = await interpretarConApi(texto, alumnos, grupos, {
+            apiKey: config.apiKey,
+            modelo: config.modeloAgente,
+          })
+          if (r) {
+            const mapa = construirMapaTokens(alumnos, grupos)
+            const { alumno, grupo } = resolverTokens(r.input, mapa)
+            if (r.accion === 'consultar') {
+              setFase({ paso: 'respuesta', texto: await responderConsulta(r.input, alumno) })
+              return
+            }
+            const resuelta = construirAccionDesdeApi(r.accion, r.input, alumno, grupo)
+            if (resuelta) {
+              setFase({ paso: 'confirmar', accion: resuelta, textoOriginal: texto })
+              return
+            }
           }
-          const resuelta = construirAccionDesdeApi(r.accion, r.input, alumno, grupo)
-          if (resuelta) {
-            setFase({ paso: 'confirmar', accion: resuelta, textoOriginal: texto })
-            return
-          }
+        } catch {
+          // Sin red o fallo de la API: se cae al parser local (§6), avisando
+          // de la degradación en vez de fallar en silencio.
+          degradadoALocal = true
         }
-      } catch {
-        // Sin red o fallo de la API: se cae al parser local (§6).
       }
-    }
 
-    const local: ResultadoInterpretar = interpretarLocal(texto, alumnos, buscarAlumnoEnTexto)
-    if (local.tipo === 'ambiguo') {
-      setFase({ paso: 'ambiguo', texto, candidatos: local.candidatos })
-    } else if (local.tipo === 'accion') {
-      setFase({ paso: 'confirmar', accion: local.accion, textoOriginal: texto })
-    } else {
-      setFase({ paso: 'dictado', texto, error: 'No he entendido la acción. Prueba a ser más concreto.' })
+      const local: ResultadoInterpretar = interpretarLocal(texto, alumnos, buscarAlumnoEnTexto)
+      if (local.tipo === 'ambiguo') {
+        setFase({ paso: 'ambiguo', texto, candidatos: local.candidatos })
+      } else if (local.tipo === 'accion') {
+        setFase({ paso: 'confirmar', accion: local.accion, textoOriginal: texto })
+        if (degradadoALocal) {
+          mostrarAviso('Sin conexión con la API: interpretado con el reconocimiento local.')
+        }
+      } else {
+        setFase({
+          paso: 'dictado',
+          texto,
+          error: degradadoALocal
+            ? 'Sin conexión con la API. El reconocimiento local no ha entendido la acción.'
+            : 'No he entendido la acción. Prueba a ser más concreto.',
+        })
+      }
+    } finally {
+      setProcesando(false)
     }
   }
 
@@ -114,8 +135,9 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
   }
 
   async function confirmar() {
-    if (fase.paso !== 'confirmar') return
+    if (fase.paso !== 'confirmar' || procesando) return
     const { accion, textoOriginal } = fase
+    setProcesando(true)
     try {
       const deshacer = await ejecutarAccion(accion)
       const logId = await registrarEnLog(textoOriginal, accion)
@@ -124,6 +146,8 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
       mostrarAviso(accion.resumen, deshacer)
     } catch (e) {
       setFase({ paso: 'dictado', texto: textoOriginal, error: e instanceof Error ? e.message : 'No se pudo aplicar.' })
+    } finally {
+      setProcesando(false)
     }
   }
 
@@ -136,9 +160,16 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
             value={fase.texto}
             onChange={(e) => setFase({ paso: 'dictado', texto: e.target.value })}
             placeholder="Ana ha ayudado a un compañero, Luis sin chándal…"
+            aria-label="Dictado para el agente de voz"
+            aria-invalid={!!fase.error}
+            aria-describedby={fase.error ? 'agente-error' : undefined}
             autoFocus
           />
-          {fase.error && <p className="text-sm font-semibold text-acento">{fase.error}</p>}
+          {fase.error && (
+            <p id="agente-error" role="alert" className="text-sm font-semibold text-acento">
+              {fase.error}
+            </p>
+          )}
           {!config.apiKey && (
             <p className="text-xs texto-suave">
               Sin API key configurada: se usa el reconocimiento local (observación, asistencia,
@@ -148,9 +179,9 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
           <button
             className="btn-primario w-full"
             onClick={() => void procesar(fase.texto)}
-            disabled={!fase.texto.trim()}
+            disabled={!fase.texto.trim() || procesando}
           >
-            Interpretar
+            {procesando ? 'Interpretando…' : 'Interpretar'}
           </button>
         </div>
       )}
@@ -182,16 +213,17 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
             <button
               className="btn-suave"
               onClick={() => setFase({ paso: 'dictado', texto: fase.textoOriginal })}
+              disabled={procesando}
             >
               <Pencil size={18} aria-hidden />
               Editar
             </button>
-            <button className="btn-primario" onClick={() => void confirmar()}>
+            <button className="btn-primario" onClick={() => void confirmar()} disabled={procesando}>
               <Check size={18} aria-hidden />
-              Confirmar
+              {procesando ? 'Aplicando…' : 'Confirmar'}
             </button>
           </div>
-          <button className="btn w-full text-acento" onClick={cerrar}>
+          <button className="btn-peligro w-full" onClick={cerrar} disabled={procesando}>
             <X size={18} aria-hidden />
             Cancelar
           </button>

@@ -88,6 +88,7 @@ export function HojaObservacion({
                 aria-pressed={signo === valor}
                 className={
                   'flex min-h-tap flex-col items-center justify-center gap-1 rounded-xl border-2 text-xs font-bold transition ' +
+                  'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                   (signo === valor
                     ? 'border-primario bg-agua-claro dark:bg-noche-elevada'
                     : 'border-borde dark:border-noche-borde')

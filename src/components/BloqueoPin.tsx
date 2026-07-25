@@ -1,5 +1,5 @@
 import { Delete, Lock } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { forwardRef, useEffect, useId, useRef, useState } from 'react'
 import { comprobarPin } from '../db/pin'
 import { useCapaAbierta } from '../lib/capas'
 import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN } from '../lib/pin'
@@ -14,6 +14,15 @@ export function BloqueoPin({ onDesbloqueo }: { onDesbloqueo: () => void }) {
   const [error, setError] = useState(false)
   const [comprobando, setComprobando] = useState(false)
   useCapaAbierta(true)
+  const idTitulo = useId()
+  const refPrimeraTecla = useRef<HTMLButtonElement>(null)
+
+  // Foco inicial: no hay nada detrás que se pueda usar, pero un lector de
+  // pantalla que arranca en <body> no sabe que la app está bloqueada hasta
+  // que el foco entra aquí.
+  useEffect(() => {
+    refPrimeraTecla.current?.focus()
+  }, [])
 
   useEffect(() => {
     if (pin.length < LONGITUD_MIN_PIN) return
@@ -55,13 +64,22 @@ export function BloqueoPin({ onDesbloqueo }: { onDesbloqueo: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-bloqueo flex flex-col items-center justify-center gap-8 bg-primario px-6 text-white dark:bg-primario-oscuro">
+    <div
+      className="fixed inset-0 z-bloqueo flex flex-col items-center justify-center gap-8 bg-primario px-6 text-white dark:bg-primario-oscuro"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={idTitulo}
+    >
       <div className="flex flex-col items-center gap-2">
         <Lock size={32} aria-hidden />
-        <h1 className="text-xl font-bold">Cuaderno bloqueado</h1>
-        <p className={'text-sm text-agua transition-opacity ' + (error ? 'opacity-100' : 'opacity-0')}>
-          PIN incorrecto. Inténtalo de nuevo.
-        </p>
+        <h1 id={idTitulo} className="text-xl font-bold">
+          Cuaderno bloqueado
+        </h1>
+        {/* Montado solo mientras hay error: con opacidad seguía en el árbol
+            de accesibilidad y el lector lo anunciaba aunque fuera invisible. */}
+        <div className="min-h-[1.25rem] text-sm text-agua">
+          {error && <p role="alert">PIN incorrecto. Inténtalo de nuevo.</p>}
+        </div>
       </div>
 
       <div className="flex gap-3" aria-live="polite">
@@ -77,8 +95,8 @@ export function BloqueoPin({ onDesbloqueo }: { onDesbloqueo: () => void }) {
       </div>
 
       <div className={'grid grid-cols-3 gap-3 ' + (comprobando ? 'pointer-events-none opacity-60' : '')}>
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-          <TeclaPin key={d} onClick={() => pulsar(d)}>
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d, i) => (
+          <TeclaPin key={d} ref={i === 0 ? refPrimeraTecla : undefined} onClick={() => pulsar(d)}>
             {d}
           </TeclaPin>
         ))}
@@ -92,22 +110,19 @@ export function BloqueoPin({ onDesbloqueo }: { onDesbloqueo: () => void }) {
   )
 }
 
-function TeclaPin({
-  children,
-  onClick,
-  etiqueta,
-}: {
-  children: React.ReactNode
-  onClick: () => void
-  etiqueta?: string
-}) {
+const TeclaPin = forwardRef<
+  HTMLButtonElement,
+  { children: React.ReactNode; onClick: () => void; etiqueta?: string }
+>(function TeclaPin({ children, onClick, etiqueta }, ref) {
   return (
     <button
+      ref={ref}
       onClick={onClick}
       aria-label={etiqueta}
-      className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-semibold active:bg-white/15"
+      className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-semibold
+                 active:bg-white/15 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/60"
     >
       {children}
     </button>
   )
-}
+})

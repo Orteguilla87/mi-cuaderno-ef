@@ -3,6 +3,7 @@ import { Plus, Settings2, Shuffle, Table2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../components/Celda'
+import { EstadoVacio } from '../components/EstadoVacio'
 import { HojaColumna } from '../components/HojaColumna'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import {
@@ -108,22 +109,32 @@ export function Cuaderno() {
     else setEvaluando({ columna, indice })
   }
 
-  if (!grupos) return null
+  if (!grupos) {
+    return (
+      <>
+        <Cabecera titulo="Cuaderno" />
+        <div className="space-y-2 p-4">
+          <div className="h-10 animate-pulse rounded-xl bg-agua-claro dark:bg-noche-elevada" />
+          <div className="h-64 animate-pulse rounded-xl2 bg-agua-claro dark:bg-noche-elevada" />
+        </div>
+      </>
+    )
+  }
   if (grupos.length === 0) {
     return (
       <>
         <Cabecera titulo="Cuaderno" />
         <div className="p-4">
-          <div className="tarjeta text-center">
-            <Table2 className="mx-auto text-tinta-tenue" size={32} aria-hidden />
-            <p className="mt-2 text-base font-semibold">Todavía no hay grupos</p>
-            <p className="mt-1 text-sm texto-suave">
-              El cuaderno se organiza por grupo y trimestre.
-            </p>
-            <button className="btn-primario mt-4 w-full" onClick={() => navegar('/grupos')}>
-              Ir a Grupos
-            </button>
-          </div>
+          <EstadoVacio
+            Icono={Table2}
+            titulo="Todavía no hay grupos"
+            descripcion="El cuaderno se organiza por grupo y trimestre."
+            accion={
+              <button className="btn-primario w-full" onClick={() => navegar('/grupos')}>
+                Ir a Grupos
+              </button>
+            }
+          />
         </div>
       </>
     )
@@ -205,30 +216,31 @@ export function Cuaderno() {
 
       {alumnos?.length === 0 ? (
         <div className="p-4">
-          <div className="tarjeta text-center">
-            <p className="text-base font-semibold">{grupo?.nombre} no tiene alumnado</p>
-            <button
-              className="btn-primario mt-4 w-full"
-              onClick={() => navegar(`/grupos/${idEfectivo}`)}
-            >
-              Importar listado
-            </button>
-          </div>
+          <EstadoVacio
+            titulo={`${grupo?.nombre} no tiene alumnado`}
+            accion={
+              <button
+                className="btn-primario w-full"
+                onClick={() => navegar(`/grupos/${idEfectivo}`)}
+              >
+                Importar listado
+              </button>
+            }
+          />
         </div>
       ) : visibles.length === 0 ? (
         <div className="p-4">
-          <div className="tarjeta text-center">
-            <Table2 className="mx-auto text-tinta-tenue" size={32} aria-hidden />
-            <p className="mt-2 text-base font-semibold">Sin columnas en este trimestre</p>
-            <p className="mt-1 text-sm texto-suave">
-              Añade la primera: número, positivos y negativos, caritas, lista de control, rúbrica o
-              texto.
-            </p>
-            <button className="btn-primario mt-4 w-full" onClick={() => setConfigurando('nueva')}>
-              <Plus size={18} aria-hidden />
-              Nueva columna
-            </button>
-          </div>
+          <EstadoVacio
+            Icono={Table2}
+            titulo="Sin columnas en este trimestre"
+            descripcion="Añade la primera: número, positivos y negativos, caritas, lista de control, rúbrica o texto."
+            accion={
+              <button className="btn-primario w-full" onClick={() => setConfigurando('nueva')}>
+                <Plus size={18} aria-hidden />
+                Nueva columna
+              </button>
+            }
+          />
         </div>
       ) : (
         <Rejilla
@@ -317,7 +329,7 @@ function CabeceraColumna({
   return (
     <th
       scope="col"
-      className="min-w-[76px] border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada"
+      className="min-w-[76px] border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada lg:sticky lg:top-0 lg:z-10"
     >
       <button
         className="flex h-full w-full flex-col items-center gap-0.5 px-2 py-2"
@@ -330,7 +342,7 @@ function CabeceraColumna({
         }}
         title={columna.titulo}
       >
-        <span className="line-clamp-2 text-[11px] font-bold leading-tight text-primario-oscuro dark:text-agua">
+        <span className="line-clamp-2 text-xs font-bold leading-tight text-primario-oscuro dark:text-agua">
           {columna.titulo}
         </span>
         <Settings2 size={12} className="text-tinta-tenue" aria-hidden />
@@ -372,12 +384,16 @@ function Rejilla({
   ) => Promise<() => Promise<void>>
 }) {
   return (
-    <div className="carril-fab-derecha overflow-x-auto">
+    // En escritorio la rejilla acota su propia altura y hace scroll interno:
+    // así la cabecera de columnas puede quedarse fija (`lg:sticky lg:top-0`)
+    // sin tener que coordinar su posición con la altura variable de Cabecera.
+    <div className="carril-fab-derecha overflow-x-auto lg:max-h-[70vh] lg:overflow-y-auto">
       <table className="w-max border-separate border-spacing-0">
+        <caption className="sr-only">Cuaderno de notas: alumnos por columnas de evaluación</caption>
         <thead>
           <tr>
             <th
-              className="sticky left-0 z-20 min-w-[140px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
+              className="sticky left-0 z-20 min-w-[140px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua lg:top-0"
               scope="col"
             >
               Alumno

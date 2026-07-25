@@ -130,7 +130,8 @@ function FilaAlumno({ alumno }: { alumno: Alumno }) {
             aria-pressed={alumno.nivelMotriz === n}
             aria-label={`Nivel motriz ${n}`}
             className={
-              'flex h-11 flex-1 items-center justify-center rounded-lg text-sm font-bold transition ' +
+              'flex h-11 flex-1 items-center justify-center rounded-xl text-sm font-bold transition ' +
+              'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
               (alumno.nivelMotriz === n
                 ? 'bg-primario text-white'
                 : 'border border-borde text-tinta-suave dark:border-noche-borde')

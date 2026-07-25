@@ -1,7 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { Users } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { db, nuevoId } from '../db/db'
 import { leerCursoActivo, obtenerCursoActivo } from '../db/curso'
@@ -49,15 +51,16 @@ export function Grupos() {
 
       <div className="p-4">
         {grupos?.length === 0 && (
-          <div className="tarjeta text-center">
-            <p className="text-base font-semibold">Todavía no hay grupos</p>
-            <p className="mt-1 text-sm texto-suave">
-              Crea tu primer grupo y pega el listado de alumnado.
-            </p>
-            <button className="btn-primario mt-4 w-full" onClick={() => setAbierta(true)}>
-              Crear grupo
-            </button>
-          </div>
+          <EstadoVacio
+            Icono={Users}
+            titulo="Todavía no hay grupos"
+            descripcion="Crea tu primer grupo y pega el listado de alumnado."
+            accion={
+              <button className="btn-primario w-full" onClick={() => setAbierta(true)}>
+                Crear grupo
+              </button>
+            }
+          />
         )}
 
         <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
@@ -243,9 +246,9 @@ export function EditorHorario({
           {horario.map((h, i) => (
             <li
               key={`${h.diaSemana}-${h.horaInicio}-${i}`}
-              className="flex items-center gap-2 rounded-lg border border-borde bg-white px-3 py-2 text-sm dark:border-noche-borde dark:bg-noche-superficie"
+              className="flex items-center gap-2 rounded-xl border border-borde bg-white px-3 py-2 text-sm dark:border-noche-borde dark:bg-noche-superficie"
             >
-              <span className="flex-1 font-semibold tabular-nums">
+              <span className="cifra flex-1 font-semibold">
                 {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'][h.diaSemana - 1]} ·{' '}
                 {h.horaInicio}–{h.horaFin}
               </span>
@@ -276,7 +279,7 @@ export function EditorHorario({
         </select>
         <input
           type="time"
-          className="campo flex-1 tabular-nums"
+          className="campo cifra flex-1"
           value={horaInicio}
           onChange={(e) => {
             const v = e.target.value
@@ -289,7 +292,7 @@ export function EditorHorario({
         />
         <input
           type="time"
-          className="campo flex-1 tabular-nums"
+          className="campo cifra flex-1"
           value={horaFin}
           onChange={(e) => setHoraFin(e.target.value)}
           aria-label="Hora de fin"

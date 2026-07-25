@@ -32,7 +32,8 @@ export function BottomNav({ ruta }: { ruta: string }) {
               <button
                 onClick={() => navegar(r)}
                 aria-current={activa ? 'page' : undefined}
-                className="flex min-h-tap w-full flex-col items-center gap-1 py-1.5"
+                className="flex min-h-tap w-full flex-col items-center gap-1 py-1.5
+                           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 focus-visible:ring-inset"
               >
                 <span
                   className={
@@ -46,7 +47,7 @@ export function BottomNav({ ruta }: { ruta: string }) {
                 </span>
                 <span
                   className={
-                    'text-[11px] font-bold leading-tight ' +
+                    'text-xs font-bold leading-tight ' +
                     (activa ? 'text-primario dark:text-agua' : 'texto-suave')
                   }
                 >

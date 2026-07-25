@@ -41,9 +41,14 @@ function Carita({ boca, className }: { boca: string; className?: string }) {
 
 type Cambios = Parameters<typeof guardarValor>[2]
 
-/** Clase base de toda celda pulsable de la rejilla: altura y centrado comunes. */
+/**
+ * Clase base de toda celda pulsable de la rejilla: altura y centrado comunes.
+ * El anillo de foco va `ring-inset`: la celda vive pegada a sus vecinas sin
+ * espacio para un anillo exterior sin recortarse contra la siguiente.
+ */
 const CLASE_CELDA =
-  'flex h-14 w-full items-center justify-center text-sm font-bold transition active:scale-95'
+  'flex h-14 w-full items-center justify-center text-sm font-bold transition active:scale-95 ' +
+  'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-primario/40'
 
 /**
  * Celda de caritas con selector, en vez de ciclar por toque.
@@ -97,6 +102,15 @@ function SelectorCaritas({
     return () => window.removeEventListener('keydown', alPulsarTecla)
   }, [abierto])
 
+  // Foco inicial dentro del panel y restauración al anclaje al cerrar: es un
+  // diálogo modal (aria-modal), así que debe comportarse como tal con teclado.
+  useEffect(() => {
+    if (!abierto) return
+    const primera = panelRef.current?.querySelector<HTMLElement>('button')
+    primera?.focus()
+    return () => anclaRef.current?.focus()
+  }, [abierto])
+
   function elegir(i: number | undefined) {
     onElegir(i)
     setAbierto(false)
@@ -133,6 +147,7 @@ function SelectorCaritas({
           <div
             ref={panelRef}
             role="dialog"
+            aria-modal="true"
             aria-label={etiquetaCelda}
             style={{
               top: coord?.top ?? 0,
@@ -149,14 +164,15 @@ function SelectorCaritas({
                   onClick={() => elegir(i)}
                   aria-pressed={activo}
                   className={
-                    'opcion-carita flex min-h-tap min-w-tap flex-col items-center gap-1 rounded-lg px-2 py-1.5 transition active:scale-95 ' +
+                    'opcion-carita flex min-h-tap min-w-tap flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition active:scale-95 ' +
+                    'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                     (activo
                       ? 'bg-agua-claro ring-2 ring-primario dark:bg-noche-elevada'
                       : 'hover:bg-agua-claro dark:hover:bg-noche-elevada')
                   }
                 >
                   <Carita boca={c.boca} className={c.color} />
-                  <span className="text-[10px] font-semibold leading-tight texto-suave">
+                  <span className="text-xs font-semibold leading-tight texto-suave">
                     {c.etiqueta}
                   </span>
                 </button>
@@ -164,12 +180,13 @@ function SelectorCaritas({
             })}
             <button
               onClick={() => elegir(undefined)}
-              className="opcion-carita flex min-h-tap min-w-tap flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-tinta-tenue transition active:scale-95 hover:bg-agua-claro dark:hover:bg-noche-elevada"
+              className="opcion-carita flex min-h-tap min-w-tap flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-tinta-tenue transition active:scale-95
+                         hover:bg-agua-claro focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 dark:hover:bg-noche-elevada"
             >
               <span className="flex h-[26px] w-[26px] items-center justify-center">
                 <X size={20} aria-hidden />
               </span>
-              <span className="text-[10px] font-semibold leading-tight">Sin valorar</span>
+              <span className="text-xs font-semibold leading-tight">Sin valorar</span>
             </button>
           </div>
         </>
@@ -242,7 +259,8 @@ export function Celda({
       return (
         <div className="flex h-14 w-full">
           <button
-            className="flex flex-1 flex-col items-center justify-center bg-acento/10 text-acento active:bg-acento/25"
+            className="flex flex-1 flex-col items-center justify-center bg-acento/10 text-acento transition active:bg-acento/25
+                       focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-acento/40"
             onClick={() => void onCambiar({ negativos: neg + 1 })}
             aria-label={`Sumar negativo a ${nombre} en ${columna.titulo}`}
           >
@@ -250,7 +268,8 @@ export function Celda({
             <span className="cifra text-sm font-bold">{neg || ''}</span>
           </button>
           <button
-            className="flex flex-1 flex-col items-center justify-center bg-lima/20 text-lima-oscuro active:bg-lima/40 dark:text-lima"
+            className="flex flex-1 flex-col items-center justify-center bg-lima/20 text-lima-oscuro transition active:bg-lima/40
+                       focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-primario/40 dark:text-lima"
             onClick={() => void onCambiar({ positivos: pos + 1 })}
             aria-label={`Sumar positivo a ${nombre} en ${columna.titulo}`}
           >
@@ -304,7 +323,7 @@ export function Celda({
           onClick={onAbrirEditor}
           aria-label={`${nombre}, ${columna.titulo}: ${valor?.texto || 'sin anotación'}`}
         >
-          <span className="line-clamp-2 text-[11px] font-normal leading-tight">
+          <span className="line-clamp-2 text-xs font-normal leading-tight">
             {valor?.texto || '·'}
           </span>
         </button>
@@ -324,7 +343,7 @@ export function Celda({
         >
           <span className="cifra text-lg">{n == null ? '·' : n.toFixed(1)}</span>
           {parcial && (
-            <span className="cifra text-[9px] font-semibold texto-suave">
+            <span className="cifra text-xs font-semibold texto-suave">
               {calculado!.contadas}/{calculado!.total}
             </span>
           )}
@@ -354,11 +373,22 @@ export function EditorColumna({
   onIndice: (i: number) => void
   onCerrar: () => void
 }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
   const alumno = alumnos[indice]
   if (!alumno) return null
 
+  const nombre = alumno.alias || alumno.nombre
   const valor = valores.get(`${columna.id}|${alumno.id}`)
+  // El texto se autoguarda a cada pulsación (más abajo): un aviso por letra
+  // sería ruido. La nota numérica es lo contrario — se toca deprisa y avanza
+  // sola al siguiente alumno, así que es donde más falta hace poder deshacer
+  // (guardarValor ya calcula esa función; antes se descartaba con `void`).
   const guardar = (cambios: Cambios) => void guardarValor(columna.id, alumno.id, cambios)
+  const guardarConDeshacer = (cambios: Cambios, texto: string) => {
+    void guardarValor(columna.id, alumno.id, cambios).then((deshacer) => {
+      mostrarAviso(texto, deshacer)
+    })
+  }
 
   const avanzar = () => {
     if (indice + 1 < alumnos.length) onIndice(indice + 1)
@@ -400,10 +430,10 @@ export function EditorColumna({
             escala={columna.escala ?? { min: 0, max: 10, decimales: 1 }}
             valor={valor?.numero}
             onValor={(numero) => {
-              guardar({ numero })
+              guardarConDeshacer({ numero }, `${nombre}: ${numero}`)
               avanzar()
             }}
-            onLimpiar={() => guardar({ numero: undefined })}
+            onLimpiar={() => guardarConDeshacer({ numero: undefined }, `${nombre}: nota borrada`)}
           />
         )}
 
@@ -414,6 +444,7 @@ export function EditorColumna({
               value={valor?.texto ?? ''}
               onChange={(e) => guardar({ texto: e.target.value })}
               placeholder="Anotación para este alumno"
+              aria-label={`${nombre}, ${columna.titulo}`}
               autoFocus
             />
             {/* El texto ya se guarda en cada pulsación; este botón solo salta al
@@ -476,15 +507,20 @@ export function TablaRubrica({
     <Hoja abierta titulo={columna.titulo} onCerrar={onCerrar}>
       <div className="-mx-4 overflow-x-auto px-4">
         <table className="w-max border-separate border-spacing-0">
+          <caption className="sr-only">Rúbrica: alumnos por criterio</caption>
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 min-w-[120px] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua">
+              <th
+                scope="col"
+                className="sticky left-0 z-10 min-w-[120px] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
+              >
                 Alumno
               </th>
               {rubrica.criterios.map((c) => (
                 <th
                   key={c.id}
-                  className="min-w-[72px] border-b-2 border-r border-borde bg-agua-claro px-1 py-2 text-[11px] font-bold leading-tight text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
+                  scope="col"
+                  className="min-w-[72px] border-b-2 border-r border-borde bg-agua-claro px-1 py-2 text-xs font-bold leading-tight text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
                   title={c.titulo}
                 >
                   {c.titulo}
@@ -600,7 +636,12 @@ function TecladoNumerico({
   }
 
   return (
-    <div ref={contenedorRef} onKeyDown={alPulsarTecla} tabIndex={0} className="outline-none">
+    <div
+      ref={contenedorRef}
+      onKeyDown={alPulsarTecla}
+      tabIndex={0}
+      className="rounded-xl2 outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
+    >
       <div className="mb-2 flex items-center justify-center rounded-xl border-2 border-borde py-3 dark:border-noche-borde">
         <span className="cifra text-3xl font-bold">{mostrado || '—'}</span>
         <span className="ml-2 text-sm texto-suave">
@@ -749,14 +790,15 @@ export function HojaAplicarGrupo({
                   onClick={() => setCarita(i)}
                   aria-pressed={carita === i}
                   className={
-                    'flex min-h-tap flex-col items-center gap-1 rounded-lg px-3 py-1.5 transition ' +
+                    'flex min-h-tap flex-col items-center gap-1 rounded-xl px-3 py-1.5 transition ' +
+                    'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                     (carita === i
                       ? 'bg-agua-claro ring-2 ring-primario dark:bg-noche-elevada'
                       : 'hover:bg-agua-claro dark:hover:bg-noche-elevada')
                   }
                 >
                   <Carita boca={c.boca} className={c.color} />
-                  <span className="text-[10px] font-semibold texto-suave">{c.etiqueta}</span>
+                  <span className="text-xs font-semibold texto-suave">{c.etiqueta}</span>
                 </button>
               ))}
             </div>

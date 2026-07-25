@@ -111,13 +111,14 @@ export function CursoEscolarAjustes() {
             {festivos.map((f) => (
               <li
                 key={f}
-                className="flex items-center gap-2 rounded-lg border border-borde bg-superficie px-3 py-2 text-sm dark:border-noche-borde dark:bg-noche-superficie"
+                className="flex items-center gap-2 rounded-xl border border-borde bg-superficie px-3 py-2 text-sm dark:border-noche-borde dark:bg-noche-superficie"
               >
                 <CalendarX2 size={16} className="shrink-0 text-aviso-oscuro" aria-hidden />
                 <span className="cifra flex-1 truncate">{formatoLargo(f)}</span>
                 <button
                   onClick={() => void quitarDia(f)}
-                  className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+                  className="flex min-h-tap min-w-tap items-center justify-center rounded-xl text-tinta-tenue
+                             focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
                   aria-label={`Quitar ${f}`}
                 >
                   <Trash2 size={16} aria-hidden />

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
+import { TituloSeccion } from '../components/TituloSeccion'
 import { db } from '../db/db'
 import {
   crearSesion,
@@ -139,12 +140,11 @@ function VistaSemana({
         const fecha = sumarDias(lunes, d - 1)
         return (
           <section key={d}>
-            <h2 className="text-lg font-bold">
+            <TituloSeccion>
               {NOMBRES_DIA[d - 1]}{' '}
               <span className="cifra text-sm font-normal texto-suave">{formatoCorto(fecha)}</span>
               {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
-            </h2>
-            <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+            </TituloSeccion>
 
             <ul className="space-y-2">
               {delDia.map((h) => (

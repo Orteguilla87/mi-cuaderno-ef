@@ -2,6 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { HojaConfirmar } from '../components/HojaConfirmar'
+import { TituloSeccion } from '../components/TituloSeccion'
 import { resumirAsistencia } from '../db/asistencia'
 import { db } from '../db/db'
 import { navegar } from '../lib/router'
@@ -10,6 +12,7 @@ import { useUI } from '../store/ui'
 export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [editando, setEditando] = useState(false)
+  const [confirmandoBaja, setConfirmandoBaja] = useState(false)
 
   const alumno = useLiveQuery(() => db.alumnos.get(alumnoId), [alumnoId])
   const grupo = useLiveQuery(
@@ -43,7 +46,6 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
 
   async function darDeBaja() {
     if (!alumno) return
-    if (!window.confirm(`¿Dar de baja a ${alumno.nombre}? Se conserva su historial.`)) return
     await db.alumnos.update(alumno.id, { activo: false })
     navegar(`/grupos/${alumno.grupoId}`)
     mostrarAviso(`${alumno.nombre} dado de baja`, async () => {
@@ -71,34 +73,46 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
         }
       />
 
-      <div className="space-y-4 p-4">
-        {editando && <FormularioAlumno alumnoId={alumnoId} />}
+      <div className="space-y-4 p-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="space-y-4">
+          {editando && <FormularioAlumno alumnoId={alumnoId} />}
 
-        <div className="grid grid-cols-4 gap-2">
-          <Dato
-            valor={resumen.total === 0 ? '—' : `${resumen.pctAsistencia}%`}
-            etiqueta="Asistencia"
-          />
-          <Dato valor={resumen.total === 0 ? '—' : String(resumen.faltas)} etiqueta="Faltas" />
-          <Dato
-            valor={resumen.total === 0 ? '—' : String(resumen.justificadas)}
-            etiqueta="Justif."
-          />
-          <Dato
-            valor={resumen.total === 0 ? '—' : String(resumen.rachaChandal)}
-            etiqueta="Racha chándal"
-          />
+          <div className="grid grid-cols-4 gap-2">
+            <Dato
+              valor={resumen.total === 0 ? '—' : `${resumen.pctAsistencia}%`}
+              etiqueta="Asistencia"
+            />
+            <Dato valor={resumen.total === 0 ? '—' : String(resumen.faltas)} etiqueta="Faltas" />
+            <Dato
+              valor={resumen.total === 0 ? '—' : String(resumen.justificadas)}
+              etiqueta="Justif."
+            />
+            <Dato
+              valor={resumen.total === 0 ? '—' : String(resumen.rachaChandal)}
+              etiqueta="Racha chándal"
+            />
+          </div>
+
+          {resumen.total === 0 && (
+            <p className="text-center text-sm texto-suave">
+              Sin registros de asistencia todavía.
+            </p>
+          )}
+
+          <section>
+            <TituloSeccion>Evolución de notas</TituloSeccion>
+            <p className="text-sm texto-suave">
+              Disponible cuando se implante la evaluación (fases 4 y 5).
+            </p>
+          </section>
+
+          <button className="btn-peligro w-full" onClick={() => setConfirmandoBaja(true)}>
+            Dar de baja
+          </button>
         </div>
 
-        {resumen.total === 0 && (
-          <p className="text-center text-sm texto-suave">
-            Sin registros de asistencia todavía.
-          </p>
-        )}
-
         <section>
-          <h2 className="text-lg font-bold">Últimas observaciones</h2>
-          <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+          <TituloSeccion>Últimas observaciones</TituloSeccion>
           {observaciones?.length ? (
             <ul className="space-y-2">
               {observaciones.map((o) => (
@@ -118,19 +132,16 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
             </p>
           )}
         </section>
-
-        <section>
-          <h2 className="text-lg font-bold">Evolución de notas</h2>
-          <div className="linea-pista mb-2 mt-1.5" aria-hidden />
-          <p className="text-sm texto-suave">
-            Disponible cuando se implante la evaluación (fases 4 y 5).
-          </p>
-        </section>
-
-        <button className="btn w-full text-acento" onClick={darDeBaja}>
-          Dar de baja
-        </button>
       </div>
+
+      <HojaConfirmar
+        abierta={confirmandoBaja}
+        titulo="Dar de baja"
+        descripcion={`¿Dar de baja a ${alumno.nombre}? Se conserva su historial.`}
+        textoConfirmar="Dar de baja"
+        onConfirmar={darDeBaja}
+        onCerrar={() => setConfirmandoBaja(false)}
+      />
     </>
   )
 }
@@ -195,7 +206,7 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
         <label className="etiqueta" htmlFor="f-apoyos">
           Apoyos
         </label>
-        <div className="mb-2 rounded-lg border border-aviso/40 bg-aviso-claro p-2 text-xs text-aviso-oscuro dark:border-aviso/50 dark:bg-noche-elevada dark:text-aviso-claro">
+        <div className="aviso mb-2 text-xs">
           No escribas diagnósticos: solo pautas prácticas. Este campo nunca aparece en informes
           exportables; solo viaja en el backup cifrado.
         </div>

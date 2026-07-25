@@ -3,6 +3,7 @@ import { ClipboardPaste, Copy, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
+import { TituloSeccion } from '../components/TituloSeccion'
 import { crearRubrica, duplicarRubrica } from '../db/cuaderno'
 import { db, nuevoId } from '../db/db'
 import type { CriterioRubrica, NivelRubrica, Rubrica } from '../db/types'
@@ -215,9 +216,7 @@ function HojaImportarTabla({
         </div>
 
         {error && (
-          <div className="rounded-lg border border-acento/40 bg-acento/10 p-3 text-sm text-acento">
-            {error}
-          </div>
+          <div className="aviso-fuerte">{error}</div>
         )}
 
         {previa && (
@@ -332,8 +331,7 @@ export function HojaEditarRubrica({
 
           {/* ——— Niveles: comunes a todos los criterios, así que van una vez ——— */}
           <section>
-            <h3 className="text-base font-bold">Niveles de logro</h3>
-            <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+            <TituloSeccion>Niveles de logro</TituloSeccion>
             <p className="mb-2 text-xs texto-suave">
               El valor de cada nivel es su nota (2, 4, 6, 8, 10…): es lo que se ve siempre al
               evaluar y lo que se usa para promediar.
@@ -385,8 +383,7 @@ export function HojaEditarRubrica({
 
           {/* ——— Criterios: un bloque por criterio, apilados ——— */}
           <section>
-            <h3 className="text-base font-bold">Criterios</h3>
-            <div className="linea-pista mb-3 mt-1.5" aria-hidden />
+            <TituloSeccion>Criterios</TituloSeccion>
 
             <div className="space-y-3">
               {rubrica.criterios.map((c, i) => (

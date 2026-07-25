@@ -11,10 +11,15 @@ export function NavLateral({ ruta }: { ruta: string }) {
   const raiz = ruta.split('/')[1] || 'hoy'
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-nav hidden w-60 flex-col border-r border-borde bg-superficie p-3 lg:flex dark:border-noche-borde dark:bg-noche-superficie">
-      <h1 className="px-2 pb-4 pt-1 text-xl font-bold tracking-tight text-primario dark:text-agua">
+    <nav
+      aria-label="Principal"
+      className="fixed inset-y-0 left-0 z-nav hidden w-60 flex-col border-r border-borde bg-superficie p-3 lg:flex dark:border-noche-borde dark:bg-noche-superficie"
+    >
+      {/* No es un h1: cada página ya trae el suyo (Cabecera.tsx). Dos h1 a la
+          vez rompen la jerarquía de encabezados en todo `lg:`. */}
+      <p className="px-2 pb-4 pt-1 text-xl font-bold tracking-tight text-primario dark:text-agua">
         Cuaderno EF
-      </h1>
+      </p>
 
       <ul className="space-y-1">
         {PESTANAS.map(({ ruta: r, etiqueta, Icono, incluye }) => {
@@ -40,7 +45,7 @@ export function NavLateral({ ruta }: { ruta: string }) {
           )
         })}
       </ul>
-    </aside>
+    </nav>
   )
 }
 
@@ -61,6 +66,8 @@ function ItemNav({
       aria-current={activa ? 'page' : undefined}
       className={
         'flex min-h-tap w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold transition ' +
+        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
+        'dark:focus-visible:ring-agua/50 ' +
         (activa
           ? 'bg-agua-claro text-primario dark:bg-primario dark:text-white'
           : 'texto-suave active:bg-agua-claro/60 dark:active:bg-noche-elevada')

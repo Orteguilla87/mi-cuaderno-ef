@@ -217,7 +217,7 @@ function DetalleJuego({ juego, onCerrar }: { juego: Juego; onCerrar: () => void 
       )}
 
       {juego.extra && (
-        <details className="rounded-lg border border-borde p-2 text-xs dark:border-noche-borde">
+        <details className="rounded-xl border border-borde p-2 text-xs dark:border-noche-borde">
           <summary className="cursor-pointer font-bold">Campos del origen</summary>
           <pre className="mt-2 overflow-x-auto whitespace-pre-wrap texto-suave">
             {JSON.stringify(juego.extra, null, 2)}
@@ -285,9 +285,7 @@ function HojaImportarJuegos({ abierta, onCerrar }: { abierta: boolean; onCerrar:
         </div>
 
         {error && (
-          <div className="rounded-lg border border-acento/40 bg-acento/10 p-3 text-sm text-acento">
-            {error}
-          </div>
+          <div className="aviso-fuerte">{error}</div>
         )}
 
         {previa && (

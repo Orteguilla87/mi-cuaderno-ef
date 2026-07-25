@@ -102,7 +102,7 @@ export function Infantil({ grupoId }: { grupoId: string }) {
           {NIVELES_INFANTIL.map((n) => (
             <span key={n.nivel} className="flex items-center gap-1.5">
               <span
-                className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${n.clase}`}
+                className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold ${n.clase}`}
               >
                 {n.corto}
               </span>
@@ -178,13 +178,16 @@ function RejillaInfantil({
   }
 
   return (
-    <div className="carril-fab-derecha overflow-x-auto">
+    <div className="carril-fab-derecha overflow-x-auto lg:max-h-[70vh] lg:overflow-y-auto">
       <table className="w-max border-separate border-spacing-0">
+        <caption className="sr-only">
+          Registro de criterios del Área I, momento {momento}
+        </caption>
         <thead>
           <tr>
             <th
               scope="col"
-              className="sticky left-0 z-20 min-w-[150px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
+              className="sticky left-0 z-20 min-w-[150px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua lg:top-0"
             >
               Alumno
             </th>
@@ -192,10 +195,10 @@ function RejillaInfantil({
               <th
                 key={c.id}
                 scope="col"
-                className="min-w-[64px] border-b-2 border-r border-borde bg-agua-claro px-1 py-2 dark:border-noche-borde dark:bg-noche-elevada"
+                className="min-w-[64px] border-b-2 border-r border-borde bg-agua-claro px-1 py-2 dark:border-noche-borde dark:bg-noche-elevada lg:sticky lg:top-0 lg:z-10"
                 title={c.texto}
               >
-                <span className="cifra block text-[11px] font-bold text-primario-oscuro dark:text-agua">
+                <span className="cifra block text-xs font-bold text-primario-oscuro dark:text-agua">
                   {c.codigo}
                 </span>
               </th>
@@ -314,16 +317,18 @@ function InformeAlumno({ alumno, criterios }: { alumno: Alumno; criterios: Crite
       .equals([alumno.id, 3])
       .first()
     if (existente) {
+      const comentarioAnterior = existente.comentario
       await db.informesInfantil.update(existente.id, { comentario: valor })
+      mostrarAviso('Informe guardado', async () => {
+        await db.informesInfantil.update(existente.id, { comentario: comentarioAnterior })
+      })
     } else {
-      await db.informesInfantil.add({
-        id: crypto.randomUUID(),
-        alumnoId: alumno.id,
-        trimestre: 3,
-        comentario: valor,
+      const id = crypto.randomUUID()
+      await db.informesInfantil.add({ id, alumnoId: alumno.id, trimestre: 3, comentario: valor })
+      mostrarAviso('Informe guardado', async () => {
+        await db.informesInfantil.delete(id)
       })
     }
-    mostrarAviso('Informe guardado')
   }
 
   // Resumen automático: cuántos criterios en cada nivel, por momento.
@@ -346,13 +351,25 @@ function InformeAlumno({ alumno, criterios }: { alumno: Alumno; criterios: Crite
           <h3 className="text-sm font-bold">Resumen automático</h3>
         </div>
         <table className="mt-2 w-full text-sm">
+          <caption className="sr-only">Resumen de registros por momento y nivel</caption>
           <thead>
             <tr className="cifra text-xs texto-suave">
-              <th className="text-left font-semibold">Momento</th>
-              <th className="font-semibold">I</th>
-              <th className="font-semibold">P</th>
-              <th className="font-semibold">C</th>
-              <th className="font-semibold">—</th>
+              <th scope="col" className="text-left font-semibold">
+                Momento
+              </th>
+              <th scope="col" className="font-semibold">
+                I
+              </th>
+              <th scope="col" className="font-semibold">
+                P
+              </th>
+              <th scope="col" className="font-semibold">
+                C
+              </th>
+              <th scope="col" className="font-semibold">
+                <span className="sr-only">Sin valorar</span>
+                <span aria-hidden>—</span>
+              </th>
             </tr>
           </thead>
           <tbody className="cifra text-center">

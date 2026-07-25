@@ -47,7 +47,7 @@ Identidad: herramienta profesional de un docente de Educación Física. Limpia, 
 - Fuente empaquetada en el bundle (una variable sans legible, p. ej. Inter local) o system stack; **jamás desde CDN**. Números tabulares (`tabular-nums`) en cuaderno, asistencia y notas.
 - Jerarquía: display 700 para títulos de pantalla; 600 para cabeceras de tarjeta; 400/500 cuerpo. Sentence case, español, verbos activos («Guardar cambios», no «Enviar»).
 - Firma visual: separador «doble línea de pista» (dos filetes finos en `--soft`) bajo los títulos de sección, como las líneas de un campo deportivo. Es el único adorno; todo lo demás, sobrio.
-- Tarjetas radio 12 px, sombras mínimas; chips de estado con icono + color de token.
+- Radios en 3 escalones, ningún valor suelto fuera de ellos: 12 px (`rounded-xl`) en controles — botón, campo, chip rectangular —; 20 px (`rounded-xl2`) en tarjetas, paneles y hojas; completo (`rounded-full`) en píldoras y avatares. Sombras mínimas; chips de estado con icono + color de token.
 - Targets táctiles ≥48 px; en «modo pista» (toggle) ≥64 px y contraste reforzado para sol directo.
 
 ## 4. MODELO DE DATOS (Dexie)

@@ -31,7 +31,8 @@ export function SorteoAlumno({ grupoId, onCerrar }: { grupoId: string; onCerrar:
     <div className="fixed inset-0 z-modal flex flex-col bg-primario-oscuro p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-white dark:bg-noche-fondo">
       <button
         onClick={onCerrar}
-        className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10"
+        className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 transition
+                   hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50"
         aria-label="Cerrar sorteo"
       >
         <X size={24} aria-hidden />
@@ -77,7 +78,8 @@ export function SorteoAlumno({ grupoId, onCerrar }: { grupoId: string; onCerrar:
           {estado?.agotado ? 'Reiniciar y seguir' : 'Sortear'}
         </button>
         <button
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-4 py-3 font-semibold"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-3 font-semibold transition
+                     hover:bg-white/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50"
           onClick={() => void reiniciar()}
         >
           <RotateCcw size={18} aria-hidden />

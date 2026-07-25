@@ -31,7 +31,8 @@ export function Pizarra({
     <div className="fixed inset-0 z-modal flex flex-col bg-primario-oscuro p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo">
       <button
         onClick={onCerrar}
-        className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
+        className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white
+                   focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50"
         aria-label="Cerrar modo pizarra"
       >
         <X size={24} aria-hidden />
@@ -44,7 +45,8 @@ export function Pizarra({
             <button
               key={i}
               onClick={() => revelar(i)}
-              className="flex flex-col rounded-2xl border-4 p-4 text-left transition"
+              className="flex flex-col rounded-xl2 border-4 p-4 text-left transition
+                         focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50"
               style={{ borderColor: e.color, backgroundColor: visible ? `${e.color}22` : undefined }}
             >
               <span className="text-2xl font-bold" style={{ color: e.color }}>

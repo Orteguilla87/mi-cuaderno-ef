@@ -11,6 +11,7 @@ import {
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
 import { leerAsistenciaGrupo } from '../db/asistencia'
 import { leerCursoActivo } from '../db/curso'
@@ -99,14 +100,15 @@ export function Hoy() {
           </span>
         }
         acciones={
-          <div className="flex rounded-lg border border-white/35 p-0.5">
+          <div className="flex rounded-xl border border-white/35 p-0.5">
             {(['dia', 'semana'] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setVista(v)}
                 aria-pressed={vista === v}
                 className={
-                  'rounded-md px-3 py-1 text-sm font-semibold ' +
+                  'rounded-xl px-3 py-1 text-sm font-semibold focus-visible:outline-none ' +
+                  'focus-visible:ring-4 focus-visible:ring-white/50 ' +
                   (vista === v ? 'bg-white text-primario' : 'text-white/90')
                 }
               >
@@ -146,10 +148,9 @@ export function Hoy() {
         ) : (
           <>
             <section>
-              <h2 className="text-lg font-bold">
+              <TituloSeccion>
                 {enCurso ? 'Ahora en clase' : siguiente ? 'Siguiente clase' : 'Jornada terminada'}
-              </h2>
-              <div className="linea-pista mb-3 mt-1.5" aria-hidden />
+              </TituloSeccion>
 
               {destacada ? (
                 <TarjetaClase clase={destacada} destacada enCurso={!!enCurso} />
@@ -161,8 +162,7 @@ export function Hoy() {
             </section>
 
             <section>
-              <h2 className="text-lg font-bold">Jornada completa</h2>
-              <div className="linea-pista mb-3 mt-1.5" aria-hidden />
+              <TituloSeccion>Jornada completa</TituloSeccion>
               <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
                 {clases?.map((c) => (
                   <li key={`${c.grupo.id}-${c.horaInicio}`}>
@@ -231,12 +231,11 @@ function VistaSemanaHoy({ hoy }: { hoy: string }) {
         const fecha = sumarDias(lunes, d - 1)
         return (
           <section key={d}>
-            <h2 className="text-lg font-bold">
+            <TituloSeccion>
               {NOMBRES_DIA[d - 1]}{' '}
               <span className="cifra text-sm font-normal texto-suave">{formatoCorto(fecha)}</span>
               {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
-            </h2>
-            <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+            </TituloSeccion>
             <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
               {delDia.map((h) => (
                 <li key={`${h.grupo.id}-${h.horaInicio}`}>

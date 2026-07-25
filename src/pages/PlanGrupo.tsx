@@ -3,6 +3,7 @@ import { CalendarPlus, Clipboard, ClipboardX, Clock, Copy, Trash2, Users } from 
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Hoja } from '../components/Hoja'
+import { HojaConfirmar } from '../components/HojaConfirmar'
 import { db } from '../db/db'
 import {
   copiarPlanificacion,
@@ -31,6 +32,7 @@ export function PlanGrupo() {
   const [grupoId, setGrupoId] = useState<string | null>(null)
   const [copiando, setCopiando] = useState(false)
   const [editandoHorario, setEditandoHorario] = useState(false)
+  const [confirmandoVaciar, setConfirmandoVaciar] = useState(false)
 
   const grupos = useLiveQuery(async () => {
     const lista = await db.grupos.toArray()
@@ -94,12 +96,6 @@ export function PlanGrupo() {
 
   async function vaciar() {
     if (!grupo) return
-    if (
-      !window.confirm(
-        `¿Eliminar las ${sesiones?.length ?? 0} sesiones de ${grupo.nombre}? Se puede deshacer.`,
-      )
-    )
-      return
     const { eliminadas, deshacer } = await eliminarSesionesDeGrupo(grupo.id)
     mostrarAviso(`${eliminadas} sesiones eliminadas`, deshacer)
   }
@@ -277,11 +273,20 @@ export function PlanGrupo() {
           )}
 
           {(sesiones?.length ?? 0) > 0 && (
-            <button className="btn w-full text-acento" onClick={() => void vaciar()}>
+            <button className="btn-peligro w-full" onClick={() => setConfirmandoVaciar(true)}>
               <Trash2 size={18} aria-hidden />
               Vaciar planificación de {grupo.nombre}
             </button>
           )}
+
+          <HojaConfirmar
+            abierta={confirmandoVaciar}
+            titulo="Vaciar planificación"
+            descripcion={`¿Eliminar las ${sesiones?.length ?? 0} sesiones de ${grupo.nombre}? Se puede deshacer.`}
+            textoConfirmar="Vaciar"
+            onConfirmar={vaciar}
+            onCerrar={() => setConfirmandoVaciar(false)}
+          />
 
           <HojaCopiarPlan
             abierta={copiando}
@@ -423,6 +428,7 @@ function HojaCopiarPlan({
                       aria-pressed={activo}
                       className={
                         'flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left transition ' +
+                        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                         (activo
                           ? 'border-primario bg-agua-claro dark:bg-noche-elevada'
                           : 'border-borde dark:border-noche-borde')
@@ -430,7 +436,7 @@ function HojaCopiarPlan({
                     >
                       <span
                         className={
-                          'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ' +
+                          'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 ' +
                           (activo ? 'border-primario bg-primario text-white' : 'border-borde')
                         }
                         aria-hidden

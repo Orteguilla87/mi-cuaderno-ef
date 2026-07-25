@@ -34,7 +34,7 @@ export class LimiteError extends Component<Props, Estado> {
           <p className="text-sm texto-suave">
             Tus datos siguen guardados en el dispositivo. Vuelve a cargar la app para continuar.
           </p>
-          <pre className="overflow-x-auto rounded-lg bg-agua-claro p-2 text-xs texto-suave dark:bg-noche-elevada">
+          <pre className="overflow-x-auto rounded-xl bg-agua-claro p-2 text-xs texto-suave dark:bg-noche-elevada">
             {error.message}
           </pre>
           <button className="btn-primario w-full" onClick={() => window.location.reload()}>

@@ -81,10 +81,18 @@
     @apply text-tinta-tenue dark:text-noche-suave/70;
   }
 
-  /* ——— Botones ——— */
+  /* ——— Botones ———
+     El anillo de foco vive aquí y no en cada variante: es lo único que hace
+     la app recorrible con teclado, y si dependiera de cada botón acabaría
+     faltando justo en el que menos se prueba. `focus-visible` y no `focus`
+     para que el anillo no salte al tocar con el dedo en la pista. */
   .btn {
     @apply inline-flex min-h-tap items-center justify-center gap-2 rounded-xl px-4 text-base
-           font-semibold transition active:scale-[0.98] disabled:opacity-40;
+           font-semibold transition active:scale-[0.98]
+           disabled:pointer-events-none disabled:opacity-40
+           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40
+           focus-visible:ring-offset-2 focus-visible:ring-offset-hueso
+           dark:focus-visible:ring-agua/50 dark:focus-visible:ring-offset-noche-fondo;
   }
   .btn-primario {
     @apply btn bg-primario text-white shadow-sm shadow-primario/25
@@ -123,9 +131,11 @@
   .campo {
     @apply min-h-tap w-full rounded-xl border border-borde bg-white px-3 text-base
            text-tinta outline-none placeholder:text-tinta-tenue
-           focus:border-primario focus:ring-4 focus:ring-primario/15
+           focus-visible:border-primario focus-visible:ring-4 focus-visible:ring-primario/25
+           aria-[invalid=true]:border-acento aria-[invalid=true]:ring-acento/20
            dark:border-noche-borde dark:bg-noche-superficie dark:text-noche-texto
-           dark:placeholder:text-noche-suave/60 dark:focus:border-agua dark:focus:ring-agua/20;
+           dark:placeholder:text-noche-suave/60
+           dark:focus-visible:border-agua dark:focus-visible:ring-agua/25;
   }
   .etiqueta {
     @apply mb-1.5 block text-sm font-bold uppercase tracking-wide text-primario
@@ -187,6 +197,37 @@
   .pildora {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold
            uppercase tracking-wide;
+  }
+
+  /* ——— Cajas de aviso ———
+     El mismo patrón (borde + fondo tenue + texto) se copiaba suelto en cada
+     pantalla con radios distintos (`lg` unas veces, `xl` otras). Una caja para
+     avisos suaves (retraso, recordatorio) y otra para los que piden más
+     atención (irreversible, error de validación). */
+  .aviso {
+    @apply rounded-xl border border-aviso/40 bg-aviso-claro p-3 text-sm text-aviso-oscuro
+           dark:border-aviso/30 dark:bg-noche-elevada dark:text-aviso;
+  }
+  .aviso-fuerte {
+    @apply rounded-xl border border-acento/40 bg-acento/10 p-3 text-sm text-acento
+           dark:border-acento/40 dark:bg-acento/10;
+  }
+}
+
+/* ——— Movimiento reducido: transiciones y escalados son decorativos, nunca
+   portadores de información, así que se anulan enteros y no solo se acortan. ——— */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  .btn:active,
+  .tarjeta-pulsable:active {
+    transform: none !important;
   }
 }
 

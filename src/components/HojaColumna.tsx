@@ -14,6 +14,7 @@ import type { ComponenteCalculo, Columna, Grupo, TipoColumna, Trimestre } from '
 import { aISO } from '../lib/fechas'
 import { useUI } from '../store/ui'
 import { Hoja } from './Hoja'
+import { HojaConfirmar } from './HojaConfirmar'
 import { HojaEditarRubrica } from '../pages/Rubricas'
 
 /**
@@ -46,6 +47,7 @@ export function HojaColumna({
   const [max, setMax] = useState(10)
   const [componentes, setComponentes] = useState<ComponenteCalculo[]>([])
   const [editandoRubrica, setEditandoRubrica] = useState<string | null>(null)
+  const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
 
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
   const rubricas = useLiveQuery(() => db.rubricas.toArray(), [])
@@ -126,7 +128,6 @@ export function HojaColumna({
 
   async function borrar() {
     if (!columna) return
-    if (!window.confirm(`¿Eliminar la columna «${columna.titulo}» y todas sus notas?`)) return
     const deshacer = await eliminarColumna(columna.id)
     onCerrar()
     mostrarAviso(`Columna «${columna.titulo}» eliminada`, deshacer)
@@ -171,6 +172,7 @@ export function HojaColumna({
                     aria-pressed={tipo === t.tipo}
                     className={
                       'w-full rounded-xl border-2 p-3 text-left transition ' +
+                      'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                       (tipo === t.tipo
                         ? 'border-primario bg-agua-claro dark:bg-noche-elevada'
                         : 'border-borde dark:border-noche-borde')
@@ -329,13 +331,24 @@ export function HojaColumna({
           )}
 
           {columna && (
-            <button className="btn w-full text-acento" onClick={() => void borrar()}>
+            <button className="btn-peligro w-full" onClick={() => setConfirmandoBorrado(true)}>
               <Trash2 size={18} aria-hidden />
               Eliminar columna
             </button>
           )}
         </div>
       </Hoja>
+
+      {columna && (
+        <HojaConfirmar
+          abierta={confirmandoBorrado}
+          titulo="Eliminar columna"
+          descripcion={`¿Eliminar la columna «${columna.titulo}» y todas sus notas?`}
+          textoConfirmar="Eliminar columna"
+          onConfirmar={borrar}
+          onCerrar={() => setConfirmandoBorrado(false)}
+        />
+      )}
 
       <HojaEditarRubrica
         rubricaId={editandoRubrica}
@@ -396,6 +409,7 @@ function EditorCalculo({
                   aria-pressed={marcada(c.id)}
                   className={
                     'flex min-h-tap flex-1 items-center gap-2 rounded-xl border-2 px-3 text-left transition ' +
+                    'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                     (marcada(c.id)
                       ? 'border-primario bg-agua-claro dark:bg-noche-elevada'
                       : 'border-borde dark:border-noche-borde')
@@ -403,7 +417,7 @@ function EditorCalculo({
                 >
                   <span
                     className={
-                      'flex h-5 w-5 shrink-0 items-center justify-center rounded ' +
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-lg ' +
                       (marcada(c.id) ? 'bg-primario text-white' : 'border-2 border-borde dark:border-noche-borde')
                     }
                   >

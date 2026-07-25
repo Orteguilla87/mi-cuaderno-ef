@@ -12,8 +12,10 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
-import { useConfig } from '../db/config'
+import { TituloSeccion } from '../components/TituloSeccion'
+import { CONFIG_POR_DEFECTO, useConfig } from '../db/config'
 import { db } from '../db/db'
 import {
   alumnosGenerables,
@@ -103,7 +105,9 @@ export function EquiposGenerador({ grupoId, sesionId }: { grupoId: string; sesio
   }, [alumnosGrupo])
 
   const vinculos = useLiveQuery(() => vinculosDelGrupo(grupoId), [grupoId]) ?? []
-  const guardadas = useLiveQuery(() => equiposGuardados(grupoId), [grupoId]) ?? []
+  // Sin colapsar a [] antes del check de abajo: así «Alineaciones guardadas»
+  // no aparece y desaparece durante el primer render mientras Dexie responde.
+  const guardadas = useLiveQuery(() => equiposGuardados(grupoId), [grupoId])
   const unidades = useLiveQuery(() => db.unidades.toArray(), []) ?? []
 
   const incluidos = useMemo(() => {
@@ -157,7 +161,10 @@ export function EquiposGenerador({ grupoId, sesionId }: { grupoId: string; sesio
       historial,
     })
 
-    const colores = config.coloresPetos.length > 0 ? config.coloresPetos : ['#CE184B', '#006A80']
+    // Si el usuario ha vaciado los petos en Ajustes, se cae a los mismos dos
+    // colores por defecto en vez de duplicar el hex aparte.
+    const colores =
+      config.coloresPetos.length > 0 ? config.coloresPetos : CONFIG_POR_DEFECTO.coloresPetos.slice(0, 2)
     const nuevos: EquipoGenerado[] = resultado.equipos.map((miembros, i) => ({
       nombre: `Equipo ${i + 1}`,
       color: colores[i % colores.length],
@@ -241,9 +248,14 @@ export function EquiposGenerador({ grupoId, sesionId }: { grupoId: string; sesio
       repartirApoyos,
       priorizarNuevos,
     }
-    await guardarEquipo({ grupoId, nombre, udId, config: cfg, equipos })
+    const id = await guardarEquipo({ grupoId, nombre, udId, config: cfg, equipos })
     setGuardando(false)
-    mostrarAviso(`«${nombre}» guardado${vincularSesion && sesionId ? ' y vinculado a esta sesión' : ''}`)
+    mostrarAviso(
+      `«${nombre}» guardado${vincularSesion && sesionId ? ' y vinculado a esta sesión' : ''}`,
+      async () => {
+        await db.equipos.delete(id)
+      },
+    )
   }
 
   const porAlumno = new Map(alumnosGrupo.map((a) => [a.id, a]))
@@ -262,7 +274,20 @@ export function EquiposGenerador({ grupoId, sesionId }: { grupoId: string; sesio
       />
 
       <div className="space-y-4 p-4">
-        {paso === 'configurar' ? (
+        {alumnosGrupo.length === 0 ? (
+          <EstadoVacio
+            titulo={`${grupo.nombre} no tiene alumnado`}
+            descripcion="Añade alumnos al grupo antes de generar equipos."
+            accion={
+              <button
+                className="btn-primario w-full"
+                onClick={() => navegar(`/grupos/${grupoId}`)}
+              >
+                Ir al grupo
+              </button>
+            }
+          />
+        ) : paso === 'configurar' ? (
           <ConfiguracionPaso
             grupoId={grupoId}
             totalAlumnos={alumnosGrupo.length}
@@ -378,7 +403,7 @@ function ConfiguracionPaso(props: {
   priorizarNuevos: boolean
   onPriorizarNuevos: (v: boolean) => void
   onGenerar: () => void
-  guardadas: import('../db/types').Equipo[]
+  guardadas: import('../db/types').Equipo[] | undefined
   onUsarGuardada: (e: import('../db/types').Equipo) => void
 }) {
   function alternarExclusion(id: string) {
@@ -515,6 +540,7 @@ function ConfiguracionPaso(props: {
             aria-pressed={props.modo === m.valor}
             className={
               'w-full rounded-xl border-2 p-3 text-left transition ' +
+              'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
               (props.modo === m.valor
                 ? 'border-primario bg-agua-claro dark:bg-noche-elevada'
                 : 'border-borde dark:border-noche-borde')
@@ -559,10 +585,9 @@ function ConfiguracionPaso(props: {
         Generar equipos
       </button>
 
-      {props.guardadas.length > 0 && (
+      {props.guardadas && props.guardadas.length > 0 && (
         <section>
-          <h2 className="text-lg font-bold">Alineaciones guardadas</h2>
-          <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+          <TituloSeccion>Alineaciones guardadas</TituloSeccion>
           <ul className="space-y-2">
             {props.guardadas.slice(0, 5).map((e) => (
               <li key={e.id}>
@@ -598,13 +623,14 @@ function Checkbox({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-3 text-left"
+      className="flex w-full items-center gap-3 rounded-xl text-left
+                 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
       onClick={() => onCambio(!activo)}
       aria-pressed={activo}
     >
       <span
         className={
-          'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ' +
+          'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 ' +
           (activo ? 'border-primario bg-primario text-white' : 'border-borde dark:border-noche-borde')
         }
         aria-hidden
@@ -646,7 +672,7 @@ function ResultadoPaso({
   return (
     <>
       {advertencia && (
-        <div className="flex items-start gap-2 rounded-xl border border-acento/40 bg-acento/10 p-3 text-sm text-acento">
+        <div className="aviso-fuerte flex items-start gap-2">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" aria-hidden />
           <span>{advertencia}</span>
         </div>
@@ -665,6 +691,7 @@ function ResultadoPaso({
               value={e.nombre}
               onChange={(ev) => onRenombrar(i, ev.target.value)}
               style={{ color: e.color }}
+              aria-label={`Nombre del equipo ${i + 1}`}
             />
             <ul className="space-y-1">
               {e.miembros.map((id) => {
@@ -676,7 +703,8 @@ function ResultadoPaso({
                     <button
                       onClick={() => onTocar(i, id)}
                       className={
-                        'min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-left text-sm ' +
+                        'min-w-0 flex-1 truncate rounded-xl px-2 py-1.5 text-left text-sm ' +
+                        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                         (activo
                           ? 'bg-primario text-white'
                           : 'bg-agua-claro dark:bg-noche-elevada')
@@ -687,7 +715,8 @@ function ResultadoPaso({
                     <button
                       onClick={() => onFijar(id, i)}
                       className={
-                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ' +
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ' +
+                        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
                         (fijado ? 'text-primario dark:text-agua' : 'text-tinta-tenue')
                       }
                       aria-label={fijado ? `Desbloquear a ${a?.nombre}` : `Fijar a ${a?.nombre}`}

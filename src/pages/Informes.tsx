@@ -2,6 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Copy, Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
+import { EstadoVacio } from '../components/EstadoVacio'
+import { TituloSeccion } from '../components/TituloSeccion'
 import { db } from '../db/db'
 import { buscarObservaciones } from '../db/observaciones'
 import type { Trimestre } from '../db/types'
@@ -11,6 +13,7 @@ import {
   generarActaGrupo,
   generarInformeIndividual,
 } from '../lib/informes'
+import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 
 export function Informes() {
@@ -56,9 +59,15 @@ export function Informes() {
 
       <div className="space-y-4 p-4">
         {grupos.length === 0 ? (
-          <div className="tarjeta text-center">
-            <p className="text-base font-semibold">Todavía no hay grupos</p>
-          </div>
+          <EstadoVacio
+            titulo="Todavía no hay grupos"
+            descripcion="Los informes se generan a partir de un grupo con alumnado."
+            accion={
+              <button className="btn-primario w-full" onClick={() => navegar('/grupos')}>
+                Ir a Grupos
+              </button>
+            }
+          />
         ) : (
           <>
             <div className="flex flex-wrap gap-2">
@@ -98,29 +107,28 @@ export function Informes() {
 
             {grupo && (
               <section>
-                <h2 className="text-lg font-bold">Grupo</h2>
-                <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+                <TituloSeccion>Grupo</TituloSeccion>
                 <button
                   className="btn-suave w-full"
-                  disabled={!!generando}
+                  disabled={generando === 'acta'}
                   onClick={() =>
                     void conAviso('acta', () => generarActaGrupo(grupo, alumnos ?? []))
                   }
                 >
                   <FileText size={18} aria-hidden />
-                  Acta de grupo (PDF)
+                  {generando === 'acta' ? 'Generando…' : 'Acta de grupo (PDF)'}
                 </button>
               </section>
             )}
 
             {grupo && (alumnos?.length ?? 0) > 0 && (
               <section>
-                <h2 className="text-lg font-bold">Alumno</h2>
-                <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+                <TituloSeccion>Alumno</TituloSeccion>
                 <select
                   className="campo mb-2"
                   value={alumno?.id ?? ''}
                   onChange={(e) => setAlumnoId(e.target.value)}
+                  aria-label="Alumno para el informe individual"
                 >
                   {alumnos?.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -130,7 +138,7 @@ export function Informes() {
                 </select>
                 <button
                   className="btn-suave w-full"
-                  disabled={!!generando || !alumno}
+                  disabled={generando === 'individual' || !alumno}
                   onClick={() =>
                     alumno &&
                     void conAviso('individual', () =>
@@ -139,35 +147,34 @@ export function Informes() {
                   }
                 >
                   <FileText size={18} aria-hidden />
-                  Informe individual (PDF)
+                  {generando === 'individual' ? 'Generando…' : 'Informe individual (PDF)'}
                 </button>
               </section>
             )}
 
             {grupo && (
               <section>
-                <h2 className="text-lg font-bold">Exportar datos</h2>
-                <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+                <TituloSeccion>Exportar datos</TituloSeccion>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     className="btn-suave"
-                    disabled={!!generando}
+                    disabled={generando === 'notas'}
                     onClick={() =>
                       void conAviso('notas', () => exportarNotasXLSX(grupo, alumnos ?? [], trimestre))
                     }
                   >
                     <FileSpreadsheet size={18} aria-hidden />
-                    Notas (XLSX)
+                    {generando === 'notas' ? 'Generando…' : 'Notas (XLSX)'}
                   </button>
                   <button
                     className="btn-suave"
-                    disabled={!!generando}
+                    disabled={generando === 'asistencia'}
                     onClick={() =>
                       void conAviso('asistencia', () => exportarAsistenciaCSV(grupo, alumnos ?? []))
                     }
                   >
                     <Download size={18} aria-hidden />
-                    Asistencia (CSV)
+                    {generando === 'asistencia' ? 'Generando…' : 'Asistencia (CSV)'}
                   </button>
                 </div>
                 <p className="mt-2 text-xs texto-suave">
@@ -225,8 +232,7 @@ function ComentariosGrupo({
 
   return (
     <section>
-      <h2 className="text-lg font-bold">Comentarios para Raíces</h2>
-      <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+      <TituloSeccion>Comentarios para Raíces</TituloSeccion>
 
       {borradores.size === 0 ? (
         <button className="btn-suave w-full" onClick={() => void generar()}>
@@ -245,6 +251,7 @@ function ComentariosGrupo({
                 onChange={(e) =>
                   setBorradores((prev) => new Map(prev).set(a.id, e.target.value))
                 }
+                aria-label={`Comentario para ${a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}`}
               />
               <button className="btn-suave w-full" onClick={() => void copiar(a.id)}>
                 <Copy size={16} aria-hidden />

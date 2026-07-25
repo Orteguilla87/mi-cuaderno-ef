@@ -15,6 +15,7 @@ import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
+import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
 import { db } from '../db/db'
 import {
@@ -176,8 +177,7 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
         </div>
 
         <section>
-          <h2 className="text-lg font-bold">Juegos</h2>
-          <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+          <TituloSeccion>Juegos</TituloSeccion>
 
           {sesion.juegos.length === 0 ? (
             <p className="mb-2 text-sm texto-suave">
@@ -270,8 +270,7 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
         <Recursos recursos={sesion.recursos} onCambio={(recursos) => actualizar({ recursos })} />
 
         <section>
-          <h2 className="text-lg font-bold">Cómo ha ido</h2>
-          <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+          <TituloSeccion>Cómo ha ido</TituloSeccion>
           <ValoracionSesion
             valor={sesion.valoracion}
             onCambio={(valoracion) => actualizar({ valoracion })}
@@ -279,8 +278,7 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
         </section>
 
         <section>
-          <h2 className="text-lg font-bold">Fecha y horario</h2>
-          <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+          <TituloSeccion>Fecha y horario</TituloSeccion>
 
           <label className="etiqueta" htmlFor="s-fecha">
             Fecha
@@ -404,8 +402,7 @@ function Recursos({
 
   return (
     <section>
-      <h2 className="text-lg font-bold">Enlaces y notas</h2>
-      <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+      <TituloSeccion>Enlaces y notas</TituloSeccion>
 
       {recursos.length > 0 && (
         <ul className="mb-2 space-y-2">
@@ -461,7 +458,12 @@ function Recursos({
           placeholder={tipo === 'enlace' ? 'https://…' : 'Recordar traer petos'}
           aria-label="Valor del recurso"
         />
-        <button className="btn-suave px-3" onClick={anadir} disabled={!valor.trim()}>
+        <button
+          className="btn-suave px-3"
+          onClick={anadir}
+          disabled={!valor.trim()}
+          aria-label="Añadir recurso"
+        >
           <Plus size={18} aria-hidden />
         </button>
       </div>

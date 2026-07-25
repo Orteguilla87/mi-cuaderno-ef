@@ -3,11 +3,21 @@ import { ClipboardCheck, ClipboardList, MessageSquareText, Minus, Plus, Shuffle 
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
+import { HojaConfirmar } from '../components/HojaConfirmar'
 import { HojaObservacion } from '../components/HojaObservacion'
 import { db, nuevoId } from '../db/db'
 import { contadoresPorAlumno } from '../db/observaciones'
-import type { Alumno, FranjaHorario, SignoObservacion } from '../db/types'
+import type {
+  Alumno,
+  Asistencia,
+  Calificacion,
+  FranjaHorario,
+  Grupo,
+  Observacion,
+  SignoObservacion,
+} from '../db/types'
 import { aliasPorDefecto, parsearAlumnos } from '../lib/importAlumnos'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -16,6 +26,7 @@ import { EditorHorario } from './Grupos'
 export function GrupoDetalle({ grupoId }: { grupoId: string }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [hoja, setHoja] = useState<'ninguna' | 'importar' | 'alumno' | 'grupo'>('ninguna')
+  const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
   const [observando, setObservando] = useState<{
     alumno: Alumno
     signo: SignoObservacion
@@ -46,19 +57,26 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
 
   async function eliminarGrupo() {
     if (!grupo) return
-    const cuantos = alumnos?.length ?? 0
-    const confirmado = window.confirm(
-      cuantos > 0
-        ? `Se eliminará «${grupo.nombre}» y sus ${cuantos} alumnos, con toda su asistencia, observaciones y notas. ¿Continuar?`
-        : `¿Eliminar el grupo «${grupo.nombre}»?`,
-    )
-    if (!confirmado) return
-
     const ids = (alumnos ?? []).map((a) => a.id)
+
+    // Captura previa: es el borrado más destructivo de la app (grupo entero
+    // en cascada), así que necesita deshacer de verdad y no solo un aviso.
+    let copiaGrupo: Grupo | undefined
+    let copiaAlumnos: Alumno[] = []
+    let copiaAsistencias: Asistencia[] = []
+    let copiaObservaciones: Observacion[] = []
+    let copiaCalificaciones: Calificacion[] = []
+
     await db.transaction(
       'rw',
       [db.grupos, db.alumnos, db.asistencias, db.observaciones, db.calificaciones],
       async () => {
+        copiaGrupo = await db.grupos.get(grupo.id)
+        copiaAlumnos = await db.alumnos.where('grupoId').equals(grupo.id).toArray()
+        copiaAsistencias = await db.asistencias.where('alumnoId').anyOf(ids).toArray()
+        copiaObservaciones = await db.observaciones.where('grupoId').equals(grupo.id).toArray()
+        copiaCalificaciones = await db.calificaciones.where('alumnoId').anyOf(ids).toArray()
+
         await db.asistencias.where('alumnoId').anyOf(ids).delete()
         await db.calificaciones.where('alumnoId').anyOf(ids).delete()
         await db.observaciones.where('grupoId').equals(grupo.id).delete()
@@ -67,7 +85,20 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
       },
     )
     navegar('/grupos')
-    mostrarAviso(`Grupo «${grupo.nombre}» eliminado`)
+    mostrarAviso(`Grupo «${grupo.nombre}» eliminado`, async () => {
+      await db.transaction(
+        'rw',
+        [db.grupos, db.alumnos, db.asistencias, db.observaciones, db.calificaciones],
+        async () => {
+          if (copiaGrupo) await db.grupos.put(copiaGrupo)
+          await db.alumnos.bulkPut(copiaAlumnos)
+          await db.asistencias.bulkPut(copiaAsistencias)
+          await db.observaciones.bulkPut(copiaObservaciones)
+          await db.calificaciones.bulkPut(copiaCalificaciones)
+        },
+      )
+      navegar(`/grupos/${grupo.id}`)
+    })
   }
 
   return (
@@ -125,12 +156,15 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
         </div>
 
         {alumnos?.length === 0 && (
-          <div className="tarjeta text-center">
-            <p className="text-base font-semibold">Grupo sin alumnado</p>
-            <p className="mt-1 text-sm texto-suave">
-              Pega el listado de clase: una línea por alumno.
-            </p>
-          </div>
+          <EstadoVacio
+            titulo="Grupo sin alumnado"
+            descripcion="Pega el listado de clase: una línea por alumno."
+            accion={
+              <button className="btn-primario w-full" onClick={() => setHoja('importar')}>
+                Importar listado
+              </button>
+            }
+          />
         )}
 
         <ul className="space-y-2">
@@ -192,10 +226,23 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
           </button>
         )}
 
-        <button className="btn w-full text-acento" onClick={eliminarGrupo}>
+        <button className="btn-peligro w-full" onClick={() => setConfirmandoBorrado(true)}>
           Eliminar grupo
         </button>
       </div>
+
+      <HojaConfirmar
+        abierta={confirmandoBorrado}
+        titulo="Eliminar grupo"
+        descripcion={
+          (alumnos?.length ?? 0) > 0
+            ? `Se eliminará «${grupo.nombre}» y sus ${alumnos?.length} alumnos, con toda su asistencia, observaciones y notas.`
+            : `¿Eliminar el grupo «${grupo.nombre}»?`
+        }
+        textoConfirmar="Eliminar grupo"
+        onConfirmar={eliminarGrupo}
+        onCerrar={() => setConfirmandoBorrado(false)}
+      />
 
       <HojaObservacion
         abierta={!!observando}
@@ -268,6 +315,7 @@ function HojaImportar({
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           placeholder={'García López, Ana\nMartín Ruiz, Pablo'}
+          aria-label="Listado de alumnado a importar"
           autoFocus
         />
 
@@ -376,6 +424,7 @@ function HojaEditarGrupo({
   grupoId: string
   onCerrar: () => void
 }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
   const grupo = useLiveQuery(() => db.grupos.get(grupoId), [grupoId])
   const [nombre, setNombre] = useState<string | null>(null)
   const [horario, setHorario] = useState<FranjaHorario[] | null>(null)
@@ -384,12 +433,16 @@ function HojaEditarGrupo({
 
   const nombreActual = nombre ?? grupo.nombre
   const horarioActual = horario ?? grupo.horario
+  const anterior = { nombre: grupo.nombre, horario: grupo.horario }
 
   async function guardar() {
     await db.grupos.update(grupoId, { nombre: nombreActual.trim(), horario: horarioActual })
     setNombre(null)
     setHorario(null)
     onCerrar()
+    mostrarAviso('Grupo actualizado', async () => {
+      await db.grupos.update(grupoId, anterior)
+    })
   }
 
   return (

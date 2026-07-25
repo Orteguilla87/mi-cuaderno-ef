@@ -11,6 +11,7 @@ import { obtenerCursoActivo } from './db/curso'
 import { MS_INACTIVIDAD } from './lib/pin'
 import { segmentos, useRuta } from './lib/router'
 import { useBloqueo } from './store/bloqueo'
+import { useUI } from './store/ui'
 import { Ajustes } from './pages/Ajustes'
 import { AlumnoDetalle } from './pages/AlumnoDetalle'
 import { Cuaderno } from './pages/Cuaderno'
@@ -30,6 +31,15 @@ import { PaseLista } from './pages/PaseLista'
 import { Planificador } from './pages/Planificador'
 import { Rubricas } from './pages/Rubricas'
 import { SesionDetalle } from './pages/SesionDetalle'
+
+// Secciones cuyo contenido es una rejilla que de verdad aprovecha el ancho de
+// escritorio (Cuaderno, Infantil, Rúbricas): el resto son texto y formularios,
+// que a `lg:max-w-7xl` se estiraban a una medida de lectura absurda.
+const SECCIONES_ANCHO_COMPLETO = new Set(['cuaderno', 'infantil', 'rubricas'])
+
+function anchoCompleto(ruta: string): boolean {
+  return SECCIONES_ANCHO_COMPLETO.has(segmentos(ruta)[0] ?? 'hoy')
+}
 
 function Contenido({ ruta }: { ruta: string }) {
   const [seccion, param, param2] = segmentos(ruta)
@@ -87,6 +97,18 @@ export default function App() {
   const config = useConfig()
   const hayPin = !!config.pin
   const { bloqueado, bloquear, desbloquear } = useBloqueo()
+  const capasAbiertas = useUI((s) => s.capasAbiertas)
+
+  // Bloquea el scroll del fondo mientras haya una hoja/pantalla completa
+  // abierta (§B7): un único punto de cambio sobre el contador que ya usa el
+  // FAB de voz para retirarse, en vez de que cada hoja gestione su propio
+  // `overflow` y se desincronicen al anidarse.
+  useEffect(() => {
+    document.body.style.overflow = capasAbiertas > 0 ? 'hidden' : ''
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [capasAbiertas])
 
   // Tema y modo pista se aplican en <html> para que alcancen también a los portales.
   useEffect(() => {
@@ -129,13 +151,25 @@ export default function App() {
 
   return (
     <div className="min-h-dvh lg:pl-60">
+      <a
+        href="#contenido"
+        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-modal focus-visible:rounded-xl focus-visible:bg-primario focus-visible:px-4 focus-visible:py-2 focus-visible:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
+      >
+        Saltar al contenido
+      </a>
       <NavLateral ruta={ruta} />
-      <div className="carril-fab mx-auto max-w-lg md:max-w-3xl lg:max-w-7xl lg:px-6">
+      <main
+        id="contenido"
+        className={
+          'carril-fab mx-auto max-w-lg md:max-w-3xl lg:px-6 ' +
+          (anchoCompleto(ruta) ? 'lg:max-w-7xl' : 'lg:max-w-4xl')
+        }
+      >
         {/* key: al cambiar de ruta se reintenta el render en vez de quedarse el error pegado. */}
         <LimiteError key={ruta}>
           <Contenido ruta={ruta} />
         </LimiteError>
-      </div>
+      </main>
       <AgenteVoz />
       <BottomNav ruta={ruta} />
       <Snackbar />
