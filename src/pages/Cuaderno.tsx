@@ -391,9 +391,13 @@ function Rejilla({
                     : 'bg-superficie dark:bg-noche-superficie')
                 }
               >
-                <span className="block max-w-[140px] truncate">
+                <button
+                  className="block max-h-tap w-full max-w-[140px] truncate text-left underline-offset-2 active:underline"
+                  onClick={() => navegar(`/alumnos/${a.id}`)}
+                  aria-label={`Abrir ficha de ${a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}`}
+                >
                   {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
-                </span>
+                </button>
               </th>
 
               {visibles.map((columna) => (
