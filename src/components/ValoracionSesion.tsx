@@ -20,7 +20,7 @@ export function ValoracionSesion({
         >
           <Star
             size={28}
-            className={valor && v <= valor ? 'fill-lima text-lima-oscuro' : 'text-tinta-tenue'}
+            className={valor && v <= valor ? 'fill-estrella text-estrella' : 'text-tinta-tenue'}
             aria-hidden
           />
         </button>

@@ -234,7 +234,7 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
           </label>
           <textarea
             id="s-notas"
-            className="campo h-28 resize-none py-2"
+            className="campo h-40 resize-none py-2"
             value={sesion.notas}
             onChange={(e) => actualizar({ notas: e.target.value })}
             placeholder="Organización, variantes, qué vigilar…"

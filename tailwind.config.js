@@ -34,6 +34,9 @@ export default {
           oscuro: token('warning-dark'),
           claro: token('warning-soft'),
         },
+        // Mismo tono que el peto amarillo (--equipo-amarillo): relleno de las
+        // estrellas de valoración de sesión, no una familia de color nueva.
+        estrella: token('equipo-amarillo'),
         hueso: token('bg'),
         superficie: token('surface'),
         agua: {

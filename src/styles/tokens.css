@@ -45,7 +45,10 @@
      Único color realmente nuevo de esta hoja: representa un objeto físico (un
      peto real del gimnasio), no chrome de la interfaz, así que no deriva de la
      paleta base. Los otros tres colores de peto por defecto SÍ reutilizan
-     --accent (rojo), --primary (azul) y --positive (verde). */
+     --accent (rojo), --primary (azul) y --positive (verde). Se reutiliza tal
+     cual (mismo valor, sin variante nueva) para el relleno de las estrellas de
+     valoración de sesión: es la misma convención de «amarillo == valorado/
+     destacado», no una segunda familia de color. */
   --equipo-amarillo: 180 140 0; /* #B48C00 */
 
   /* Neutros con el matiz del primario: ningún gris frío de Tailwind. */
