@@ -16,6 +16,7 @@ import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../compone
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { HojaColumna } from '../components/HojaColumna'
+import { HojaObservacion } from '../components/HojaObservacion'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import {
   agruparPorUnidad,
@@ -31,8 +32,16 @@ import {
   type ResultadoValidacionPegado,
 } from '../db/cuaderno'
 import { db } from '../db/db'
-import type { Alumno, Columna, Grupo, Rubrica, Trimestre, ValorCelda } from '../db/types'
-import { crearObservacion, contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
+import type {
+  Alumno,
+  Columna,
+  Grupo,
+  Rubrica,
+  SignoObservacion,
+  Trimestre,
+  ValorCelda,
+} from '../db/types'
+import { contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
@@ -484,20 +493,12 @@ function Rejilla({
     cambios: Parameters<typeof guardarValor>[2],
   ) => Promise<() => Promise<void>>
 }) {
-  const mostrarAviso = useUI((s) => s.mostrarAviso)
-
-  async function observar(alumno: Alumno, signo: '+' | '-') {
-    const nombre = alumno.alias || alumno.nombre
-    const { deshacer } = await crearObservacion({
-      grupoId,
-      alumnoId: alumno.id,
-      tipo: 'conducta',
-      signo,
-      texto: '',
-      tags: [],
-    })
-    mostrarAviso(`${signo === '+' ? 'Positivo' : 'Negativo'} a ${nombre}`, deshacer)
-  }
+  // Los botones +/− abren la hoja de observación (M4) con el signo ya elegido,
+  // para poder escoger tipo y escribir el texto — no suman en el acto.
+  const [observando, setObservando] = useState<{
+    alumno: Alumno
+    signo: SignoObservacion
+  } | null>(null)
 
   return (
     // En escritorio la rejilla acota su propia altura y hace scroll interno:
@@ -549,14 +550,14 @@ function Rejilla({
                     {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
                   </button>
                   <button
-                    onClick={() => void observar(a, '+')}
+                    onClick={() => setObservando({ alumno: a, signo: '+' })}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-lima/20 text-lima-oscuro transition active:scale-95 dark:text-lima"
                     aria-label={`Observación positiva para ${nombre}`}
                   >
                     <Plus size={16} strokeWidth={3} aria-hidden />
                   </button>
                   <button
-                    onClick={() => void observar(a, '-')}
+                    onClick={() => setObservando({ alumno: a, signo: '-' })}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-acento/15 text-acento transition active:scale-95"
                     aria-label={`Observación negativa para ${nombre}`}
                   >
@@ -600,6 +601,14 @@ function Rejilla({
           })}
         </tbody>
       </table>
+
+      <HojaObservacion
+        abierta={!!observando}
+        grupoId={grupoId}
+        alumno={observando?.alumno}
+        signoInicial={observando?.signo}
+        onCerrar={() => setObservando(null)}
+      />
     </div>
   )
 }
