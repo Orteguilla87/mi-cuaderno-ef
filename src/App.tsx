@@ -53,7 +53,7 @@ function Contenido({ ruta }: { ruta: string }) {
     case 'asistencia':
       return param ? <PaseLista grupoId={param} fecha={param2} /> : <Grupos />
     case 'cuaderno':
-      return <Cuaderno />
+      return <Cuaderno grupoId={param} />
     case 'infantil':
       return param ? <Infantil grupoId={param} /> : <Grupos />
     case 'rubricas':

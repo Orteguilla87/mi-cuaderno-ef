@@ -47,13 +47,14 @@ import { navegar } from '../lib/router'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { useUI } from '../store/ui'
 
-export function Cuaderno() {
+/** `grupoId`: llegada directa desde otra pantalla (p. ej. el icono de grupo en Hoy). */
+export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {}) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const copiadas = usePortapapelesColumnas((s) => s.copiadas)
   const copiarColumnas = usePortapapelesColumnas((s) => s.copiar)
   const limpiarPortapapelesColumnas = usePortapapelesColumnas((s) => s.limpiar)
 
-  const [grupoId, setGrupoId] = useState<string | null>(null)
+  const [grupoId, setGrupoId] = useState<string | null>(grupoIdInicial ?? null)
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
   const [evaluando, setEvaluando] = useState<{ columna: Columna; indice: number } | null>(null)

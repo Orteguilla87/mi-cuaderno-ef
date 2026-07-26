@@ -10,6 +10,7 @@ import {
   Clock,
   RotateCcw,
   Share2,
+  Table2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
@@ -421,6 +422,12 @@ function TarjetaSesionSemana({ hueco }: { hueco: HuecoSemana }) {
   )
 }
 
+/**
+ * Pulsar sobre el grupo despliega/pliega toda la tarjeta (Bloque 3): antes
+ * solo navegaba a pasar lista y la descripción tenía su propio mini-botón.
+ * El icono de pasar lista queda aparte, siempre visible, para no perder ese
+ * acceso al pasar a modo desplegable.
+ */
 function TarjetaClase({
   clase,
   destacada = false,
@@ -446,38 +453,59 @@ function TarjetaClase({
         'tarjeta ' + (destacada ? 'border-2 border-primario ' : '') + (pasada ? 'opacity-60' : '')
       }
     >
-      <button
-        onClick={() => navegar(`/asistencia/${grupo.id}`)}
-        className="flex w-full items-center gap-3 text-left"
-      >
-        <span
-          className="h-12 w-2 shrink-0 rounded-full"
-          style={{ backgroundColor: grupo.color }}
-          aria-hidden
-        />
+      <div className="flex w-full items-center gap-2">
+        <button
+          onClick={() => setAbierta((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-expanded={abierta}
+        >
+          <span
+            className="h-12 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: grupo.color }}
+            aria-hidden
+          />
 
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate text-lg font-bold">{grupo.nombre}</span>
-            <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
-            {enCurso && (
-              <span className="pildora bg-primario text-white">
-                <Clock size={11} className="mr-1" aria-hidden />
-                Ahora
-              </span>
-            )}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="truncate text-lg font-bold">{grupo.nombre}</span>
+              <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
+              {enCurso && (
+                <span className="pildora bg-primario text-white">
+                  <Clock size={11} className="mr-1" aria-hidden />
+                  Ahora
+                </span>
+              )}
+            </span>
+            <span className="cifra mt-0.5 block text-sm texto-suave">
+              {horaInicio}–{horaFin} · {totalAlumnos} {totalAlumnos === 1 ? 'alumno' : 'alumnos'}
+            </span>
+            {sesion?.titulo && <span className="mt-0.5 block truncate text-sm">{sesion.titulo}</span>}
           </span>
-          <span className="cifra mt-0.5 block text-sm texto-suave">
-            {horaInicio}–{horaFin} · {totalAlumnos} {totalAlumnos === 1 ? 'alumno' : 'alumnos'}
-          </span>
-          {sesion?.titulo && <span className="mt-0.5 block truncate text-sm">{sesion.titulo}</span>}
-        </span>
 
-        <span
+          <ChevronDown
+            size={18}
+            className={
+              'shrink-0 texto-suave ' + (abierta ? 'rotate-180 transition-transform' : 'transition-transform')
+            }
+            aria-hidden
+          />
+        </button>
+
+        <button
+          onClick={() => navegar(`/cuaderno/${grupo.id}`)}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-agua-claro text-primario-oscuro transition active:scale-95 dark:bg-noche-elevada dark:text-agua"
+          aria-label={`Abrir ${grupo.nombre} en el Cuaderno`}
+        >
+          <Table2 size={20} aria-hidden />
+        </button>
+
+        <button
+          onClick={() => navegar(`/asistencia/${grupo.id}`)}
           className={
             'flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold ' +
             (completo ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
           }
+          aria-label={completo ? `Asistencia completa · ${grupo.nombre}` : `Pasar lista · ${grupo.nombre}`}
         >
           {completo ? (
             <>
@@ -490,25 +518,13 @@ function TarjetaClase({
               {registrados > 0 ? `${registrados}/${totalAlumnos}` : 'Pasar lista'}
             </>
           )}
-        </span>
-      </button>
+        </button>
+      </div>
 
-      {hayDescripcion && (
-        <>
-          <button
-            onClick={() => setAbierta((v) => !v)}
-            className="mt-2 flex w-full items-center justify-between border-t border-borde pt-2 text-xs font-bold text-primario dark:border-noche-borde dark:text-agua"
-            aria-expanded={abierta}
-          >
-            {abierta ? 'Ocultar descripción' : 'Ver descripción de la sesión'}
-            <ChevronDown
-              size={16}
-              className={abierta ? 'rotate-180 transition-transform' : 'transition-transform'}
-              aria-hidden
-            />
-          </button>
-          {abierta && (
-            <div className="mt-2 space-y-1.5 text-sm">
+      {abierta && (
+        <div className="mt-3 space-y-1.5 border-t border-borde pt-3 text-sm dark:border-noche-borde">
+          {hayDescripcion ? (
+            <>
               {sesion!.notas && (
                 <p>
                   <span className="font-bold">Descripción: </span>
@@ -532,9 +548,11 @@ function TarjetaClase({
                   Juegos: {sesion!.juegos.map((j) => j.nombre).join(', ')}
                 </p>
               )}
-            </div>
+            </>
+          ) : (
+            <p className="texto-suave">Sin planificación para esta sesión.</p>
           )}
-        </>
+        </div>
       )}
     </div>
   )
