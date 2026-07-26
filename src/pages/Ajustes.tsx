@@ -88,6 +88,13 @@ export function Ajustes() {
         </Seccion>
 
         <Seccion
+          titulo="Etiquetas de observaciones"
+          ayuda="Las etiquetas rápidas que aparecen al registrar una observación (§5 M4). Borrar una etiqueta no toca las observaciones ya guardadas: conservan su texto tal cual."
+        >
+          <EtiquetasObservacion etiquetas={config.quickTagsObservacion} />
+        </Seccion>
+
+        <Seccion
           titulo="Generador de equipos"
           ayuda="Colores de peto por defecto, en el orden en que se asignan a los equipos."
         >
@@ -206,6 +213,88 @@ export function Ajustes() {
         </Seccion>
       </div>
     </>
+  )
+}
+
+/**
+ * Etiquetas rápidas de observaciones (§5 M4), editables desde datos en Config
+ * en vez de una lista fija en código. Cada Observacion guarda sus propias
+ * `tags` como texto suelto en el momento de crearla, así que borrar o renombrar
+ * una etiqueta aquí nunca toca observaciones ya guardadas.
+ */
+function EtiquetasObservacion({ etiquetas }: { etiquetas: string[] }) {
+  const [nueva, setNueva] = useState('')
+
+  function cambiar(i: number, valor: string) {
+    const siguiente = [...etiquetas]
+    siguiente[i] = valor
+    void guardarConfig({ quickTagsObservacion: siguiente })
+  }
+
+  function alSalir(i: number) {
+    if (etiquetas[i].trim() === '') eliminar(i)
+  }
+
+  function eliminar(i: number) {
+    void guardarConfig({ quickTagsObservacion: etiquetas.filter((_, j) => j !== i) })
+  }
+
+  function anadir() {
+    const texto = nueva.trim()
+    if (!texto || etiquetas.includes(texto)) return
+    void guardarConfig({ quickTagsObservacion: [...etiquetas, texto] })
+    setNueva('')
+  }
+
+  return (
+    <div className="space-y-2">
+      {etiquetas.length > 0 && (
+        <ul className="space-y-2">
+          {etiquetas.map((t, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <input
+                className="campo flex-1"
+                value={t}
+                onChange={(e) => cambiar(i, e.target.value)}
+                onBlur={() => alSalir(i)}
+                aria-label={`Etiqueta ${i + 1}`}
+              />
+              <button
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-acento/15 text-acento"
+                onClick={() => eliminar(i)}
+                aria-label={`Eliminar etiqueta «${t}»`}
+              >
+                <Trash2 size={18} aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex items-center gap-2">
+        <input
+          className="campo flex-1"
+          value={nueva}
+          onChange={(e) => setNueva(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              anadir()
+            }
+          }}
+          placeholder="Nueva etiqueta"
+          aria-label="Nueva etiqueta"
+        />
+        <button className="btn-suave" onClick={anadir}>
+          Añadir
+        </button>
+      </div>
+      <button
+        className="btn-fantasma"
+        onClick={() => void guardarConfig({ quickTagsObservacion: CONFIG_POR_DEFECTO.quickTagsObservacion })}
+      >
+        Restaurar por defecto
+      </button>
+    </div>
   )
 }
 
