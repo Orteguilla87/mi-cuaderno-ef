@@ -15,6 +15,7 @@ import {
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { TextoLargo } from '../components/TextoLargo'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
 import { leerAsistenciaGrupo } from '../db/asistencia'
@@ -404,7 +405,7 @@ function TarjetaSesionSemana({ hueco }: { hueco: HuecoSemana }) {
           {campos.map((c) => (
             <p key={c.etiqueta} className="text-sm">
               <span className="font-bold">{c.etiqueta}: </span>
-              {c.texto}
+              <TextoLargo texto={c.texto} />
             </p>
           ))}
 
@@ -528,19 +529,19 @@ function TarjetaClase({
               {sesion!.notas && (
                 <p>
                   <span className="font-bold">Descripción: </span>
-                  {sesion!.notas}
+                  <TextoLargo texto={sesion!.notas} />
                 </p>
               )}
               {sesion!.recursosNecesarios && (
                 <p>
                   <span className="font-bold">Recursos necesarios: </span>
-                  {sesion!.recursosNecesarios}
+                  <TextoLargo texto={sesion!.recursosNecesarios} />
                 </p>
               )}
               {sesion!.comentarios && (
                 <p>
                   <span className="font-bold">Comentarios: </span>
-                  {sesion!.comentarios}
+                  <TextoLargo texto={sesion!.comentarios} />
                 </p>
               )}
               {sesion!.juegos.length > 0 && (
