@@ -3,7 +3,6 @@ import {
   CalendarDays,
   CalendarRange,
   ClipboardList,
-  Dices,
   FileText,
   ListChecks,
   MessageSquareText,
@@ -54,19 +53,16 @@ export interface EntradaMas {
   disponible: boolean
 }
 
+// Banco de juegos oculto de la navegación (Bloque 6): sigue accesible desde
+// «Añadir del banco» en la sesión (SesionDetalle.tsx monta <Juegos> inline,
+// sin pasar por esta lista) y en /juegos directamente. Código, ruta y datos
+// intactos — solo se quita la entrada de aquí.
 export const ENTRADAS_MAS: EntradaMas[] = [
   {
     ruta: '/rubricas',
     titulo: 'Rúbricas',
     descripcion: 'Banco de rúbricas reutilizables en el cuaderno',
     Icono: ListChecks,
-    disponible: true,
-  },
-  {
-    ruta: '/juegos',
-    titulo: 'Banco de juegos',
-    descripcion: 'Importar, buscar y filtrar juegos de EF',
-    Icono: Dices,
     disponible: true,
   },
   {
