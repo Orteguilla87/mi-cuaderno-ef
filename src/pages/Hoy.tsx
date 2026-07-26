@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  Calendar,
   CalendarOff,
   Check,
   ChevronDown,
@@ -7,6 +8,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  RotateCcw,
   Share2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -43,6 +45,10 @@ interface Clase {
 export function Hoy() {
   const [vista, setVista] = useState<'dia' | 'semana'>('dia')
   const hoy = aISO()
+  // Fecha que se está consultando. Arranca en hoy y se mueve con las flechas o el
+  // selector; «en curso»/«siguiente» solo tienen sentido cuando coincide con hoy.
+  const [fecha, setFecha] = useState(hoy)
+  const esHoy = fecha === hoy
   // Se refresca solo cada minuto: «en curso» y «siguiente» dependen de la hora,
   // y el maestro deja la pantalla abierta durante la clase.
   const [ahora, setAhora] = useState(horaActual)
@@ -52,8 +58,8 @@ export function Hoy() {
   }, [])
 
   const curso = useLiveQuery(leerCursoActivo, [])
-  const esFestivo = !!curso?.festivos.includes(hoy)
-  const dia = diaLectivo(hoy)
+  const esFestivo = !!curso?.festivos.includes(fecha)
+  const dia = diaLectivo(fecha)
 
   const clases = useLiveQuery(async (): Promise<Clase[]> => {
     if (dia === null) return []
@@ -68,11 +74,11 @@ export function Hoy() {
         const activos = alumnos.filter((a) => a.activo)
         const registros = await leerAsistenciaGrupo(
           activos.map((a) => a.id),
-          hoy,
+          fecha,
         )
         const sesion = await db.sesiones
           .where('[grupoId+fecha]')
-          .equals([grupo.id, hoy])
+          .equals([grupo.id, fecha])
           .first()
         return {
           grupo,
@@ -85,10 +91,11 @@ export function Hoy() {
       }),
     )
     return resultado.sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
-  }, [dia, hoy])
+  }, [dia, fecha])
 
-  const enCurso = clases?.find((c) => c.horaInicio <= ahora && ahora < c.horaFin)
-  const siguiente = clases?.find((c) => c.horaInicio > ahora)
+  // Solo la jornada de hoy conoce «ahora»: en otros días no hay clase en curso.
+  const enCurso = esHoy ? clases?.find((c) => c.horaInicio <= ahora && ahora < c.horaFin) : undefined
+  const siguiente = esHoy ? clases?.find((c) => c.horaInicio > ahora) : undefined
   // Lo que hay que atender ahora: la clase en curso o, si no, la próxima.
   const destacada = enCurso ?? siguiente
 
@@ -98,7 +105,8 @@ export function Hoy() {
         titulo="Hoy"
         subtitulo={
           <span className="cifra">
-            {formatoLargo(hoy)} · {ahora}
+            {formatoLargo(fecha)}
+            {esHoy && ` · ${ahora}`}
           </span>
         }
         acciones={
@@ -125,6 +133,16 @@ export function Hoy() {
         <VistaSemanaHoy hoy={hoy} />
       ) : (
       <div className="space-y-4 p-4">
+        <NavegadorFecha
+          etiqueta={formatoLargo(fecha)}
+          valor={fecha}
+          esHoy={esHoy}
+          onAnterior={() => setFecha(sumarDias(fecha, -1))}
+          onSiguiente={() => setFecha(sumarDias(fecha, 1))}
+          onElegir={setFecha}
+          onHoy={() => setFecha(hoy)}
+        />
+
         {dia === null || esFestivo ? (
           <div className="tarjeta text-center">
             <CalendarOff className="mx-auto text-tinta-tenue" size={32} aria-hidden />
@@ -149,19 +167,21 @@ export function Hoy() {
           </div>
         ) : (
           <>
-            <section>
-              <TituloSeccion>
-                {enCurso ? 'Ahora en clase' : siguiente ? 'Siguiente clase' : 'Jornada terminada'}
-              </TituloSeccion>
+            {esHoy && (
+              <section>
+                <TituloSeccion>
+                  {enCurso ? 'Ahora en clase' : siguiente ? 'Siguiente clase' : 'Jornada terminada'}
+                </TituloSeccion>
 
-              {destacada ? (
-                <TarjetaClase clase={destacada} destacada enCurso={!!enCurso} />
-              ) : (
-                <p className="text-sm texto-suave">
-                  Ya no quedan clases hoy. Puedes repasar lo registrado más abajo.
-                </p>
-              )}
-            </section>
+                {destacada ? (
+                  <TarjetaClase clase={destacada} destacada enCurso={!!enCurso} />
+                ) : (
+                  <p className="text-sm texto-suave">
+                    Ya no quedan clases hoy. Puedes repasar lo registrado más abajo.
+                  </p>
+                )}
+              </section>
+            )}
 
             <section>
               <TituloSeccion>Jornada completa</TituloSeccion>
@@ -171,7 +191,7 @@ export function Hoy() {
                     <TarjetaClase
                       clase={c}
                       enCurso={c === enCurso}
-                      pasada={c.horaFin <= ahora && c !== enCurso}
+                      pasada={esHoy && c.horaFin <= ahora && c !== enCurso}
                     />
                   </li>
                 ))}
@@ -183,7 +203,7 @@ export function Hoy() {
                 className="btn-suave w-full"
                 onClick={() =>
                   void generarPlanDelDia(
-                    hoy,
+                    fecha,
                     clases.map((c) => ({ grupo: c.grupo, horaInicio: c.horaInicio, horaFin: c.horaFin, sesion: c.sesion })),
                   )
                 }
@@ -201,6 +221,63 @@ export function Hoy() {
 }
 
 /**
+ * Barra de navegación por fecha: flechas anterior/siguiente, un botón central que
+ * abre el selector nativo de fecha, y un botón para volver a hoy cuando procede.
+ * Sirve tanto para moverse día a día como semana a semana (según qué haga cada
+ * flecha), reutilizando el mismo diseño en ambas vistas.
+ */
+function NavegadorFecha({
+  etiqueta,
+  valor,
+  esHoy,
+  etiquetaHoy = 'Volver a hoy',
+  onAnterior,
+  onSiguiente,
+  onElegir,
+  onHoy,
+  ariaAnterior = 'Anterior',
+  ariaSiguiente = 'Siguiente',
+}: {
+  etiqueta: string
+  valor: string
+  esHoy: boolean
+  etiquetaHoy?: string
+  onAnterior: () => void
+  onSiguiente: () => void
+  onElegir: (iso: string) => void
+  onHoy: () => void
+  ariaAnterior?: string
+  ariaSiguiente?: string
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button className="btn-suave px-3" onClick={onAnterior} aria-label={ariaAnterior}>
+        <ChevronLeft size={20} aria-hidden />
+      </button>
+      <label className="btn-fantasma relative flex flex-1 cursor-pointer items-center justify-center gap-2">
+        <Calendar size={18} aria-hidden />
+        <span className="truncate">{etiqueta}</span>
+        <input
+          type="date"
+          value={valor}
+          onChange={(e) => e.target.value && onElegir(e.target.value)}
+          aria-label="Elegir fecha"
+          className="absolute inset-0 cursor-pointer opacity-0"
+        />
+      </label>
+      <button className="btn-suave px-3" onClick={onSiguiente} aria-label={ariaSiguiente}>
+        <ChevronRight size={20} aria-hidden />
+      </button>
+      {!esHoy && (
+        <button className="btn-suave px-3" onClick={onHoy} aria-label={etiquetaHoy}>
+          <RotateCcw size={18} aria-hidden />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
  * Vista semanal de «Hoy» (Bloque 5): sesiones plegadas por defecto, solo con
  * cabecera. Al desplegar, únicamente los campos que tienen contenido — nada
  * de secciones vacías ni guiones.
@@ -211,27 +288,23 @@ function VistaSemanaHoy({ hoy }: { hoy: string }) {
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
 
+  const lunesHoy = lunesDe(hoy)
+  const viernes = sumarDias(lunes, 4)
+
   return (
     <div className="space-y-4 p-4">
-      <div className="flex items-center gap-2">
-        <button
-          className="btn-suave px-3"
-          onClick={() => setLunes(sumarDias(lunes, -7))}
-          aria-label="Semana anterior"
-        >
-          <ChevronLeft size={20} aria-hidden />
-        </button>
-        <button className="btn-fantasma flex-1" onClick={() => setLunes(lunesDe(hoy))}>
-          Semana actual
-        </button>
-        <button
-          className="btn-suave px-3"
-          onClick={() => setLunes(sumarDias(lunes, 7))}
-          aria-label="Semana siguiente"
-        >
-          <ChevronRight size={20} aria-hidden />
-        </button>
-      </div>
+      <NavegadorFecha
+        etiqueta={`${formatoCorto(lunes)} – ${formatoCorto(viernes)}`}
+        valor={lunes}
+        esHoy={lunes === lunesHoy}
+        etiquetaHoy="Volver a esta semana"
+        onAnterior={() => setLunes(sumarDias(lunes, -7))}
+        onSiguiente={() => setLunes(sumarDias(lunes, 7))}
+        onElegir={(iso) => setLunes(lunesDe(iso))}
+        onHoy={() => setLunes(lunesHoy)}
+        ariaAnterior="Semana anterior"
+        ariaSiguiente="Semana siguiente"
+      />
 
       {huecos?.length === 0 && (
         <div className="tarjeta text-center">
