@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import { resumirAsistencia } from '../db/asistencia'
 import { db } from '../db/db'
 import type { Alumno, Asistencia, Columna, Grupo, Observacion, Rubrica, Sesion, Trimestre, ValorCelda } from '../db/types'
-import { valorNormalizado } from '../db/cuaderno'
+import { calcularColumna, valorNormalizado, type ResultadoCalculo } from '../db/cuaderno'
 import { descargarArchivo } from './descargar'
 import { formatoLargo } from './fechas'
 
@@ -159,20 +159,27 @@ export async function exportarNotasXLSX(
       if (rub) rubricas.set(c.rubricaId, rub)
     }
   }
+  const columnasPorId = new Map(columnas.map((c) => [c.id, c]))
   const valores = await db.valores.where('columnaId').anyOf(columnas.map((c) => c.id)).toArray()
   const mapa = new Map(valores.map((v: ValorCelda) => [`${v.columnaId}|${v.alumnoId}`, v]))
 
+  // Array de arrays (no objeto por título): dos columnas pueden compartir
+  // título, y una clave de objeto numérica se reordenaría sola en el JSON,
+  // rompiendo la correspondencia con el orden real de la rejilla.
+  const cabecera = ['Alumno', ...columnas.map((c) => c.titulo)]
   const filas = alumnos.map((a) => {
-    const fila: Record<string, string | number> = { Alumno: nombreAlumno(a) }
-    for (const c of columnas) {
-      const v = mapa.get(`${c.id}|${a.id}`)
-      const n = valorNormalizado(c, v, c.rubricaId ? rubricas.get(c.rubricaId) : undefined)
-      fila[c.titulo] = n == null ? '' : Number(n.toFixed(1))
-    }
-    return fila
+    const memo = new Map<string, ResultadoCalculo>()
+    const valoresFila = columnas.map((c) => {
+      const n =
+        c.tipo === 'calculo'
+          ? calcularColumna(c, columnasPorId, mapa, a.id, rubricas, memo).valor
+          : valorNormalizado(c, mapa.get(`${c.id}|${a.id}`), c.rubricaId ? rubricas.get(c.rubricaId) : undefined)
+      return n == null ? '' : Number(n.toFixed(1))
+    })
+    return [nombreAlumno(a), ...valoresFila]
   })
 
-  const hoja = XLSX.utils.json_to_sheet(filas)
+  const hoja = XLSX.utils.aoa_to_sheet([cabecera, ...filas])
   const libro = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(libro, hoja, 'Notas')
   XLSX.writeFile(libro, nombreArchivo(`notas_${grupo.nombre}_T${trimestre}`, 'xlsx'))
