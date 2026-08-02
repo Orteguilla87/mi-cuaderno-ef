@@ -1,0 +1,63 @@
+# Publica la app en GitHub Pages en cada push a main.
+#
+# Hacía falta porque `dist/` está en .gitignore: lo que Pages servía hasta ahora
+# era la raíz del repo, es decir el `index.html` de desarrollo, que apunta a
+# `/src/main.tsx`. El navegador no sabe ejecutar TypeScript, así que esa página
+# no podía funcionar. Aquí se construye de verdad y se publica `dist/`.
+#
+# PASO MANUAL, una sola vez: en GitHub → Settings → Pages → «Build and
+# deployment» → Source: **GitHub Actions**. Mientras siga en «Deploy from a
+# branch», este flujo se ejecuta pero Pages sigue sirviendo la raíz.
+
+name: Publicar en GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Permite publicar a mano desde la pestaña Actions sin tener que commitear.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Si se empuja dos veces seguidas, la publicación vieja se cancela: nunca gana
+# una carrera y deja publicada la versión anterior.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Los tests antes del build: más vale no publicar que publicar roto.
+      - run: npm test
+
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.desplegar.outputs.page_url }}
+    steps:
+      - id: desplegar
+        uses: actions/deploy-pages@v4
