@@ -15,6 +15,7 @@ import { useBloqueo } from './store/bloqueo'
 import { useUI } from './store/ui'
 import { Ajustes } from './pages/Ajustes'
 import { AlumnoDetalle } from './pages/AlumnoDetalle'
+import { Calendario } from './pages/Calendario'
 import { Cuaderno } from './pages/Cuaderno'
 import { EdicionMasivaAlumnos } from './pages/EdicionMasivaAlumnos'
 import { EnConstruccion } from './pages/EnConstruccion'
@@ -77,7 +78,7 @@ function Contenido({ ruta }: { ruta: string }) {
     case 'informes':
       return <Informes />
     case 'calendario':
-      return <EnConstruccion titulo="Calendario" fase="fase 8" atras />
+      return <Calendario />
     case 'herramientas':
       return <Herramientas />
     // /equipos/:grupoId[/datos | /sesion-:sesionId]

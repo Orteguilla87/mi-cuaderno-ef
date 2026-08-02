@@ -89,9 +89,9 @@ export const ENTRADAS_MAS: EntradaMas[] = [
   {
     ruta: '/calendario',
     titulo: 'Calendario',
-    descripcion: 'Horario, festivos, eventos y avisos',
+    descripcion: 'Mes y semana del curso, con las sesiones de cada día',
     Icono: CalendarRange,
-    disponible: false,
+    disponible: true,
   },
   {
     ruta: '/herramientas',
