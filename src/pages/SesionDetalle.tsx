@@ -1,16 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import {
-  Clipboard,
-  Copy,
-  GripVertical,
-  Link2,
-  Plus,
-  Save,
-  Shuffle,
-  StickyNote,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { Clipboard, Copy, Link2, Plus, Save, Shuffle, StickyNote, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -25,17 +14,15 @@ import {
   pegarEnSesion,
   sesionAPlantilla,
 } from '../db/planificador'
-import type { Juego, Recurso, Sesion } from '../db/types'
+import type { Recurso, Sesion } from '../db/types'
 import { diaLectivo, formatoDiaCorto } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
-import { Juegos } from './Juegos'
 
 export function SesionDetalle({ sesionId }: { sesionId: string }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const { sesionCopiada, copiar: copiarEnPortapapeles } = usePortapapeles()
-  const [eligiendoJuego, setEligiendoJuego] = useState(false)
   const [duplicando, setDuplicando] = useState(false)
   const [eliminando, setEliminando] = useState(false)
 
@@ -61,23 +48,6 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
   }
 
   const actualizar = (cambios: Partial<Sesion>) => void db.sesiones.update(sesionId, cambios)
-
-  function anadirJuego(j: Juego) {
-    if (sesion!.juegos.some((x) => x.gameId === j.id)) return
-    actualizar({ juegos: [...sesion!.juegos, { gameId: j.id, nombre: j.nombre }] })
-  }
-
-  function quitarJuego(gameId: string) {
-    actualizar({ juegos: sesion!.juegos.filter((j) => j.gameId !== gameId) })
-  }
-
-  function moverJuego(indice: number, delta: number) {
-    const lista = [...sesion!.juegos]
-    const destino = indice + delta
-    if (destino < 0 || destino >= lista.length) return
-    ;[lista[indice], lista[destino]] = [lista[destino], lista[indice]]
-    actualizar({ juegos: lista })
-  }
 
   async function guardarFechaHora(cambios: { fecha?: string; horaInicio?: string; horaFin?: string }) {
     try {
@@ -175,58 +145,6 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
             ))}
           </select>
         </div>
-
-        <section>
-          <TituloSeccion>Juegos</TituloSeccion>
-
-          {sesion.juegos.length === 0 ? (
-            <p className="mb-2 text-sm texto-suave">
-              Todavía no hay juegos. Añádelos del banco en dos toques.
-            </p>
-          ) : (
-            <ul className="mb-2 space-y-2">
-              {sesion.juegos.map((j, i) => (
-                <li
-                  key={j.gameId}
-                  className="flex items-center gap-2 rounded-xl border border-borde bg-superficie p-2 dark:border-noche-borde dark:bg-noche-superficie"
-                >
-                  <span className="flex flex-col text-tinta-tenue">
-                    <button
-                      onClick={() => moverJuego(i, -1)}
-                      disabled={i === 0}
-                      className="px-1 disabled:opacity-30"
-                      aria-label={`Subir ${j.nombre}`}
-                    >
-                      ▲
-                    </button>
-                    <button
-                      onClick={() => moverJuego(i, 1)}
-                      disabled={i === sesion.juegos.length - 1}
-                      className="px-1 disabled:opacity-30"
-                      aria-label={`Bajar ${j.nombre}`}
-                    >
-                      ▼
-                    </button>
-                  </span>
-                  <GripVertical size={16} className="shrink-0 text-tinta-tenue" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate font-semibold">{j.nombre}</span>
-                  <button
-                    onClick={() => quitarJuego(j.gameId)}
-                    className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
-                    aria-label={`Quitar ${j.nombre}`}
-                  >
-                    <X size={18} aria-hidden />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <button className="btn-suave w-full" onClick={() => setEligiendoJuego(true)}>
-            <Plus size={18} aria-hidden />
-            Añadir del banco
-          </button>
-        </section>
 
         <div>
           <label className="etiqueta" htmlFor="s-notas">
@@ -365,13 +283,6 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
           Eliminar sesión
         </button>
       </div>
-
-      <Hoja abierta={eligiendoJuego} titulo="Añadir juego" onCerrar={() => setEligiendoJuego(false)}>
-        <Juegos
-          onElegir={(j) => anadirJuego(j)}
-          seleccionados={new Set(sesion.juegos.map((j) => j.gameId))}
-        />
-      </Hoja>
 
       <HojaDuplicar abierta={duplicando} sesion={sesion} onCerrar={() => setDuplicando(false)} />
 

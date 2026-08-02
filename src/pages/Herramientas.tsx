@@ -4,49 +4,66 @@ import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
+import { SorteoAlumno } from '../components/SorteoAlumno'
 import { db } from '../db/db'
 import { navegar } from '../lib/router'
 
-const HERRAMIENTAS = [
+type Id = 'equipos' | 'cronometro' | 'marcador' | 'aleatorio'
+
+const HERRAMIENTAS: {
+  id: Id
+  titulo: string
+  descripcion: string
+  Icono: typeof Shuffle
+  disponible: boolean
+}[] = [
   {
+    id: 'equipos',
     titulo: 'Generador de equipos',
     descripcion: 'Reparte al grupo en equipos equilibrados, con pizarra para proyectar',
     Icono: Shuffle,
     disponible: true,
   },
   {
+    id: 'cronometro',
     titulo: 'Cronómetro',
     descripcion: 'Intervalos de trabajo y descanso',
     Icono: Timer,
     disponible: false,
   },
   {
+    id: 'marcador',
     titulo: 'Marcador',
     descripcion: 'Tanteo a pantalla completa',
     Icono: Trophy,
     disponible: false,
   },
   {
+    id: 'aleatorio',
     titulo: 'Selector aleatorio',
     descripcion: 'Elige a un alumno al azar',
     Icono: Users,
-    disponible: false,
+    disponible: true,
   },
 ]
 
-/** §5 M8: herramientas de aula. Solo el generador de equipos está construido. */
+/** §5 M8: herramientas de aula. */
 export function Herramientas() {
-  const [eligiendoGrupo, setEligiendoGrupo] = useState(false)
+  // Qué herramienta pidió grupo, para que la misma hoja sirva a las dos:
+  // «equipos» navega a /equipos al elegir, «aleatorio» abre el sorteo aquí
+  // mismo, sin salir de Herramientas.
+  const [pidiendoGrupo, setPidiendoGrupo] = useState<Id | null>(null)
+  const [sorteando, setSorteando] = useState<string | null>(null)
 
   return (
     <>
       <Cabecera titulo="Herramientas" />
 
       <div className="space-y-3 p-4">
-        {HERRAMIENTAS.map(({ titulo, descripcion, Icono, disponible }) => (
+        {HERRAMIENTAS.map(({ id, titulo, descripcion, Icono, disponible }) => (
           <button
-            key={titulo}
-            onClick={() => disponible && setEligiendoGrupo(true)}
+            key={id}
+            onClick={() => disponible && setPidiendoGrupo(id)}
             disabled={!disponible}
             className="tarjeta-pulsable flex w-full items-center gap-3 text-left disabled:opacity-60"
           >
@@ -68,12 +85,31 @@ export function Herramientas() {
         ))}
       </div>
 
-      <HojaElegirGrupo abierta={eligiendoGrupo} onCerrar={() => setEligiendoGrupo(false)} />
+      <HojaElegirGrupo
+        abierta={pidiendoGrupo !== null}
+        onCerrar={() => setPidiendoGrupo(null)}
+        onElegir={(grupoId) => {
+          const herramienta = pidiendoGrupo
+          setPidiendoGrupo(null)
+          if (herramienta === 'aleatorio') setSorteando(grupoId)
+          else navegar(`/equipos/${grupoId}`)
+        }}
+      />
+
+      {sorteando && <SorteoAlumno grupoId={sorteando} onCerrar={() => setSorteando(null)} />}
     </>
   )
 }
 
-function HojaElegirGrupo({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => void }) {
+function HojaElegirGrupo({
+  abierta,
+  onCerrar,
+  onElegir,
+}: {
+  abierta: boolean
+  onCerrar: () => void
+  onElegir: (grupoId: string) => void
+}) {
   const grupos = useLiveQuery(async () => {
     const lista = await db.grupos.toArray()
     return lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
@@ -89,7 +125,7 @@ function HojaElegirGrupo({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
             <li key={g.id}>
               <button
                 className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
-                onClick={() => navegar(`/equipos/${g.id}`)}
+                onClick={() => onElegir(g.id)}
               >
                 <span
                   className="h-10 w-2 shrink-0 rounded-full"

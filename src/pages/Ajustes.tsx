@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   CloudDownload,
   CloudUpload,
   Download,
@@ -46,11 +47,13 @@ import { ErrorBackup } from '../lib/backup'
 import { crearDescarga, soportaCryptoSubtle } from '../lib/descargar'
 import { errorIdSincro, firebaseConfigurado, nuevoIdSincro } from '../lib/firebase'
 import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN, pinValido } from '../lib/pin'
+import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
 
 export function Ajustes() {
   const config = useConfig()
   const curso = useLiveQuery(() => leerCursoActivo(), [])
+  const estadoSincro = useSincro((s) => s.estado)
 
   return (
     <>
@@ -94,7 +97,7 @@ export function Ajustes() {
 
         <Seccion
           titulo="Etiquetas de observaciones"
-          ayuda="Las etiquetas rápidas que aparecen al registrar una observación (§5 M4). Borrar una etiqueta no toca las observaciones ya guardadas: conservan su texto tal cual."
+          ayuda="Las etiquetas rápidas que aparecen al registrar una observación. Borrar una etiqueta no toca las observaciones ya guardadas: conservan su texto tal cual."
         >
           <EtiquetasObservacion etiquetas={config.quickTagsObservacion} />
         </Seccion>
@@ -199,6 +202,7 @@ export function Ajustes() {
         <Seccion
           titulo="Copia de seguridad"
           ayuda="El único sitio donde viajan los apoyos y las notas privadas: cifrada, y solo entre tus propios dispositivos."
+          aviso={tocaAvisarDeBackup(config.ultimoBackup)}
         >
           <SeccionBackup config={config} />
         </Seccion>
@@ -206,6 +210,7 @@ export function Ajustes() {
         <Seccion
           titulo="Sincronización automática"
           ayuda="Opcional. Mantiene el móvil y el PC al día solos: sube la copia cifrada unos segundos después de cada cambio y la importa al abrir la app si el otro dispositivo va por delante. Solo viaja el mismo fichero .enc de siempre."
+          aviso={estadoSincro === 'conflicto' || estadoSincro === 'error'}
         >
           <SeccionSincro sincro={config.sincro} />
         </Seccion>
@@ -342,23 +347,55 @@ function ColoresPetos({ coloresPetos }: { coloresPetos: string[] }) {
   )
 }
 
+/**
+ * Cerrada por defecto: Ajustes tiene nueve secciones y casi nunca hacen falta
+ * todas a la vez. El mismo gesto de `TarjetaClase`/`TarjetaSesionSemana` en
+ * Hoy — cabecera pulsable con `aria-expanded` y un chevron que rota — para no
+ * inventar un segundo lenguaje de «abrir/cerrar» en la misma app.
+ *
+ * `aviso` pinta un punto en `--accent` sobre el título aunque esté cerrada: lo
+ * usan «Copia de seguridad» (recordatorio de M9) y «Sincronización» (conflicto
+ * o error), donde algo con la sección plegada seguiría necesitando avisar.
+ */
 function Seccion({
   titulo,
   ayuda,
+  aviso = false,
   children,
 }: {
   titulo: string
   ayuda?: string
+  aviso?: boolean
   children: React.ReactNode
 }) {
+  const [abierta, setAbierta] = useState(false)
   return (
-    <section className="tarjeta space-y-4">
-      <div>
-        <h2 className="text-lg font-bold">{titulo}</h2>
-        <div className="linea-pista mb-2 mt-1.5" aria-hidden />
-        {ayuda && <p className="mt-2 text-sm texto-suave">{ayuda}</p>}
-      </div>
-      {children}
+    <section className="tarjeta">
+      <button
+        onClick={() => setAbierta((v) => !v)}
+        className="flex w-full items-center gap-2 text-left"
+        aria-expanded={abierta}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <h2 className="text-lg font-bold">{titulo}</h2>
+            {aviso && <span className="h-2 w-2 shrink-0 rounded-full bg-acento" aria-label="Requiere atención" />}
+          </span>
+          <div className="linea-pista mb-0 mt-1.5" aria-hidden />
+        </span>
+        <ChevronDown
+          size={20}
+          className={'shrink-0 texto-suave transition-transform ' + (abierta ? 'rotate-180' : '')}
+          aria-hidden
+        />
+      </button>
+
+      {abierta && (
+        <div className="mt-4 space-y-4">
+          {ayuda && <p className="text-sm texto-suave">{ayuda}</p>}
+          {children}
+        </div>
+      )}
     </section>
   )
 }
