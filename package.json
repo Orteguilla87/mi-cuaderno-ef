@@ -12,6 +12,7 @@
   "dependencies": {
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",
+    "firebase": "^12.17.0",
     "fuse.js": "^7.5.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",

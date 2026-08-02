@@ -1,0 +1,46 @@
+// Reglas de seguridad de Firestore para el transporte del backup cifrado.
+//
+// PEGAR EN: consola de Firebase -> Firestore Database -> Reglas -> Publicar.
+// Este fichero está en el repo solo como copia de referencia; la app no lo
+// aplica ni lo lee.
+//
+// Modelo de acceso, sin adornos: no hay cuentas ni sesiones, así que el ID de
+// sincronización ES la credencial. Quien lo conoce puede leer y escribir en esa
+// carpeta; quien no lo conoce no puede leer, ni escribir, ni enumerar nada. Por
+// eso el mínimo de 24 caracteres y por eso conviene usar el que genera la app
+// (26 al azar = 156 bits) en vez de una palabra pensada por una persona.
+//
+// Y por debajo de todo esto sigue estando el cifrado: lo que se guarda aquí son
+// bytes AES-GCM que el servidor no puede abrir, y que si alguien manipula fallan
+// al importarse. Estas reglas son la primera puerta, no la única.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function idValido(id) {
+      return id.matches('^[A-Za-z0-9_-]{24,64}$');
+    }
+
+    // Documento de control: qué versión hay subida, en cuántos trozos y cuándo.
+    // Sin datos personales: solo recuentos, fechas y el nombre del dispositivo.
+    match /sync/{syncId} {
+      // Sin `list`: la colección no se puede recorrer para descubrir IDs.
+      // Sin `delete`: el documento de control no se borra desde el cliente.
+      allow get, create, update: if idValido(syncId);
+
+      // Trozos del `.enc`. El límite de 1 MiB por documento es de Firestore y no
+      // hace falta repetirlo aquí; la app trocea a ~700 kB.
+      match /partes/{parteId} {
+        // `delete` sí: hay que poder podar trozos sobrantes cuando la copia encoge.
+        allow get, create, update, delete: if idValido(syncId);
+      }
+    }
+
+    // Todo lo demás, cerrado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -9,14 +9,14 @@ App personal de gestión docente que **sustituye a Additio con paridad funcional
 ## 1. RESTRICCIONES NO NEGOCIABLES (privacidad)
 
 1. **Local-first estricto.** Todos los datos en IndexedDB del dispositivo. Sin backend, sin cuentas, sin telemetría, sin fuentes ni scripts de CDN en runtime (bundle 100 % autocontenido).
-2. **Ningún dato identificativo sale del dispositivo en claro.** Solo dos llamadas de red permitidas: (a) API de Anthropic para el agente de voz (§6), siempre con texto pseudonimizado; (b) el servidor WebDAV propio del usuario (§10), y **únicamente** para transportar ficheros de backup ya cifrados. Cualquier otra petición de red está prohibida.
-3. API key de Anthropic: la introduce el usuario en Ajustes, se guarda solo en local, jamás en código ni repo. Mismo trato para las credenciales del WebDAV.
+2. **Ningún dato identificativo sale del dispositivo en claro.** Solo tres llamadas de red permitidas: (a) API de Anthropic para el agente de voz (§6), siempre con texto pseudonimizado; (b) el servidor WebDAV propio del usuario (§10) y (c) Firestore (§11), ambos **únicamente** para transportar ficheros de backup ya cifrados. Cualquier otra petición de red está prohibida.
+3. API key de Anthropic: la introduce el usuario en Ajustes, se guarda solo en local, jamás en código ni repo. Mismo trato para las credenciales del WebDAV y para el identificador y la passphrase de sincronización (§11).
 4. Backups siempre cifrados (AES-GCM, WebCrypto; PBKDF2-SHA256 ≥600k iteraciones). Informes PDF/CSV/XLSX se generan en local bajo acción explícita.
 5. Sin fotos ni audio de alumnos.
 6. Campo `apoyos`: aviso en UI («sin diagnósticos, solo pautas prácticas»); excluido de todo informe exportable.
 7. PIN de acceso (4–6 dígitos), bloqueo tras 5 min. El PIN protege el acceso a la interfaz; **no** cifra la base local (documentado en la propia UI de Ajustes).
 
-**Exclusiones deliberadas respecto a Additio (no implementar):** comunicación con familias/alumnado (canal oficial: Roble), quizzes para alumnado (no hay dispositivos de alumnos en EF), sincronización en la nube **de datos legibles** —no hay servidor de la app, ni cuentas, ni mezcla de registros: solo el fichero `.enc` opaco de §10—, integraciones Classroom/Moodle/Drive.
+**Exclusiones deliberadas respecto a Additio (no implementar):** comunicación con familias/alumnado (canal oficial: Roble), quizzes para alumnado (no hay dispositivos de alumnos en EF), sincronización en la nube **de datos legibles** —no hay servidor de la app, ni cuentas, ni mezcla de registros: solo el fichero `.enc` opaco de §10 y §11—, integraciones Classroom/Moodle/Drive.
 
 ## 2. STACK
 
@@ -182,3 +182,29 @@ Sirve para lo que §9 M9 ya pedía —pasar los datos del móvil al PC— sin ca
 Verbos usados: `PROPFIND` (listar), `PUT` (subir), `GET` (bajar). Sin biblioteca: `fetch` y poco más (`lib/webdav.ts` es puro y testeable; `db/webdav.ts` lo une con M9).
 
 **Aviso conocido:** un WebDAV que no mande cabeceras CORS rechazará las peticiones del navegador. No es un fallo de la app; hay que habilitarlo en el servidor. El error de red lo dice explícitamente en vez de un «Failed to fetch» opaco.
+
+---
+
+## 11. FIRESTORE — TRANSPORTE AUTOMÁTICO DE LA COPIA CIFRADA
+
+Lo mismo que §10, pero solo: el `.enc` de M9 sube unos segundos después de cada cambio local y baja e importa solo al abrir la app si el otro dispositivo va por delante. **Sigue sin ser sincronización de registros:** no hay mezcla, no hay resolución automática de conflictos, no hay servidor de la app. Es el mismo fichero entero, subido y bajado entero.
+
+**Invariantes (los de §10, más los propios):**
+1. Al servidor solo sube el fichero **ya cifrado** por M9, con el mismo `empaquetar()` y el mismo formato. El cifrado no cambia por sincronizar.
+2. Lo que baja entra por el **mismo camino** que un fichero elegido a mano: `inspeccionarBackup` → `restaurarBackup`. Un blob manipulado falla en la verificación AES-GCM.
+3. **Nunca se fusiona.** Si el local y el remoto cambiaron desde la última sincronización aplicada, la app se detiene, enseña las dos fechas y deja elegir. Ni un `merge` ni un «gana el más nuevo» silencioso.
+4. Solo `initializeApp` y `getFirestore`. **Nada de Analytics**: sería telemetría (§1.1). El SDK se importa de forma dinámica, así que un dispositivo sin sincronización configurada no lo descarga.
+5. La app funciona entera sin red. Sin conexión se sigue escribiendo en local y el cambio queda en cola; nada se bloquea.
+
+**Excepción a §1.3, consciente:** la passphrase de la copia **sí** se guarda en local (`Config.sincro.passphrase`), porque es la única forma de cifrar y descifrar sin preguntar, que es lo que hace automática la sincronización. Mismo trato que `apiKey`: local, nunca en el repo, nunca en la red. Se avisa en Ajustes de que el PIN no cifra el disco.
+
+**Esquema remoto:**
+
+```
+sync/{idSincro}                 → meta { version, actualizado, dispositivo, partes, bytes, esquema, creado }
+sync/{idSincro}/partes/{0..n-1} → { datos: Bytes }
+```
+
+`version` es un entero monótono: se compara sin depender de que los relojes coincidan. Las partes se escriben antes que la meta, así que un lector nunca ve una copia a medio subir. El troceado a ~700 kB existe por el límite de 1 MiB por documento de Firestore.
+
+**Modelo de acceso:** no hay cuentas. El `idSincro` **es** la credencial: ≥24 caracteres del alfabeto base64url, generados al azar por la app. Las reglas (`firestore.rules`, en la raíz del repo, se pegan a mano en la consola) conceden `get`/`create`/`update` a quien conozca un ID con esa forma, y niegan `list` para que la colección no se pueda recorrer. Quien no conoce el ID no lee, no escribe y no enumera; quien lo conoce obtiene bytes que no puede abrir.

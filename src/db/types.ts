@@ -465,6 +465,22 @@ export interface ConfigWebdav {
   password: string
 }
 
+/**
+ * Sincronización automática vía Firestore (Bloque 1). El `id` es la credencial:
+ * quien lo conoce accede a la carpeta, quien no, no puede ni enumerarla.
+ *
+ * La `passphrase` se guarda aquí porque es la única forma de cifrar y descifrar
+ * sin preguntar nada, que es justo lo que hace automática la sincronización. Es
+ * la misma contraseña del backup manual y recibe el mismo trato que `apiKey` o
+ * la contraseña del WebDAV (§1.3): local, nunca en el repo, nunca en la red. Y
+ * la misma advertencia que el resto: el PIN no cifra el disco, así que quien
+ * tenga este dispositivo desbloqueado la tiene. Se avisa en Ajustes.
+ */
+export interface ConfigSincro {
+  id: string
+  passphrase: string
+}
+
 export interface Config {
   id: 'config' // singleton
   pesosTrimestres: [number, number, number]
@@ -483,6 +499,8 @@ export interface Config {
   ultimoBackup?: string
   /** Servidor WebDAV propio para llevar el `.enc` de un dispositivo a otro. */
   webdav?: ConfigWebdav
+  /** Sincronización automática del mismo `.enc` vía Firestore. */
+  sincro?: ConfigSincro
 }
 
 export type EstadoAccionAgente = 'aplicada' | 'deshecha'

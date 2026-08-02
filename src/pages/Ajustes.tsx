@@ -5,7 +5,10 @@ import {
   CloudDownload,
   CloudUpload,
   Download,
+  Eye,
+  EyeOff,
   Lock,
+  RefreshCw,
   ShieldAlert,
   Trash2,
   Upload,
@@ -27,7 +30,8 @@ import { CONFIG_POR_DEFECTO, guardarConfig, useConfig } from '../db/config'
 import { db } from '../db/db'
 import { leerCursoActivo } from '../db/curso'
 import { comprobarPin, definirPin, quitarPin } from '../db/pin'
-import type { BandasOficiales, ConfigWebdav, ModoMedia } from '../db/types'
+import { guardarConfigSincro } from '../db/sincro'
+import type { BandasOficiales, ConfigSincro, ConfigWebdav, ModoMedia } from '../db/types'
 import {
   bajarBackup,
   ErrorWebdav,
@@ -40,6 +44,7 @@ import {
 } from '../db/webdav'
 import { ErrorBackup } from '../lib/backup'
 import { crearDescarga, soportaCryptoSubtle } from '../lib/descargar'
+import { errorIdSincro, firebaseConfigurado, nuevoIdSincro } from '../lib/firebase'
 import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN, pinValido } from '../lib/pin'
 import { useUI } from '../store/ui'
 
@@ -196,6 +201,13 @@ export function Ajustes() {
           ayuda="El único sitio donde viajan los apoyos y las notas privadas: cifrada, y solo entre tus propios dispositivos."
         >
           <SeccionBackup config={config} />
+        </Seccion>
+
+        <Seccion
+          titulo="Sincronización automática"
+          ayuda="Opcional. Mantiene el móvil y el PC al día solos: sube la copia cifrada unos segundos después de cada cambio y la importa al abrir la app si el otro dispositivo va por delante. Solo viaja el mismo fichero .enc de siempre."
+        >
+          <SeccionSincro sincro={config.sincro} />
         </Seccion>
 
         <Seccion
@@ -1015,6 +1027,133 @@ function HojaCopiasRemotas({
         </p>
       </div>
     </Hoja>
+  )
+}
+
+// ——————————————————————— sincronización automática ———————————————————————
+
+function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [borrador, setBorrador] = useState<ConfigSincro>(sincro ?? { id: '', passphrase: '' })
+  const [verId, setVerId] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // `useConfig` devuelve los valores por defecto mientras Dexie carga, así que
+  // en el primer render `sincro` es `undefined` y el borrador nacería vacío: al
+  // recargar la página se verían los dos campos en blanco pese a estar
+  // guardados. Se rellena en cuanto llega el valor real.
+  useEffect(() => {
+    if (sincro) setBorrador(sincro)
+  }, [sincro?.id, sincro?.passphrase])
+
+  const listo = firebaseConfigurado()
+
+  function guardar() {
+    const problema = errorIdSincro(borrador.id.trim())
+    if (problema) return setError(problema)
+    if (borrador.passphrase.length < 8)
+      return setError('La contraseña de cifrado necesita al menos 8 caracteres, y ha de ser la misma en todos tus dispositivos.')
+    setError(null)
+    void guardarConfigSincro({ id: borrador.id.trim(), passphrase: borrador.passphrase })
+    mostrarAviso('Sincronización guardada.')
+  }
+
+  if (!listo)
+    return (
+      <div className="aviso flex items-start gap-2 text-sm">
+        <AlertTriangle size={18} className="mt-0.5 shrink-0" aria-hidden />
+        <span>
+          Falta dar de alta el proyecto de Firebase en el código de la app (
+          <span className="cifra">src/lib/firebase.ts</span>). Hasta entonces esta sección no puede
+          hacer nada.
+        </span>
+      </div>
+    )
+
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="etiqueta">Identificador de sincronización</span>
+        <input
+          className="campo font-mono text-sm"
+          type={verId ? 'text' : 'password'}
+          value={borrador.id}
+          onChange={(e) => setBorrador({ ...borrador, id: e.target.value })}
+          placeholder="Genera uno y cópialo en el otro dispositivo"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <div className="mt-2 flex gap-2">
+          <button
+            className="btn-suave flex-1"
+            onClick={() => {
+              setBorrador({ ...borrador, id: nuevoIdSincro() })
+              setVerId(true)
+              setError(null)
+            }}
+          >
+            <RefreshCw size={18} aria-hidden /> Generar uno
+          </button>
+          <button className="btn-suave flex-1" onClick={() => setVerId(!verId)}>
+            {verId ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
+            {verId ? 'Ocultar' : 'Ver'}
+          </button>
+        </div>
+        <p className="mt-1 text-xs texto-suave">
+          Es la llave de tu carpeta: quien lo sepa entra, quien no lo sepa ni siquiera puede
+          buscarla. Mejor uno generado que una palabra pensada por ti. El mismo en cada dispositivo.
+        </p>
+      </label>
+
+      <label className="block">
+        <span className="etiqueta">Contraseña de cifrado</span>
+        <input
+          type="password"
+          className="campo"
+          value={borrador.passphrase}
+          onChange={(e) => setBorrador({ ...borrador, passphrase: e.target.value })}
+          autoComplete="new-password"
+        />
+        <p className="mt-1 text-xs texto-suave">
+          La misma que usas en «Backup ahora», y la misma en los dos dispositivos: si no coincide,
+          la copia del otro no se puede abrir.
+        </p>
+      </label>
+
+      {error && (
+        <p role="alert" className="text-sm font-medium text-acento">
+          {error}
+        </p>
+      )}
+
+      <button className="btn-primario w-full" onClick={guardar}>
+        Guardar sincronización
+      </button>
+
+      {sincro && (
+        <button
+          className="btn-peligro w-full"
+          onClick={() => {
+            void guardarConfigSincro(undefined)
+            setBorrador({ id: '', passphrase: '' })
+            setError(null)
+            mostrarAviso('Sincronización desactivada. El backup manual sigue disponible.')
+          }}
+        >
+          <Trash2 size={18} aria-hidden /> Quitar sincronización
+        </button>
+      )}
+
+      <div className="aviso flex items-start gap-2 text-xs">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+        <span>
+          Al servidor solo sube el fichero ya cifrado: no puede leer tus datos. Pero para poder
+          cifrar sin preguntarte nada, esta contraseña sí se guarda en este dispositivo, sin cifrar
+          —igual que la clave de la API y la del WebDAV—. El PIN bloquea la pantalla, no el disco:
+          quien tenga este dispositivo desbloqueado la tiene.
+        </span>
+      </div>
+    </div>
   )
 }
 

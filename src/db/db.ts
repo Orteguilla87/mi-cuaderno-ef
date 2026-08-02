@@ -256,6 +256,15 @@ class CuadernoDB extends Dexie {
     this.version(13).stores({
       ciclosAleatorios: 'id, grupoId',
     })
+
+    /**
+     * v14 — sincronización automática. `Config.sincro` (ID de la carpeta remota
+     * y passphrase) vive dentro del singleton de config y sin índice, igual que
+     * `webdav` en la v12: basta con declarar la versión. Los datos existentes
+     * son válidos tal cual, así que no hay `upgrade()` ni migración espejo en
+     * `db/backup.ts`.
+     */
+    this.version(14).stores({})
   }
 }
 
@@ -264,7 +273,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 13
+export const ESQUEMA_ACTUAL = 14
 
 export const db = new CuadernoDB()
 
