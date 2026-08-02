@@ -70,6 +70,18 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
   const [trabajando, setTrabajando] = useState(false)
   const [descarga, setDescarga] = useState<{ url: string; nombre: string } | null>(null)
 
+  /** Elegida una de las dos copias, la hoja ya no tiene nada que ofrecer. */
+  async function resolver(accion: () => Promise<void>) {
+    setTrabajando(true)
+    try {
+      await accion()
+      onCerrar()
+    } catch {
+      mostrarAviso('No se pudo resolver el conflicto. Se vuelve a intentar cuando quieras.')
+      setTrabajando(false)
+    }
+  }
+
   async function bajarAFichero() {
     setTrabajando(true)
     try {
@@ -110,8 +122,14 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
         <div className="rounded-xl border border-borde p-3 dark:border-noche-borde">
           <div className="font-semibold">Este dispositivo</div>
           <div className="text-sm texto-suave">
-            Con cambios sin subir. Última sincronización:{' '}
-            <span className="cifra">{fecha(conflicto.localCreado)}</span>
+            {conflicto.localDesde ? (
+              <>
+                Con cambios sin subir desde{' '}
+                <span className="cifra">{fecha(conflicto.localDesde)}</span>
+              </>
+            ) : (
+              'Con cambios sin subir.'
+            )}
           </div>
         </div>
 
@@ -137,25 +155,13 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
           </button>
         )}
 
-        <button
-          className="btn-primario w-full"
-          disabled={trabajando}
-          onClick={() => {
-            setTrabajando(true)
-            void resolverConLoLocal()
-          }}
-        >
+        <button className="btn-primario w-full" disabled={trabajando} onClick={() => void resolver(resolverConLoLocal)}>
           Quedarme con la de este dispositivo
         </button>
 
-        <button
-          className="btn-peligro w-full"
-          disabled={trabajando}
-          onClick={() => {
-            setTrabajando(true)
-            void resolverConLoRemoto()
-          }}
-        >
+        {/* Quedarse con la del servidor recarga la página al terminar, así que
+            esta rama no llega a cerrar la hoja: se la lleva la recarga. */}
+        <button className="btn-peligro w-full" disabled={trabajando} onClick={() => void resolver(resolverConLoRemoto)}>
           Quedarme con la del servidor
         </button>
 

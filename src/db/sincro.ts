@@ -135,7 +135,7 @@ async function subir(sincro: ConfigSincro, previa: MetaRemota | null): Promise<v
   // Nada cambió de verdad. No se puede detectar comparando el `.enc` porque
   // cada cifrado usa salt e IV nuevos y los bytes siempre difieren.
   if (huellaActual === leerEstado().huellaSubida) {
-    actualizar({ pendiente: false })
+    actualizar({ pendiente: false, ultimaEscritura: null })
     return
   }
 
@@ -175,6 +175,7 @@ async function subir(sincro: ConfigSincro, previa: MetaRemota | null): Promise<v
     versionAplicada: version,
     huellaSubida: huellaActual,
     pendiente: false,
+    ultimaEscritura: null,
     fallosSeguidos: 0,
   })
   await registrarSubida()
@@ -219,7 +220,13 @@ async function bajar(sincro: ConfigSincro, meta: MetaRemota): Promise<void> {
     restaurarBackup(fichero, sincro.passphrase, { conservar: [...CONSERVAR] }),
   )
 
-  actualizar({ versionAplicada: meta.version, huellaSubida: null, pendiente: false, fallosSeguidos: 0 })
+  actualizar({
+    versionAplicada: meta.version,
+    huellaSubida: null,
+    pendiente: false,
+    ultimaEscritura: null,
+    fallosSeguidos: 0,
+  })
   // Cambiaron todas las tablas: recargar es lo único que garantiza que cada
   // pantalla parta de cero, igual que hace la restauración manual.
   window.location.reload()
@@ -229,8 +236,12 @@ async function bajar(sincro: ConfigSincro, meta: MetaRemota): Promise<void> {
 
 export interface Conflicto {
   meta: MetaRemota
-  /** Fecha de la última escritura local conocida, para poder compararlas. */
-  localCreado: string | undefined
+  /**
+   * Desde cuándo hay trabajo local sin subir. Es la mitad local de la única
+   * comparación que la tarjeta de conflicto puede ofrecer, así que se cae a
+   * `ultimoBackup` antes que quedarse sin fecha.
+   */
+  localDesde: string | undefined
 }
 
 let conflictoVivo: Conflicto | null = null
@@ -244,7 +255,7 @@ export async function resolverConLoRemoto(): Promise<void> {
   if (!sincroConfigurada(sincro) || !conflictoVivo) return
   const meta = conflictoVivo.meta
   conflictoVivo = null
-  actualizar({ conflicto: false, pendiente: false })
+  actualizar({ conflicto: false, pendiente: false, ultimaEscritura: null })
   await bajar(sincro, meta)
 }
 
@@ -292,7 +303,9 @@ function marcarCambio(): void {
   // `yaPendiente` y `yaConflicto` son el espejo en memoria de `localStorage`:
   // este hook se dispara una vez POR FILA, y sembrar los criterios oficiales
   // inserta miles de golpe.
-  if (!yaPendiente) actualizar({ pendiente: true })
+  // La marca de tiempo se pone al ENTRAR en «pendiente», no en cada fila: lo
+  // que interesa contarle al usuario es desde cuándo tiene trabajo sin subir.
+  if (!yaPendiente) actualizar({ pendiente: true, ultimaEscritura: new Date().toISOString() })
   if (yaConflicto) return // parado a la espera de que el usuario elija
   window.clearTimeout(temporizador)
   temporizador = window.setTimeout(() => void ejecutar(), MS_DEBOUNCE)
@@ -341,7 +354,10 @@ export async function ejecutar(): Promise<void> {
         await bajar(sincro, meta!)
         break
       case 'conflicto': {
-        conflictoVivo = { meta: meta!, localCreado: (await leerConfig()).ultimoBackup }
+        conflictoVivo = {
+          meta: meta!,
+          localDesde: leerEstado().ultimaEscritura ?? (await leerConfig()).ultimoBackup,
+        }
         actualizar({ conflicto: true })
         estado('conflicto')
         return

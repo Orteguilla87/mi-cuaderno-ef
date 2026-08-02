@@ -20,6 +20,15 @@ export interface EstadoSincro {
   huellaSubida: string | null
   /** Hay cambios locales sin subir. */
   pendiente: boolean
+  /**
+   * ISO 8601 del momento en que empezaron los cambios que aún no han subido.
+   *
+   * Existe solo para la tarjeta de conflicto: sin esto, el lado local no tenía
+   * ninguna fecha que enseñar (`ultimoBackup` puede no existir, por ejemplo
+   * justo después de importar una copia) y la comparación —que es TODO lo que
+   * la tarjeta ofrece— se quedaba en «desconocida» frente a una fecha real.
+   */
+  ultimaEscritura: string | null
   /** Fallos de red seguidos, para el retroceso exponencial del Bloque 3. */
   fallosSeguidos: number
   /**
@@ -33,6 +42,7 @@ export const ESTADO_INICIAL: EstadoSincro = {
   versionAplicada: 0,
   huellaSubida: null,
   pendiente: false,
+  ultimaEscritura: null,
   fallosSeguidos: 0,
   conflicto: false,
 }
