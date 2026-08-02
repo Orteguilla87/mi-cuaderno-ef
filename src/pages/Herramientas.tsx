@@ -1,14 +1,15 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Shuffle, Timer, Trophy, Users } from 'lucide-react'
+import { Shuffle, Trophy, Users } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
+import { Marcador } from '../components/Marcador'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import { db } from '../db/db'
 import { navegar } from '../lib/router'
 
-type Id = 'equipos' | 'cronometro' | 'marcador' | 'aleatorio'
+type Id = 'equipos' | 'marcador' | 'aleatorio'
 
 const HERRAMIENTAS: {
   id: Id
@@ -25,18 +26,11 @@ const HERRAMIENTAS: {
     disponible: true,
   },
   {
-    id: 'cronometro',
-    titulo: 'Cronómetro',
-    descripcion: 'Intervalos de trabajo y descanso',
-    Icono: Timer,
-    disponible: false,
-  },
-  {
     id: 'marcador',
     titulo: 'Marcador',
-    descripcion: 'Tanteo a pantalla completa',
+    descripcion: 'Tanteo de 2 a 6 equipos, a pantalla completa',
     Icono: Trophy,
-    disponible: false,
+    disponible: true,
   },
   {
     id: 'aleatorio',
@@ -51,9 +45,10 @@ const HERRAMIENTAS: {
 export function Herramientas() {
   // Qué herramienta pidió grupo, para que la misma hoja sirva a las dos:
   // «equipos» navega a /equipos al elegir, «aleatorio» abre el sorteo aquí
-  // mismo, sin salir de Herramientas.
+  // mismo, sin salir de Herramientas. El marcador no necesita grupo: abre directo.
   const [pidiendoGrupo, setPidiendoGrupo] = useState<Id | null>(null)
   const [sorteando, setSorteando] = useState<string | null>(null)
+  const [mostrandoMarcador, setMostrandoMarcador] = useState(false)
 
   return (
     <>
@@ -63,7 +58,11 @@ export function Herramientas() {
         {HERRAMIENTAS.map(({ id, titulo, descripcion, Icono, disponible }) => (
           <button
             key={id}
-            onClick={() => disponible && setPidiendoGrupo(id)}
+            onClick={() => {
+              if (!disponible) return
+              if (id === 'marcador') setMostrandoMarcador(true)
+              else setPidiendoGrupo(id)
+            }}
             disabled={!disponible}
             className="tarjeta-pulsable flex w-full items-center gap-3 text-left disabled:opacity-60"
           >
@@ -97,6 +96,8 @@ export function Herramientas() {
       />
 
       {sorteando && <SorteoAlumno grupoId={sorteando} onCerrar={() => setSorteando(null)} />}
+
+      {mostrandoMarcador && <Marcador onCerrar={() => setMostrandoMarcador(false)} />}
     </>
   )
 }
