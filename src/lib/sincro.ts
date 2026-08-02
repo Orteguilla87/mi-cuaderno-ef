@@ -36,6 +36,12 @@ export interface EstadoLocal {
   versionAplicada: number
   /** Hay cambios locales sin subir. */
   pendiente: boolean
+  /**
+   * La base local tiene datos del maestro. Solo importa la primera vez: es lo
+   * único que distingue un dispositivo nuevo y vacío —donde bajar sin preguntar
+   * es lo correcto— de uno que ya tenía un curso entero dentro.
+   */
+  baseConDatos: boolean
 }
 
 export type Accion = 'nada' | 'subir' | 'bajar' | 'conflicto'
@@ -43,15 +49,27 @@ export type Accion = 'nada' | 'subir' | 'bajar' | 'conflicto'
 /**
  * El corazón de todo esto.
  *
- * `conflicto` es el caso que no se puede resolver solo: los dos lados avanzaron
- * desde la última sincronización aplicada, y elegir por el usuario significaría
- * tirar trabajo suyo sin preguntar. No se fusiona nunca —fusionar dos volcados
- * completos de la base no es «juntar», es inventar— así que la app se para y
- * enseña las dos fechas.
+ * `conflicto` es el caso que no se puede resolver solo: elegir por el usuario
+ * significaría tirar trabajo suyo sin preguntar. No se fusiona nunca —fusionar
+ * dos volcados completos de la base no es «juntar», es inventar— así que la app
+ * se para y enseña las dos copias.
  */
 export function decidir(meta: MetaRemota | null, local: EstadoLocal): Accion {
-  // Carpeta vacía: lo que haya aquí es lo único que existe.
-  if (!meta) return local.pendiente ? 'subir' : 'nada'
+  const nuncaSincronizado = local.versionAplicada === 0
+
+  // Carpeta vacía: lo que haya aquí es lo único que existe, así que no hay
+  // nada con lo que chocar. El `baseConDatos` importa porque al estrenar la
+  // sincronización nada está marcado como pendiente —esos datos se escribieron
+  // antes de que el motor mirara— y sin esto la primera subida no ocurriría
+  // hasta que el maestro tocase algo, dejándole creer que ya está a salvo.
+  if (!meta) return local.pendiente || (nuncaSincronizado && local.baseConDatos) ? 'subir' : 'nada'
+
+  // Primera sincronización de un dispositivo que YA tenía datos. No hay nada
+  // «pendiente» porque todo eso se escribió antes de que existiera la
+  // sincronización, así que el motor no lo vio pasar: sin esta regla se
+  // sobrescribiría en silencio, y es el único momento en que se puede perder un
+  // curso entero de una vez.
+  if (nuncaSincronizado && local.baseConDatos) return 'conflicto'
 
   const remotoAvanza = meta.version > local.versionAplicada
   if (remotoAvanza && local.pendiente) return 'conflicto'

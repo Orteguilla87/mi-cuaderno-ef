@@ -232,6 +232,24 @@ async function bajar(sincro: ConfigSincro, meta: MetaRemota): Promise<void> {
   window.location.reload()
 }
 
+// ——————————————————————————— ¿hay algo aquí? ———————————————————————————
+
+/**
+ * `true` si esta base tiene trabajo del maestro dentro.
+ *
+ * Bastan los grupos: alumnos, sesiones, asistencias y notas cuelgan todos de
+ * ellos, así que sin grupos no hay nada que perder. Contar todas las tablas no
+ * serviría — `criterios` y `config` se siembran solas al arrancar y nunca están
+ * vacías, así que darían «con datos» hasta en un dispositivo recién instalado.
+ */
+async function baseConDatos(): Promise<boolean> {
+  return (await db.grupos.count()) > 0
+}
+
+async function resumenLocal(): Promise<{ grupos: number; alumnos: number }> {
+  return { grupos: await db.grupos.count(), alumnos: await db.alumnos.count() }
+}
+
 // ——————————————————————————— resolución de conflictos ———————————————————————————
 
 export interface Conflicto {
@@ -242,6 +260,13 @@ export interface Conflicto {
    * `ultimoBackup` antes que quedarse sin fecha.
    */
   localDesde: string | undefined
+  /**
+   * Este dispositivo nunca sincronizó y ya tenía datos. La tarjeta necesita
+   * saberlo porque aquí no hay dos fechas que comparar: hay una base entera
+   * que jamás se ha subido, y lo que dice algo es cuánto hay dentro.
+   */
+  primeraVez: boolean
+  resumenLocal: { grupos: number; alumnos: number }
 }
 
 let conflictoVivo: Conflicto | null = null
@@ -333,19 +358,28 @@ function estado(e: EstadoUI, detalle?: string): void {
 
 let enMarcha = false
 
-/** Una pasada completa: mira el servidor, decide y actúa. */
+/**
+ * Una pasada completa: mira el servidor, decide y actúa.
+ *
+ * El cerrojo se echa ANTES del primer `await`, no después. Puesto más abajo no
+ * cerraba nada: dos llamadas podían colarse las dos, y una subida propia
+ * despierta al `onSnapshot`, que vuelve a entrar aquí antes de que el marcador
+ * local se haya actualizado. El resultado era la app peleándose consigo misma y
+ * declarando un conflicto contra su propia copia recién subida.
+ */
 export async function ejecutar(): Promise<void> {
   if (enMarcha) return
-  const sincro = (await leerConfig()).sincro
-  if (!sincroConfigurada(sincro)) return estado('apagado')
-  if (leerEstado().conflicto && conflictoVivo) return estado('conflicto')
-  if (!navigator.onLine) return estado('sin_conexion')
-
   enMarcha = true
-  estado('sincronizando')
   try {
+    const sincro = (await leerConfig()).sincro
+    if (!sincroConfigurada(sincro)) return estado('apagado')
+    if (leerEstado().conflicto && conflictoVivo) return estado('conflicto')
+    if (!navigator.onLine) return estado('sin_conexion')
+
+    estado('sincronizando')
     const meta = await leerMeta(sincro.id)
-    const local = leerEstado()
+    const guardado = leerEstado()
+    const local = { ...guardado, baseConDatos: await baseConDatos() }
     switch (decidir(meta, local)) {
       case 'subir':
         await subir(sincro, meta)
@@ -356,7 +390,9 @@ export async function ejecutar(): Promise<void> {
       case 'conflicto': {
         conflictoVivo = {
           meta: meta!,
-          localDesde: leerEstado().ultimaEscritura ?? (await leerConfig()).ultimoBackup,
+          localDesde: guardado.ultimaEscritura ?? (await leerConfig()).ultimoBackup,
+          primeraVez: guardado.versionAplicada === 0,
+          resumenLocal: await resumenLocal(),
         }
         actualizar({ conflicto: true })
         estado('conflicto')

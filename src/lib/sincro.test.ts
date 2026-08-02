@@ -23,8 +23,10 @@ function meta(version: number): MetaRemota {
   }
 }
 
-const limpio: EstadoLocal = { versionAplicada: 3, pendiente: false }
-const sucio: EstadoLocal = { versionAplicada: 3, pendiente: true }
+// Dispositivo que ya sincronizó alguna vez: la base tiene datos, claro, pero
+// eso ya no decide nada.
+const limpio: EstadoLocal = { versionAplicada: 3, pendiente: false, baseConDatos: true }
+const sucio: EstadoLocal = { versionAplicada: 3, pendiente: true, baseConDatos: true }
 
 describe('decidir', () => {
   it('sin nada en el servidor, sube solo si hay algo que subir', () => {
@@ -49,6 +51,46 @@ describe('decidir', () => {
     // Puede pasar tras resolver un conflicto a favor de lo local.
     expect(decidir(meta(2), limpio)).toBe('nada')
     expect(decidir(meta(2), sucio)).toBe('subir')
+  })
+})
+
+describe('decidir — primera sincronización de un dispositivo', () => {
+  const nuevoVacio: EstadoLocal = { versionAplicada: 0, pendiente: false, baseConDatos: false }
+  const nuevoConDatos: EstadoLocal = { versionAplicada: 0, pendiente: false, baseConDatos: true }
+
+  it('un dispositivo nuevo y vacío se trae la copia sin molestar', () => {
+    expect(decidir(meta(1), nuevoVacio)).toBe('bajar')
+  })
+
+  it('un dispositivo que ya tenía datos NO se sobrescribe solo', () => {
+    // El caso que costaba un curso entero: esos datos son anteriores a que
+    // existiera la sincronización, así que nunca se marcaron como pendientes.
+    expect(decidir(meta(1), nuevoConDatos)).toBe('conflicto')
+  })
+
+  it('con el servidor vacío no hay conflicto: sube, aunque nada esté marcado como pendiente', () => {
+    // Estrenar la sincronización tiene que poner a salvo lo que ya hay. Sin
+    // esto no subiría nada hasta el siguiente cambio, y el maestro se creería
+    // respaldado sin estarlo.
+    expect(decidir(null, nuevoConDatos)).toBe('subir')
+    expect(decidir(null, { ...nuevoConDatos, pendiente: true })).toBe('subir')
+  })
+
+  it('un dispositivo nuevo y vacío con el servidor vacío no inventa una subida', () => {
+    expect(decidir(null, nuevoVacio)).toBe('nada')
+  })
+
+  it('la regla solo mira la PRIMERA vez: después manda la versión', () => {
+    expect(decidir(meta(4), { versionAplicada: 3, pendiente: false, baseConDatos: true })).toBe(
+      'bajar',
+    )
+  })
+
+  it('resuelto una vez, no vuelve a saltar', () => {
+    // Tras quedarse con lo remoto, `versionAplicada` deja de ser 0.
+    expect(decidir(meta(1), { versionAplicada: 1, pendiente: false, baseConDatos: true })).toBe(
+      'nada',
+    )
   })
 })
 

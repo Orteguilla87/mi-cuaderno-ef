@@ -1,9 +1,10 @@
-import { AlertTriangle, Check, Cloud, CloudOff, Download, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Cloud, CloudOff, Download, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Hoja } from './Hoja'
 import {
   conflictoActual,
   descargarRemotaAFichero,
+  ejecutar,
   resolverConLoLocal,
   resolverConLoRemoto,
 } from '../db/sincro'
@@ -12,8 +13,13 @@ import { nombreFicheroBackup } from '../lib/backup'
 import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
 
+/**
+ * Las flechas en círculo son el gesto universal de «actualizar», y eso es lo
+ * que el botón hace. Un tic diría «ya está», que es justo lo contrario de
+ * invitar a tocarlo.
+ */
 const PINTA = {
-  sincronizado: { Icono: Check, texto: 'Sincronizado' },
+  sincronizado: { Icono: RefreshCw, texto: 'Sincronizar ahora' },
   sincronizando: { Icono: RefreshCw, texto: 'Sincronizando…' },
   conflicto: { Icono: AlertTriangle, texto: 'Conflicto de sincronización' },
   sin_conexion: { Icono: CloudOff, texto: 'Sin conexión: los cambios subirán solos' },
@@ -22,8 +28,9 @@ const PINTA = {
 } as const
 
 /**
- * Icono discreto en la cabecera. Vive dentro de `Cabecera` para aparecer en
- * todas las pantallas sin que cada una tenga que acordarse de ponerlo.
+ * Botón de sincronizar de la cabecera. Vive dentro de `Cabecera` para aparecer
+ * en todas las pantallas —Hoy incluida, arriba y a un dedo— sin que cada una
+ * tenga que acordarse de ponerlo.
  *
  * Con la sincronización apagada no se renderiza nada: quien no la use no debe
  * ver ni rastro de ella.
@@ -35,12 +42,14 @@ export function IndicadorSincro() {
   if (estado === 'apagado') return null
 
   const { Icono, texto } = PINTA[estado]
+  // Conflicto y error son los únicos estados donde hay algo que decidir; en el
+  // resto, tocar significa «mira el servidor ya, no esperes al debounce».
   const problema = estado === 'conflicto' || estado === 'error'
 
   return (
     <>
       <button
-        onClick={() => setHoja(true)}
+        onClick={() => (problema ? setHoja(true) : void ejecutar())}
         aria-label={detalle ?? texto}
         title={detalle ?? texto}
         className={
@@ -114,15 +123,22 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
     <Hoja abierta titulo="Conflicto de sincronización" onCerrar={onCerrar}>
       <div className="space-y-3">
         <p className="text-sm">
-          Los dos dispositivos han cambiado desde la última vez que se sincronizaron. No se pueden
-          juntar: hay que quedarse con uno de los dos. Elige tú, que sabes cuál tiene el trabajo
-          bueno.
+          {conflicto.primeraVez
+            ? 'Este dispositivo ya tenía datos antes de sincronizar, y en el servidor hay otra copia. No se pueden juntar: hay que quedarse con una. Elige tú, que sabes cuál tiene el trabajo bueno.'
+            : 'Los dos dispositivos han cambiado desde la última vez que se sincronizaron. No se pueden juntar: hay que quedarse con uno de los dos. Elige tú, que sabes cuál tiene el trabajo bueno.'}
         </p>
 
         <div className="rounded-xl border border-borde p-3 dark:border-noche-borde">
           <div className="font-semibold">Este dispositivo</div>
           <div className="text-sm texto-suave">
-            {conflicto.localDesde ? (
+            {conflicto.primeraVez ? (
+              <>
+                <span className="cifra">{conflicto.resumenLocal.grupos}</span>{' '}
+                {conflicto.resumenLocal.grupos === 1 ? 'grupo' : 'grupos'} y{' '}
+                <span className="cifra">{conflicto.resumenLocal.alumnos}</span>{' '}
+                {conflicto.resumenLocal.alumnos === 1 ? 'alumno' : 'alumnos'}, sin subir nunca.
+              </>
+            ) : conflicto.localDesde ? (
               <>
                 Con cambios sin subir desde{' '}
                 <span className="cifra">{fecha(conflicto.localDesde)}</span>
