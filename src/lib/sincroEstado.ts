@@ -32,6 +32,12 @@ export interface EstadoSincro {
   /** Fallos de red seguidos, para el retroceso exponencial del Bloque 3. */
   fallosSeguidos: number
   /**
+   * ISO 8601 de la última vez que se sincronizó con éxito (subir, bajar o
+   * confirmar que ya estaba al día). Es lo que se le enseña al maestro en
+   * Ajustes; se guarda aquí para que sobreviva a la recarga tras bajar una copia.
+   */
+  ultimaSincro: string | null
+  /**
    * Conflicto ya detectado y aún sin resolver. Se guarda para que no reaparezca
    * como sorpresa en cada arranque y para no seguir intentando subir encima.
    */
@@ -45,6 +51,7 @@ export const ESTADO_INICIAL: EstadoSincro = {
   ultimaEscritura: null,
   fallosSeguidos: 0,
   conflicto: false,
+  ultimaSincro: null,
 }
 
 export function leerEstado(): EstadoSincro {

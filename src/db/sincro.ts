@@ -227,6 +227,9 @@ async function bajar(sincro: ConfigSincro, meta: MetaRemota): Promise<void> {
     ultimaEscritura: null,
     fallosSeguidos: 0,
   })
+  // Sellar ANTES de recargar: la marca queda en localStorage y sobrevive al
+  // reinicio, así que al volver a arrancar se enseña la fecha correcta.
+  marcarSincronizadoAhora()
   // Cambiaron todas las tablas: recargar es lo único que garantiza que cada
   // pantalla parta de cero, igual que hace la restauración manual.
   window.location.reload()
@@ -356,6 +359,18 @@ function estado(e: EstadoUI, detalle?: string): void {
   useSincro.getState().poner(e, detalle)
 }
 
+/**
+ * Sella «ahora» como última sincronización con éxito, en el estado persistido y
+ * en el store visible. Se llama al terminar una pasada que no falló —subir,
+ * bajar o confirmar que ya estaba al día—; sobrevive a la recarga tras bajar
+ * porque queda también en `localStorage`.
+ */
+function marcarSincronizadoAhora(): void {
+  const iso = new Date().toISOString()
+  actualizar({ ultimaSincro: iso })
+  useSincro.setState({ ultimaSincro: iso })
+}
+
 let enMarcha = false
 
 /**
@@ -402,6 +417,7 @@ export async function ejecutar(): Promise<void> {
         break
     }
     window.clearTimeout(reintento)
+    marcarSincronizadoAhora()
     estado('sincronizado')
   } catch (err) {
     const traducido = traducir(err)
@@ -476,6 +492,10 @@ export async function arrancar(): Promise<void> {
   escuchando = null
 
   if (!sincroConfigurada(sincro)) return estado('apagado')
+
+  // Al abrir la app, la fecha de la última sincronización vive en localStorage:
+  // se lleva al store para poder mostrarla en Ajustes antes de la primera pasada.
+  useSincro.setState({ ultimaSincro: leerEstado().ultimaSincro ?? undefined })
 
   observarEscrituras()
   observarRed()

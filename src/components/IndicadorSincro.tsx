@@ -100,7 +100,7 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
       const { fichero, meta } = await descargarRemotaAFichero()
       setDescarga(crearDescarga(fichero, nombreFicheroBackup(new Date(meta.creado)), 'application/octet-stream'))
     } catch {
-      mostrarAviso('No se pudo descargar la copia del servidor.')
+      mostrarAviso('No se pudo descargar la otra copia.')
     } finally {
       setTrabajando(false)
     }
@@ -112,8 +112,8 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
         <div className="space-y-3">
           <p className="text-sm">{detalle ?? PINTA[estado].texto}</p>
           <p className="text-xs texto-suave">
-            La copia viaja siempre cifrada. Si algo va mal, «Backup ahora» en Ajustes sigue
-            funcionando igual.
+            Tus datos se guardan protegidos: solo tú puedes abrirlos. Si algo va mal, «Copia de
+            seguridad» en Ajustes sigue disponible.
           </p>
           <button className="btn-suave w-full" onClick={onCerrar}>
             Cerrar
@@ -127,7 +127,7 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
       <div className="space-y-3">
         <p className="text-sm">
           {conflicto.primeraVez
-            ? 'Este dispositivo ya tenía datos antes de sincronizar, y en el servidor hay otra copia. No se pueden juntar: hay que quedarse con una. Elige tú, que sabes cuál tiene el trabajo bueno.'
+            ? 'Este dispositivo ya tenía datos antes de empezar a sincronizar, y ya había otra copia guardada. No se pueden juntar: hay que quedarse con una. Elige tú, que sabes cuál tiene el trabajo bueno.'
             : 'Los dos dispositivos han cambiado desde la última vez que se sincronizaron. No se pueden juntar: hay que quedarse con uno de los dos. Elige tú, que sabes cuál tiene el trabajo bueno.'}
         </p>
 
@@ -153,9 +153,9 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
         </div>
 
         <div className="rounded-xl border border-borde p-3 dark:border-noche-borde">
-          <div className="font-semibold">Servidor ({conflicto.meta.dispositivo})</div>
+          <div className="font-semibold">La otra copia ({conflicto.meta.dispositivo})</div>
           <div className="text-sm texto-suave">
-            Copia del <span className="cifra">{fecha(conflicto.meta.creado)}</span>
+            Guardada el <span className="cifra">{fecha(conflicto.meta.creado)}</span>
           </div>
         </div>
 
@@ -170,7 +170,7 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
         ) : (
           <button className="btn-suave w-full" onClick={() => void bajarAFichero()} disabled={trabajando}>
             <Download size={18} aria-hidden />
-            {trabajando ? 'Descargando…' : 'Guardar antes la del servidor en un fichero'}
+            {trabajando ? 'Descargando…' : 'Guardar antes esa copia en un fichero'}
           </button>
         )}
 
@@ -181,12 +181,12 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
         {/* Quedarse con la del servidor recarga la página al terminar, así que
             esta rama no llega a cerrar la hoja: se la lleva la recarga. */}
         <button className="btn-peligro w-full" disabled={trabajando} onClick={() => void resolver(resolverConLoRemoto)}>
-          Quedarme con la del servidor
+          Quedarme con la otra copia
         </button>
 
         <p className="text-xs texto-suave">
-          La que no elijas se pierde. Si dudas, guarda antes la del servidor en un fichero: siempre
-          podrás restaurarla desde Ajustes.
+          La que no elijas se pierde. Si dudas, guarda antes esa copia en un fichero: siempre podrás
+          restaurarla desde Ajustes.
         </p>
       </div>
     </Hoja>

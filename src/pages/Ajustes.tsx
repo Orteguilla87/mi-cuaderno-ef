@@ -195,7 +195,7 @@ export function Ajustes() {
           </div>
         </Seccion>
 
-        <Seccion titulo="Datos" ayuda="Todo vive en este dispositivo. Nada se sube a ningún servidor.">
+        <Seccion titulo="Datos">
           <Estadisticas />
         </Seccion>
 
@@ -209,7 +209,7 @@ export function Ajustes() {
 
         <Seccion
           titulo="Sincronización automática"
-          ayuda="Opcional. Mantiene el móvil y el PC al día solos: sube la copia cifrada unos segundos después de cada cambio y la importa al abrir la app si el otro dispositivo va por delante. Solo viaja el mismo fichero .enc de siempre."
+          ayuda="Opcional. Tus cambios se guardan y se actualizan solos en todos tus dispositivos."
           aviso={estadoSincro === 'conflicto' || estadoSincro === 'error'}
         >
           <SeccionSincro sincro={config.sincro} />
@@ -1071,6 +1071,7 @@ function HojaCopiasRemotas({
 
 function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const ultimaSincro = useSincro((s) => s.ultimaSincro)
   const [borrador, setBorrador] = useState<ConfigSincro>(sincro ?? { id: '', passphrase: '' })
   const [verId, setVerId] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1109,6 +1110,15 @@ function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
 
   return (
     <div className="space-y-3">
+      {sincro && (
+        <p className="text-sm texto-suave">
+          Última sincronización:{' '}
+          <span className="cifra font-semibold text-tinta dark:text-noche-texto">
+            {ultimaSincro ? new Date(ultimaSincro).toLocaleString('es-ES') : 'aún sin sincronizar'}
+          </span>
+        </p>
+      )}
+
       <label className="block">
         <span className="etiqueta">Identificador de sincronización</span>
         <input
@@ -1184,10 +1194,9 @@ function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
       <div className="aviso flex items-start gap-2 text-xs">
         <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
         <span>
-          Al servidor solo sube el fichero ya cifrado: no puede leer tus datos. Pero para poder
-          cifrar sin preguntarte nada, esta contraseña sí se guarda en este dispositivo, sin cifrar
-          —igual que la clave de la API y la del WebDAV—. El PIN bloquea la pantalla, no el disco:
-          quien tenga este dispositivo desbloqueado la tiene.
+          Solo tú puedes abrir tus datos, con esta contraseña. Se queda guardada en este dispositivo
+          para no tener que pedírtela cada vez. El PIN bloquea la pantalla, no el dispositivo: quien
+          lo tenga desbloqueado puede ver la contraseña.
         </span>
       </div>
     </div>

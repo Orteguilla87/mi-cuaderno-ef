@@ -19,6 +19,8 @@ interface Store {
   estado: EstadoUI
   /** Texto del último error, para poder enseñar la causa real y no un «falló». */
   detalle?: string
+  /** ISO 8601 de la última sincronización con éxito, para mostrarla en Ajustes. */
+  ultimaSincro?: string
   poner: (estado: EstadoUI, detalle?: string) => void
 }
 
