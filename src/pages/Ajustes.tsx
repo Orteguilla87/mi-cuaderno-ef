@@ -1078,7 +1078,7 @@ function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
           className="campo font-mono text-sm"
           type={verId ? 'text' : 'password'}
           value={borrador.id}
-          onChange={(e) => setBorrador({ ...borrador, id: e.target.value })}
+          onChange={(e) => setBorrador((b) => ({ ...b, id: e.target.value }))}
           placeholder="Genera uno y cópialo en el otro dispositivo"
           autoComplete="off"
           spellCheck={false}
@@ -1087,7 +1087,7 @@ function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
           <button
             className="btn-suave flex-1"
             onClick={() => {
-              setBorrador({ ...borrador, id: nuevoIdSincro() })
+              setBorrador((b) => ({ ...b, id: nuevoIdSincro() }))
               setVerId(true)
               setError(null)
             }}
@@ -1111,7 +1111,7 @@ function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
           type="password"
           className="campo"
           value={borrador.passphrase}
-          onChange={(e) => setBorrador({ ...borrador, passphrase: e.target.value })}
+          onChange={(e) => setBorrador((b) => ({ ...b, passphrase: e.target.value }))}
           autoComplete="new-password"
         />
         <p className="mt-1 text-xs texto-suave">

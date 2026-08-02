@@ -55,6 +55,73 @@ describe('exportarBackup / restaurarBackup — ida y vuelta contra Dexie real', 
   })
 })
 
+describe('opción `conservar` — lo que no debe viajar entre dispositivos', () => {
+  const PIN_LOCAL = { salt: 'sal-de-aqui', hash: 'hash-de-aqui', iteraciones: 1000 }
+  const SINCRO_LOCAL = { id: 'a'.repeat(26), passphrase: 'la-de-aqui' }
+
+  /** Copia de OTRO dispositivo: trae su propio PIN y su propia sincronización. */
+  async function copiaAjena() {
+    const datos = datosEjemplo()
+    datos.config = [
+      {
+        id: 'config',
+        pin: { salt: 'sal-ajena', hash: 'hash-ajeno', iteraciones: 1000 },
+        sincro: { id: 'b'.repeat(26), passphrase: 'la-de-alli' },
+        apiKey: 'sk-ant-ajena',
+        modoPista: true,
+      },
+    ]
+    return (await empaquetar(datos, CLAVE, { esquema: ESQUEMA_ACTUAL, ...RAPIDO })).fichero
+  }
+
+  beforeEach(async () => {
+    await db.config.put({
+      ...(await leerConfig()),
+      id: 'config',
+      pin: PIN_LOCAL,
+      sincro: SINCRO_LOCAL,
+      apiKey: 'sk-ant-de-aqui',
+    })
+  })
+
+  it('sin la opción, la restauración manual trae la config de la copia tal cual', async () => {
+    await restaurarBackup(await copiaAjena(), CLAVE)
+    const config = await leerConfig()
+    expect(config.pin?.hash).toBe('hash-ajeno')
+    expect(config.sincro?.id).toBe('b'.repeat(26))
+  })
+
+  it('con la opción, el PIN y la sincronización siguen siendo los de este dispositivo', async () => {
+    await restaurarBackup(await copiaAjena(), CLAVE, {
+      conservar: ['pin', 'apiKey', 'webdav', 'sincro'],
+    })
+    const config = await leerConfig()
+    expect(config.pin).toEqual(PIN_LOCAL)
+    expect(config.sincro).toEqual(SINCRO_LOCAL)
+    expect(config.apiKey).toBe('sk-ant-de-aqui')
+    // Lo que NO se conserva sí entra: la copia manda en todo lo demás.
+    expect(config.modoPista).toBe(true)
+  })
+
+  it('conservar un campo que aquí no existe lo deja ausente, no lo hereda', async () => {
+    // Sin WebDAV local: heredar el del otro dispositivo sería colar
+    // credenciales ajenas sin que nadie las haya escrito aquí.
+    await restaurarBackup(await copiaAjena(), CLAVE, { conservar: ['webdav'] })
+    expect((await leerConfig()).webdav).toBeUndefined()
+  })
+
+  it('si la copia no traía config, se conserva igual en vez de quedarse sin PIN', async () => {
+    const datos = datosEjemplo()
+    delete datos.config
+    const { fichero } = await empaquetar(datos, CLAVE, { esquema: ESQUEMA_ACTUAL, ...RAPIDO })
+
+    await restaurarBackup(fichero, CLAVE, { conservar: ['pin', 'sincro'] })
+    const config = await leerConfig()
+    expect(config.pin).toEqual(PIN_LOCAL)
+    expect(config.sincro).toEqual(SINCRO_LOCAL)
+  })
+})
+
 describe('passphrase incorrecta', () => {
   it('falla limpiamente y no toca la base local', async () => {
     await db.cursos.add(datosEjemplo().cursos[0] as never)

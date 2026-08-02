@@ -9,6 +9,7 @@
 
 import { db, ESQUEMA_ACTUAL } from './db'
 import { guardarConfig } from './config'
+import type { Config } from './types'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import {
   abrir,
@@ -213,6 +214,20 @@ export interface ResultadoImport {
   migrado: boolean
 }
 
+export interface OpcionesRestaurar {
+  /**
+   * Campos de `Config` que sobreviven a la restauración con el valor de ESTE
+   * dispositivo, en vez del que traiga la copia.
+   *
+   * La restauración manual no usa esto: quien elige un fichero a mano quiere
+   * exactamente lo que hay dentro. Lo usa la sincronización automática, donde
+   * importar la copia del móvil no puede dejarte sin PIN, sin clave de la API y
+   * —lo peor— sin el identificador de sincronización, que además cortaría la
+   * sincronización en seco justo después de aplicarla.
+   */
+  conservar?: (keyof Config)[]
+}
+
 /**
  * Restaura una copia. O entra entera o no entra nada: el borrado y la escritura
  * van en una única transacción Dexie, así que un fallo a mitad deja la base
@@ -221,6 +236,7 @@ export interface ResultadoImport {
 export async function restaurarBackup(
   fichero: Uint8Array<ArrayBuffer>,
   passphrase: string,
+  opciones: OpcionesRestaurar = {},
 ): Promise<ResultadoImport> {
   // 1. Descifrar. Si la passphrase falla o el fichero está tocado, se sale aquí
   //    sin haber mirado siquiera la base local.
@@ -244,6 +260,10 @@ export async function restaurarBackup(
   // 4. Sustitución atómica.
   const escritos: Record<string, number> = {}
   await db.transaction('rw', db.tables, async () => {
+    // Dentro de la transacción y ANTES del borrado: si algo falla después, la
+    // config local se revierte con todo lo demás.
+    if (opciones.conservar?.length) conservarDeConfig(migradas, await db.config.get('config'), opciones.conservar)
+
     for (const tabla of db.tables) await tabla.clear()
     for (const tabla of db.tables) {
       const filas = migradas[tabla.name]
@@ -259,4 +279,26 @@ export async function restaurarBackup(
   })
 
   return { cabecera, escritos, migrado }
+}
+
+/**
+ * Pisa en la config que entra los campos que deben seguir siendo los de este
+ * dispositivo. Muta `tablas` porque se llama justo antes de escribirlas.
+ *
+ * Si la copia no traía config, se crea la fila con lo conservado: perder el PIN
+ * porque el otro dispositivo aún no tenía ninguno sería absurdo.
+ */
+function conservarDeConfig(
+  tablas: Tablas,
+  local: Config | undefined,
+  campos: (keyof Config)[],
+): void {
+  if (!local) return
+  const importada = ((tablas.config ?? []) as Config[])[0]
+  const base = importada ?? ({ id: 'config' } as Config)
+  for (const campo of campos) {
+    if (local[campo] === undefined) delete base[campo]
+    else Object.assign(base, { [campo]: local[campo] })
+  }
+  tablas.config = [base]
 }

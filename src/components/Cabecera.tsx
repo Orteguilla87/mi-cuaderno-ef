@@ -1,5 +1,6 @@
 import { ChevronLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { IndicadorSincro } from './IndicadorSincro'
 import { volver } from '../lib/router'
 
 /**
@@ -34,6 +35,7 @@ export function Cabecera({
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-bold tracking-tight">{titulo}</h1>
         </div>
+        <IndicadorSincro />
         {acciones}
       </div>
       {subtitulo && <div className="mt-1.5 text-sm text-agua">{subtitulo}</div>}

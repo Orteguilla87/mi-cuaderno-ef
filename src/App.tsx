@@ -8,6 +8,7 @@ import { Snackbar } from './components/Snackbar'
 import { useConfig } from './db/config'
 import { sembrarCriterios } from './db/criterios'
 import { obtenerCursoActivo } from './db/curso'
+import { arrancar as arrancarSincro } from './db/sincro'
 import { MS_INACTIVIDAD } from './lib/pin'
 import { segmentos, useRuta } from './lib/router'
 import { useBloqueo } from './store/bloqueo'
@@ -125,6 +126,12 @@ export default function App() {
   useEffect(() => {
     void obtenerCursoActivo()
     void sembrarCriterios()
+  }, [])
+
+  // Sincronización automática. Sin identificador configurado no hace nada y ni
+  // siquiera descarga el SDK de Firebase.
+  useEffect(() => {
+    void arrancarSincro()
   }, [])
 
   // §1.7: bloquea en cuanto se sabe que hay PIN (arranque o al activarlo).
