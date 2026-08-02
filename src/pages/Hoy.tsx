@@ -18,7 +18,6 @@ import { Cabecera } from '../components/Cabecera'
 import { TextoLargo } from '../components/TextoLargo'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
-import { leerAsistenciaGrupo } from '../db/asistencia'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import { crearSesion, lunesDe, semanaActual, semanaDe, type HuecoSemana } from '../db/planificador'
@@ -63,36 +62,43 @@ export function Hoy() {
   const esFestivo = !!curso?.festivos.includes(fecha)
   const dia = diaLectivo(fecha)
 
+  /**
+   * Todas las lecturas al principio y el cruce en memoria, como `semanaDe()`.
+   *
+   * Antes leía la sesión de cada grupo DENTRO de los callbacks de un
+   * `Promise.all`, tras un par de `await`: ahí `useLiveQuery` deja de seguirle
+   * la pista a lo que se ha leído, y borrar una sesión desde el Planificador no
+   * refrescaba esta vista (la de semana sí, porque ya usaba este patrón).
+   * De paso pasa de tres consultas por grupo a cuatro en total.
+   */
   const clases = useLiveQuery(async (): Promise<Clase[]> => {
     if (dia === null) return []
-    const grupos = await db.grupos.toArray()
-    const conClase = grupos.flatMap((g) =>
-      g.horario.filter((f) => f.diaSemana === dia).map((f) => ({ grupo: g, franja: f })),
-    )
+    const [grupos, alumnos, sesiones, asistencias] = await Promise.all([
+      db.grupos.toArray(),
+      db.alumnos.toArray(),
+      db.sesiones.where('fecha').equals(fecha).toArray(),
+      db.asistencias.where('fecha').equals(fecha).toArray(),
+    ])
 
-    const resultado = await Promise.all(
-      conClase.map(async ({ grupo, franja }) => {
-        const alumnos = await db.alumnos.where('grupoId').equals(grupo.id).toArray()
-        const activos = alumnos.filter((a) => a.activo)
-        const registros = await leerAsistenciaGrupo(
-          activos.map((a) => a.id),
-          fecha,
-        )
-        const sesion = await db.sesiones
-          .where('[grupoId+fecha]')
-          .equals([grupo.id, fecha])
-          .first()
-        return {
-          grupo,
-          horaInicio: franja.horaInicio,
-          horaFin: franja.horaFin,
-          registrados: registros.size,
-          totalAlumnos: activos.length,
-          sesion,
-        }
-      }),
-    )
-    return resultado.sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
+    const registrados = new Set(asistencias.map((a) => a.alumnoId))
+
+    return grupos
+      .flatMap((grupo) =>
+        grupo.horario
+          .filter((f) => f.diaSemana === dia)
+          .map((franja) => {
+            const activos = alumnos.filter((a) => a.grupoId === grupo.id && a.activo)
+            return {
+              grupo,
+              horaInicio: franja.horaInicio,
+              horaFin: franja.horaFin,
+              registrados: activos.filter((a) => registrados.has(a.id)).length,
+              totalAlumnos: activos.length,
+              sesion: sesiones.find((s) => s.grupoId === grupo.id),
+            }
+          }),
+      )
+      .sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
   }, [dia, fecha])
 
   // Solo la jornada de hoy conoce «ahora»: en otros días no hay clase en curso.
@@ -223,10 +229,15 @@ export function Hoy() {
 }
 
 /**
- * Barra de navegación por fecha: flechas anterior/siguiente, un botón central que
- * abre el selector nativo de fecha, y un botón para volver a hoy cuando procede.
- * Sirve tanto para moverse día a día como semana a semana (según qué haga cada
- * flecha), reutilizando el mismo diseño en ambas vistas.
+ * Barra de navegación por fecha: flechas anterior/siguiente y un botón central
+ * que abre el selector nativo de fecha. Sirve tanto para moverse día a día como
+ * semana a semana (según qué haga cada flecha), reutilizando el mismo diseño en
+ * ambas vistas.
+ *
+ * «Volver a hoy» va DEBAJO, en su propia línea, y no dentro de la fila: ahí
+ * aparecía de la nada al cambiar de fecha y empujaba «siguiente» hacia la
+ * izquierda, así que el segundo toque en el mismo sitio te devolvía a hoy en
+ * vez de avanzar otro día.
  */
 function NavegadorFecha({
   etiqueta,
@@ -252,27 +263,31 @@ function NavegadorFecha({
   ariaSiguiente?: string
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <button className="btn-suave px-3" onClick={onAnterior} aria-label={ariaAnterior}>
-        <ChevronLeft size={20} aria-hidden />
-      </button>
-      <label className="btn-fantasma relative flex flex-1 cursor-pointer items-center justify-center gap-2">
-        <Calendar size={18} aria-hidden />
-        <span className="truncate">{etiqueta}</span>
-        <input
-          type="date"
-          value={valor}
-          onChange={(e) => e.target.value && onElegir(e.target.value)}
-          aria-label="Elegir fecha"
-          className="absolute inset-0 cursor-pointer opacity-0"
-        />
-      </label>
-      <button className="btn-suave px-3" onClick={onSiguiente} aria-label={ariaSiguiente}>
-        <ChevronRight size={20} aria-hidden />
-      </button>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <button className="btn-suave px-3" onClick={onAnterior} aria-label={ariaAnterior}>
+          <ChevronLeft size={20} aria-hidden />
+        </button>
+        <label className="btn-fantasma relative flex flex-1 cursor-pointer items-center justify-center gap-2">
+          <Calendar size={18} aria-hidden />
+          <span className="truncate">{etiqueta}</span>
+          <input
+            type="date"
+            value={valor}
+            onChange={(e) => e.target.value && onElegir(e.target.value)}
+            aria-label="Elegir fecha"
+            className="absolute inset-0 cursor-pointer opacity-0"
+          />
+        </label>
+        <button className="btn-suave px-3" onClick={onSiguiente} aria-label={ariaSiguiente}>
+          <ChevronRight size={20} aria-hidden />
+        </button>
+      </div>
+
       {!esHoy && (
-        <button className="btn-suave px-3" onClick={onHoy} aria-label={etiquetaHoy}>
+        <button className="btn-suave w-full" onClick={onHoy}>
           <RotateCcw size={18} aria-hidden />
+          {etiquetaHoy}
         </button>
       )}
     </div>
