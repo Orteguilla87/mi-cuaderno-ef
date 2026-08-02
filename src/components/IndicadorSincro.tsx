@@ -1,4 +1,4 @@
-import { AlertTriangle, Cloud, CloudOff, Download, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Check, Cloud, CloudOff, Download, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Hoja } from './Hoja'
 import {
@@ -14,12 +14,12 @@ import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
 
 /**
- * Las flechas en círculo son el gesto universal de «actualizar», y eso es lo
- * que el botón hace. Un tic diría «ya está», que es justo lo contrario de
- * invitar a tocarlo.
+ * Cuando todo está al día, un tic verde lo dice de un vistazo (Bloque 3); el
+ * botón sigue sincronizando al tocarlo, pero ya no reclama atención. El resto de
+ * estados mantiene su icono propio para que se distingan sin leer.
  */
 const PINTA = {
-  sincronizado: { Icono: RefreshCw, texto: 'Sincronizar ahora' },
+  sincronizado: { Icono: Check, texto: 'Todo al día · toca para sincronizar' },
   sincronizando: { Icono: RefreshCw, texto: 'Sincronizando…' },
   conflicto: { Icono: AlertTriangle, texto: 'Conflicto de sincronización' },
   sin_conexion: { Icono: CloudOff, texto: 'Sin conexión: los cambios subirán solos' },
@@ -45,6 +45,9 @@ export function IndicadorSincro() {
   // Conflicto y error son los únicos estados donde hay algo que decidir; en el
   // resto, tocar significa «mira el servidor ya, no esperes al debounce».
   const problema = estado === 'conflicto' || estado === 'error'
+  // El tic «al día» va en lima (positivo); el resto de estados sin problema, en
+  // blanco atenuado, para que solo el check destaque como confirmación.
+  const colorIcono = problema ? 'text-white' : estado === 'sincronizado' ? 'text-lima' : 'text-white/75'
 
   return (
     <>
@@ -55,7 +58,7 @@ export function IndicadorSincro() {
         className={
           'flex min-h-tap min-w-tap items-center justify-center rounded-full transition ' +
           'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50 active:bg-white/15 ' +
-          (problema ? 'text-white' : 'text-white/75')
+          colorIcono
         }
       >
         <span className={problema ? 'rounded-full bg-acento p-1.5' : ''}>
