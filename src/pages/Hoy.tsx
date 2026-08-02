@@ -21,10 +21,10 @@ import { ValoracionSesion } from '../components/ValoracionSesion'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import { crearSesion, lunesDe, semanaActual, semanaDe, type HuecoSemana } from '../db/planificador'
-import type { Grupo, Sesion } from '../db/types'
+import type { CursoEscolar, Grupo, Sesion } from '../db/types'
+import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import {
   aISO,
-  diaLectivo,
   formatoCorto,
   formatoLargo,
   horaActual,
@@ -59,8 +59,11 @@ export function Hoy() {
   }, [])
 
   const curso = useLiveQuery(leerCursoActivo, [])
-  const esFestivo = !!curso?.festivos.includes(fecha)
-  const dia = diaLectivo(fecha)
+  // Única fuente de verdad de «¿toca clase hoy?» (Bloque 1): mira inicio/fin del
+  // curso, trimestres y festivos, no solo el fin de semana. Mientras el curso
+  // carga, `estado` es undefined y no se afirma nada.
+  const estado: EstadoDia | undefined = curso ? estadoDia(fecha, curso) : undefined
+  const dia = estado?.tipo === 'lectivo' ? estado.dia : null
 
   /**
    * Todas las lecturas al principio y el cruce en memoria, como `semanaDe()`.
@@ -138,7 +141,7 @@ export function Hoy() {
       />
 
       {vista === 'semana' ? (
-        <VistaSemanaHoy hoy={hoy} />
+        <VistaSemanaHoy hoy={hoy} curso={curso} />
       ) : (
       <div className="space-y-4 p-4">
         <NavegadorFecha
@@ -151,21 +154,11 @@ export function Hoy() {
           onHoy={() => setFecha(hoy)}
         />
 
-        {dia === null || esFestivo ? (
-          <div className="tarjeta text-center">
-            <CalendarOff className="mx-auto text-tinta-tenue" size={32} aria-hidden />
-            <p className="mt-2 text-base font-semibold">
-              {esFestivo ? 'Día no lectivo' : 'Fin de semana'}
-            </p>
-            <p className="mt-1 text-sm texto-suave">
-              {esFestivo
-                ? 'Está marcado como festivo en el calendario del curso.'
-                : 'No hay clases programadas.'}
-            </p>
-          </div>
+        {!estado ? null : estado.tipo !== 'lectivo' ? (
+          <MensajeNoLectivo estado={estado} curso={curso} />
         ) : clases?.length === 0 ? (
           <div className="tarjeta text-center">
-            <p className="text-base font-semibold">Sin clases el {NOMBRES_DIA[dia - 1]}</p>
+            <p className="text-base font-semibold">Sin clases el {NOMBRES_DIA[estado.dia - 1]}</p>
             <p className="mt-1 text-sm texto-suave">
               Añade el horario en la ficha de cada grupo y aparecerán aquí.
             </p>
@@ -226,6 +219,64 @@ export function Hoy() {
       )}
     </>
   )
+}
+
+/**
+ * Tarjeta de «no hay clase», con el motivo real según el estado del día (Bloque 1):
+ * fin de semana, festivo, vacaciones entre trimestres, o el curso aún sin empezar
+ * o ya terminado. Antes solo distinguía festivo de fin de semana.
+ */
+function MensajeNoLectivo({
+  estado,
+  curso,
+}: {
+  estado: Exclude<EstadoDia, { tipo: 'lectivo' }>
+  curso: CursoEscolar | undefined
+}) {
+  const textos: Record<typeof estado.tipo, { titulo: string; texto: string }> = {
+    finDeSemana: { titulo: 'Fin de semana', texto: 'No hay clases programadas.' },
+    festivo: {
+      titulo: 'Día festivo',
+      texto: 'Está marcado como festivo en el calendario del curso.',
+    },
+    vacaciones: {
+      titulo: 'Vacaciones',
+      texto: 'Este día queda entre trimestres: no hay clase.',
+    },
+    antesDeCurso: {
+      titulo: 'El curso aún no ha empezado',
+      texto: curso ? `Las clases empiezan el ${formatoLargo(curso.inicio)}.` : 'Aún no ha empezado.',
+    },
+    despuesDeCurso: {
+      titulo: 'El curso ha terminado',
+      texto: curso ? `El curso acabó el ${formatoLargo(curso.fin)}.` : 'El curso ya ha terminado.',
+    },
+  }
+  const { titulo, texto } = textos[estado.tipo]
+
+  return (
+    <div className="tarjeta text-center">
+      <CalendarOff className="mx-auto text-tinta-tenue" size={32} aria-hidden />
+      <p className="mt-2 text-base font-semibold">{titulo}</p>
+      <p className="mt-1 text-sm texto-suave">{texto}</p>
+    </div>
+  )
+}
+
+/** Etiqueta corta de un día no lectivo, para listas donde no cabe la tarjeta entera. */
+function etiquetaNoLectivo(tipo: Exclude<EstadoDia, { tipo: 'lectivo' }>['tipo']): string {
+  switch (tipo) {
+    case 'finDeSemana':
+      return 'Fin de semana'
+    case 'festivo':
+      return 'Día festivo'
+    case 'vacaciones':
+      return 'Vacaciones'
+    case 'antesDeCurso':
+      return 'El curso aún no ha empezado'
+    case 'despuesDeCurso':
+      return 'El curso ha terminado'
+  }
 }
 
 /**
@@ -299,7 +350,7 @@ function NavegadorFecha({
  * cabecera. Al desplegar, únicamente los campos que tienen contenido — nada
  * de secciones vacías ni guiones.
  */
-function VistaSemanaHoy({ hoy }: { hoy: string }) {
+function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | undefined }) {
   const [lunes, setLunes] = useState(semanaActual)
   const huecos = useLiveQuery(() => semanaDe(lunes), [lunes])
 
@@ -336,6 +387,11 @@ function VistaSemanaHoy({ hoy }: { hoy: string }) {
         const delDia = porDia(d)
         if (delDia.length === 0) return null
         const fecha = sumarDias(lunes, d - 1)
+        // Un día con horario pero no lectivo (festivo, vacaciones o fuera de
+        // curso) no enseña sus clases: contradiría al calendario. Se mantiene la
+        // cabecera con el motivo, para que no parezca que se han perdido.
+        const est = curso ? estadoDia(fecha, curso) : undefined
+        const noLectivo = est && est.tipo !== 'lectivo' ? est : null
         return (
           <section key={d}>
             <TituloSeccion>
@@ -343,13 +399,17 @@ function VistaSemanaHoy({ hoy }: { hoy: string }) {
               <span className="cifra text-sm font-normal texto-suave">{formatoCorto(fecha)}</span>
               {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
             </TituloSeccion>
-            <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-              {delDia.map((h) => (
-                <li key={`${h.grupo.id}-${h.horaInicio}`}>
-                  <TarjetaSesionSemana hueco={h} />
-                </li>
-              ))}
-            </ul>
+            {noLectivo ? (
+              <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo.tipo)}</p>
+            ) : (
+              <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
+                {delDia.map((h) => (
+                  <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                    <TarjetaSesionSemana hueco={h} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )
       })}

@@ -1,4 +1,4 @@
-import { aISO, deISO, sumarDias } from './fechas'
+import { aISO, deISO, diaLectivo, sumarDias, type DiaSemana } from './fechas'
 
 /**
  * Parser de días no lectivos pegados a mano.
@@ -128,4 +128,52 @@ export function parsearCalendario(
     fueraDeCurso,
     finesDeSemanaOmitidos,
   }
+}
+
+/**
+ * Qué es un día concreto para el calendario del curso. Es la ÚNICA fuente de
+ * verdad de «¿toca clase hoy?»: la usan tanto «Hoy» como el Calendario, para no
+ * repartir por dos sitios la comprobación de festivos, límites y trimestres.
+ */
+export type EstadoDia =
+  | { tipo: 'lectivo'; dia: DiaSemana }
+  | { tipo: 'finDeSemana' }
+  | { tipo: 'antesDeCurso' }
+  | { tipo: 'despuesDeCurso' }
+  | { tipo: 'festivo' }
+  /** Dentro del curso pero fuera de todo trimestre: Navidad, Semana Santa… */
+  | { tipo: 'vacaciones' }
+
+/** Curso mínimo que necesita `estadoDia`: solo fechas, ni ids ni el resto. */
+export interface CursoFechas {
+  inicio: string
+  fin: string
+  festivos: string[]
+  trimestres: { inicio: string; fin: string }[]
+}
+
+/**
+ * Clasifica una fecha ISO respecto al curso. Orden de decisión pensado para que
+ * el motivo que se enseña sea el más informativo:
+ *  1. Fin de semana: nunca hay clase, gane lo que gane el resto.
+ *  2. Antes / después del curso: aún no ha empezado o ya terminó.
+ *  3. Festivo explícito (incluye los rangos de vacaciones pegados a mano).
+ *  4. Con trimestres cargados, un día lectivo fuera de todos ellos es vacaciones
+ *     (el hueco entre trimestres). Sin trimestres, este paso no aplica.
+ *  5. Si no, día lectivo.
+ */
+export function estadoDia(iso: string, curso: CursoFechas): EstadoDia {
+  const dia = diaLectivo(iso)
+  if (dia === null) return { tipo: 'finDeSemana' }
+  if (iso < curso.inicio) return { tipo: 'antesDeCurso' }
+  if (iso > curso.fin) return { tipo: 'despuesDeCurso' }
+  if (curso.festivos.includes(iso)) return { tipo: 'festivo' }
+  if (curso.trimestres.length > 0 && !curso.trimestres.some((t) => iso >= t.inicio && iso <= t.fin))
+    return { tipo: 'vacaciones' }
+  return { tipo: 'lectivo', dia }
+}
+
+/** Atajo: ¿toca clase este día? Azúcar sobre `estadoDia` para condiciones sueltas. */
+export function esDiaLectivo(iso: string, curso: CursoFechas): boolean {
+  return estadoDia(iso, curso).tipo === 'lectivo'
 }
