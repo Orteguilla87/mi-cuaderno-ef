@@ -1,5 +1,5 @@
 import {
-  BarChart3,
+  // BarChart3, // lo usaba «Evaluación final», oculta en el Bloque 5 (más abajo)
   CalendarDays,
   CalendarRange,
   ClipboardList,
@@ -72,13 +72,17 @@ export const ENTRADAS_MAS: EntradaMas[] = [
     Icono: MessageSquareText,
     disponible: true,
   },
-  {
-    ruta: '/evaluacion',
-    titulo: 'Evaluación final',
-    descripcion: 'Nota de curso, conversión oficial y comentarios',
-    Icono: BarChart3,
-    disponible: false,
-  },
+  // «Evaluación final» oculta de la navegación (Bloque 5): igual que el Banco de
+  // Juegos, se quita solo la entrada de esta lista. La ruta /evaluacion, su
+  // componente y sus datos siguen intactos; basta con devolver la entrada aquí
+  // para que vuelva a aparecer en «Más» y en la barra lateral.
+  // {
+  //   ruta: '/evaluacion',
+  //   titulo: 'Evaluación final',
+  //   descripcion: 'Nota de curso, conversión oficial y comentarios',
+  //   Icono: BarChart3,
+  //   disponible: false,
+  // },
   {
     ruta: '/informes',
     titulo: 'Informes',

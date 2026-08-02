@@ -50,6 +50,13 @@ import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN, pinValido } from '../lib/pin'
 import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
 
+/**
+ * Interruptor de la sección «Servidor WebDAV» (Bloque 5). La sincronización
+ * automática ya cubre pasar la copia entre dispositivos, así que se oculta;
+ * el código de `SeccionWebdav` se conserva y con `true` vuelve a mostrarse.
+ */
+const WEBDAV_VISIBLE = false
+
 export function Ajustes() {
   const config = useConfig()
   const curso = useLiveQuery(() => leerCursoActivo(), [])
@@ -215,12 +222,17 @@ export function Ajustes() {
           <SeccionSincro sincro={config.sincro} />
         </Seccion>
 
-        <Seccion
-          titulo="Servidor WebDAV"
-          ayuda="Opcional. Sirve para llevar la copia cifrada del móvil al PC sin cables. Solo viaja el fichero .enc: el servidor nunca ve tus datos."
-        >
-          <SeccionWebdav webdav={config.webdav} />
-        </Seccion>
+        {/* «Servidor WebDAV» oculto de Ajustes (Bloque 5): la sincronización
+            automática lo cubre, así que se retira de la vista. El código y los
+            datos siguen intactos; poner WEBDAV_VISIBLE a true lo devuelve. */}
+        {WEBDAV_VISIBLE && (
+          <Seccion
+            titulo="Servidor WebDAV"
+            ayuda="Opcional. Sirve para llevar la copia cifrada del móvil al PC sin cables. Solo viaja el fichero .enc: el servidor nunca ve tus datos."
+          >
+            <SeccionWebdav webdav={config.webdav} />
+          </Seccion>
+        )}
 
         <Seccion
           titulo="PIN de acceso"
