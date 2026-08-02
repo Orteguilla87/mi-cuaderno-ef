@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   decidir,
+  esperaTrasFallo,
+  ESPERAS_REINTENTO,
   huella,
   nombreDispositivo,
   reensamblar,
@@ -47,6 +49,21 @@ describe('decidir', () => {
     // Puede pasar tras resolver un conflicto a favor de lo local.
     expect(decidir(meta(2), limpio)).toBe('nada')
     expect(decidir(meta(2), sucio)).toBe('subir')
+  })
+})
+
+describe('esperaTrasFallo', () => {
+  it('crece con los fallos seguidos y se detiene en el tope', () => {
+    expect(ESPERAS_REINTENTO.map((_, i) => esperaTrasFallo(i + 1))).toEqual([...ESPERAS_REINTENTO])
+    expect(esperaTrasFallo(99)).toBe(ESPERAS_REINTENTO[ESPERAS_REINTENTO.length - 1])
+  })
+
+  it('el primer fallo no espera más de lo razonable', () => {
+    expect(esperaTrasFallo(1)).toBe(30_000)
+    // Un contador a cero (o negativo por lo que sea) no debe dar 0 ms: sería
+    // un reintento inmediato en bucle.
+    expect(esperaTrasFallo(0)).toBe(30_000)
+    expect(esperaTrasFallo(-5)).toBe(30_000)
   })
 })
 

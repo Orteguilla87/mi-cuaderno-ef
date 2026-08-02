@@ -59,6 +59,23 @@ export function decidir(meta: MetaRemota | null, local: EstadoLocal): Accion {
   return local.pendiente ? 'subir' : 'nada'
 }
 
+// ——————————————————————————— reintentos ———————————————————————————
+
+/**
+ * Espera antes de reintentar, según cuántos fallos seguidos lleva.
+ *
+ * Un móvil en el porche pierde la cobertura a ratos: insistir cada pocos
+ * segundos gasta batería y no arregla nada, así que la espera crece. El tope
+ * existe porque el ciclo periódico de 5 min ya cubre el caso largo, y pasarse
+ * de ahí solo alargaría la vuelta cuando la red por fin regresa.
+ */
+export const ESPERAS_REINTENTO = [30_000, 60_000, 120_000, 300_000] as const
+
+export function esperaTrasFallo(fallosSeguidos: number): number {
+  const i = Math.min(Math.max(fallosSeguidos, 1), ESPERAS_REINTENTO.length) - 1
+  return ESPERAS_REINTENTO[i]
+}
+
 // ——————————————————————————— troceado ———————————————————————————
 
 export function trocear(fichero: Uint8Array, tamano = BYTES_POR_PARTE): Uint8Array[] {

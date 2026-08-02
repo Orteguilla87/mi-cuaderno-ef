@@ -21,6 +21,7 @@ import type { ConfigSincro } from './types'
 import { firebaseConfigurado, firestore, idSincroValido } from '../lib/firebase'
 import {
   decidir,
+  esperaTrasFallo,
   huella,
   nombreDispositivo,
   reensamblar,
@@ -348,14 +349,67 @@ export async function ejecutar(): Promise<void> {
       case 'nada':
         break
     }
+    window.clearTimeout(reintento)
     estado('sincronizado')
   } catch (err) {
     const traducido = traducir(err)
-    actualizar({ fallosSeguidos: leerEstado().fallosSeguidos + 1 })
+    const { fallosSeguidos } = actualizar({ fallosSeguidos: leerEstado().fallosSeguidos + 1 })
     estado(traducido.codigo === 'red' ? 'sin_conexion' : 'error', traducido.message)
+    // Un fallo de permisos no se arregla insistiendo: hay que publicar las
+    // reglas. Se deja para el ciclo periódico en vez de martillear el servidor.
+    if (traducido.codigo !== 'permisos') programarReintento(esperaTrasFallo(fallosSeguidos))
   } finally {
     enMarcha = false
   }
+}
+
+// ——————————————————————————— Bloque 3: red ———————————————————————————
+
+/** Ciclo de fondo. Solo hace algo si de verdad hay algo que subir o reintentar. */
+export const MS_CICLO = 5 * 60_000
+
+let reintento: number | undefined
+
+function programarReintento(ms: number): void {
+  window.clearTimeout(reintento)
+  reintento = window.setTimeout(() => void ejecutar(), ms)
+}
+
+/** Sin trabajo pendiente no se toca la red: ni un `getDoc` de más. */
+function hayTrabajo(): boolean {
+  const { pendiente, fallosSeguidos, conflicto } = leerEstado()
+  return !conflicto && (pendiente || fallosSeguidos > 0)
+}
+
+let escuchandoRed = false
+
+function observarRed(): void {
+  if (escuchandoRed) return
+  escuchandoRed = true
+
+  // Volver la red es la señal buena: se reintenta al momento, sin esperar al
+  // ciclo. Los cambios hechos sin cobertura ya están en cola (`pendiente`).
+  window.addEventListener('online', () => {
+    actualizar({ fallosSeguidos: 0 })
+    void ejecutar()
+  })
+
+  // Perderla no es un error: se dice y ya. Lo local sigue funcionando entero.
+  window.addEventListener('offline', () => {
+    window.clearTimeout(reintento)
+    estado('sin_conexion')
+  })
+
+  // Volver a la app tras un rato en el bolsillo: los temporizadores de una
+  // pestaña en segundo plano se estiran o se paran, así que conviene mirar.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && hayTrabajo()) void ejecutar()
+  })
+
+  window.setInterval(() => {
+    if (!hayTrabajo() || !navigator.onLine || document.hidden) return
+    void ejecutar()
+  }, MS_CICLO)
 }
 
 let escuchando: (() => void) | null = null
@@ -372,6 +426,7 @@ export async function arrancar(): Promise<void> {
   if (!sincroConfigurada(sincro)) return estado('apagado')
 
   observarEscrituras()
+  observarRed()
   await ejecutar()
 
   // `onSnapshot` sobre el documento de meta —unos pocos campos— es una conexión
