@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
+import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/migracion15'
 import type {
   AccionAgente,
   Alumno,
@@ -14,6 +15,7 @@ import type {
   Equipo,
   EvalFinal,
   EvalTrimestral,
+  FilaInstrumento,
   Grupo,
   InformeInfantil,
   InstrumentoEval,
@@ -50,6 +52,7 @@ class CuadernoDB extends Dexie {
   juegos!: EntityTable<Juego, 'id'>
   plantillas!: EntityTable<Plantilla, 'id'>
   columnas!: EntityTable<Columna, 'id'>
+  filas!: EntityTable<FilaInstrumento, 'id'>
   rubricas!: EntityTable<Rubrica, 'id'>
   valores!: EntityTable<ValorCelda, 'id'>
   criterios!: EntityTable<Criterio, 'id'>
@@ -265,6 +268,36 @@ class CuadernoDB extends Dexie {
      * `db/backup.ts`.
      */
     this.version(14).stores({})
+
+    /**
+     * v15 — calificación por unidades didácticas (Orden 130/2023, art. 6).
+     *
+     * El peso pasa a vivir en la UD (dentro del trimestre) y en el instrumento
+     * (dentro de la UD), y aparece `filas`: lo que de verdad se evalúa dentro
+     * de un instrumento y lo único que se ata a un criterio del decreto. Los
+     * criterios no reciben nota; son referente y trazabilidad.
+     *
+     * La migración es de datos, no solo de esquema: toda columna anterior
+     * necesita su fila, o se quedaría sin evidencia de la que sacar nota. La
+     * lógica está en `lib/migracion15.ts` porque `db/backup.ts` tiene que
+     * aplicar exactamente la misma sobre las copias antiguas.
+     */
+    this.version(15)
+      .stores({ filas: 'id, columnaId, criterioId, [columnaId+orden]' })
+      .upgrade(async (tx) => {
+        const unidades = await tx.table('unidades').toArray()
+        migrarUnidades(unidades)
+        await tx.table('unidades').bulkPut(unidades)
+
+        const columnas = await tx.table('columnas').toArray()
+        migrarColumnas(columnas)
+        await tx.table('columnas').bulkPut(columnas)
+
+        const grupos = await tx.table('grupos').toArray()
+        const rubricas = await tx.table('rubricas').toArray()
+        const filas = crearFilasDeColumnas(columnas, grupos, rubricas, nuevoId)
+        if (filas.length) await tx.table('filas').bulkAdd(filas)
+      })
   }
 }
 
@@ -273,7 +306,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 14
+export const ESQUEMA_ACTUAL = 15
 
 export const db = new CuadernoDB()
 

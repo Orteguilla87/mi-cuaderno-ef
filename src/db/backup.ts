@@ -7,10 +7,11 @@
  * Los informes exportables siguen sin incluirlos (§1.6).
  */
 
-import { db, ESQUEMA_ACTUAL } from './db'
+import { db, ESQUEMA_ACTUAL, nuevoId } from './db'
 import { guardarConfig } from './config'
 import type { Config } from './types'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
+import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/migracion15'
 import {
   abrir,
   empaquetar,
@@ -106,6 +107,23 @@ export const MIGRACIONES: Migracion[] = [
     hasta: 11,
     aplicar: (t) => {
       for (const c of filas(t, 'config')) if (typeof c.pin === 'string') delete c.pin
+    },
+  },
+  {
+    // Espejo de db.ts v15: pesos por unidad e instrumento, y la tabla `filas`.
+    // Es la primera migración que CREA registros: sin sus filas, los
+    // instrumentos de una copia antigua se restaurarían sin evidencia y toda
+    // nota saldría vacía.
+    hasta: 15,
+    aplicar: (t) => {
+      migrarUnidades(filas(t, 'unidades'))
+      migrarColumnas(filas(t, 'columnas'))
+      t.filas = crearFilasDeColumnas(
+        filas(t, 'columnas'),
+        filas(t, 'grupos'),
+        filas(t, 'rubricas'),
+        nuevoId,
+      )
     },
   },
 ]

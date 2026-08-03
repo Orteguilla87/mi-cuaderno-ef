@@ -136,7 +136,9 @@ export function datosEjemplo(): Tablas {
         nivel: 3,
         trimestre: 1,
         titulo: 'Nos movemos por el espacio',
-        criterios: ['PRI:2:1.1'],
+        criterios: ['EF.2C.1.1'],
+        computa: true,
+        pesoTrimestre: 100,
       },
     ],
     instrumentos: [

@@ -1,8 +1,10 @@
 import { criteriosDeGrupo } from './criterios'
 import { db, nuevoId } from './db'
+import { filasIniciales } from './filas'
 import type {
   Columna,
   Etapa,
+  FilaInstrumento,
   Rubrica,
   TipoColumna,
   Trimestre,
@@ -56,6 +58,7 @@ export async function crearColumna(datos: {
   titulo: string
   tipo: TipoColumna
   udId?: string
+  pesoUd?: number
   criterioCodigo?: string
   fecha?: string
   escala?: Columna['escala']
@@ -77,30 +80,43 @@ export async function crearColumna(datos: {
     orden: existentes.length,
     fecha: datos.fecha,
     udId: datos.udId,
+    pesoUd: datos.pesoUd ?? 0,
     criterioCodigo: datos.criterioCodigo,
     escala: datos.tipo === 'numero' ? (datos.escala ?? { min: 0, max: 10, decimales: 1 }) : undefined,
     caritas: datos.tipo === 'caritas' ? (datos.caritas ?? 3) : undefined,
     rubricaId: datos.tipo === 'rubrica' ? datos.rubricaId : undefined,
     calculo: datos.tipo === 'calculo' ? (datos.calculo ?? { componentes: [] }) : undefined,
   }
-  await db.columnas.add(columna)
+
+  // Toda columna nace con sus filas: el motor de notas siempre tiene de dónde
+  // sacar la evidencia, sin un camino especial para el instrumento simple.
+  const rubrica = columna.rubricaId ? await db.rubricas.get(columna.rubricaId) : undefined
+  const filas = filasIniciales(columna, rubrica)
+
+  await db.transaction('rw', [db.columnas, db.filas], async () => {
+    await db.columnas.add(columna)
+    await db.filas.bulkAdd(filas)
+  })
   return columna.id
 }
 
-/** Borra la columna y todos sus valores. Devuelve la función de deshacer. */
+/** Borra la columna con sus filas y sus valores. Devuelve la función de deshacer. */
 export async function eliminarColumna(columnaId: string): Promise<() => Promise<void>> {
   const columna = await db.columnas.get(columnaId)
   const valores = await db.valores.where('columnaId').equals(columnaId).toArray()
+  const filas = await db.filas.where('columnaId').equals(columnaId).toArray()
   if (!columna) return async () => {}
 
-  await db.transaction('rw', [db.columnas, db.valores], async () => {
+  await db.transaction('rw', [db.columnas, db.valores, db.filas], async () => {
     await db.valores.bulkDelete(valores.map((v) => v.id))
+    await db.filas.bulkDelete(filas.map((f) => f.id))
     await db.columnas.delete(columnaId)
   })
 
   return async () => {
-    await db.transaction('rw', [db.columnas, db.valores], async () => {
+    await db.transaction('rw', [db.columnas, db.valores, db.filas], async () => {
       await db.columnas.add(columna)
+      await db.filas.bulkAdd(filas)
       await db.valores.bulkAdd(valores)
     })
   }
@@ -538,9 +554,13 @@ export interface ResultadoPegado {
  * Las columnas de tipo 'calculo' remapean `componentes.columnaId` al id nuevo
  * de la columna del propio lote; un componente que apunte fuera del lote (p.
  * ej. al copiar una sola columna de cálculo) se descarta, porque su
- * referencia no existiría en el destino. `udId` se deja fuera: la unidad
- * didáctica está ligada a un nivel y trimestre concretos, distintos del
- * destino.
+ * referencia no existiría en el destino. `udId` y `pesoUd` se dejan fuera: la
+ * unidad didáctica está ligada a un nivel y trimestre concretos, distintos del
+ * destino, y un peso sin unidad no significa nada.
+ *
+ * Las filas SÍ se copian, con ids nuevos: son la estructura del instrumento.
+ * Su `criterioId` solo sobrevive si el criterio existe en el ciclo del destino;
+ * si no, la fila llega sin criterio, para que se asigne uno que sí aplique.
  */
 export async function pegarColumnas(
   grupoId: string,
@@ -569,6 +589,7 @@ export async function pegarColumnas(
     trimestre,
     orden: orden++,
     udId: undefined,
+    pesoUd: 0,
     calculo: c.calculo
       ? {
           componentes: c.calculo.componentes
@@ -578,12 +599,35 @@ export async function pegarColumnas(
       : undefined,
   }))
 
-  if (nuevas.length > 0) await db.columnas.bulkAdd(nuevas)
+  const criteriosValidos = new Set(
+    (await criteriosDeGrupo(etapaDestino, nivelDestino)).map((c) => c.id),
+  )
+  const origenIds = validacion.aPegar.map((c) => c.id)
+  const filasOrigen = origenIds.length
+    ? await db.filas.where('columnaId').anyOf(origenIds).toArray()
+    : []
+  const filasNuevas: FilaInstrumento[] = filasOrigen.map((f) => ({
+    ...f,
+    id: nuevoId(),
+    columnaId: mapaIds.get(f.columnaId)!,
+    criterioId: f.criterioId && criteriosValidos.has(f.criterioId) ? f.criterioId : null,
+  }))
+
+  await db.transaction('rw', [db.columnas, db.filas], async () => {
+    if (nuevas.length > 0) await db.columnas.bulkAdd(nuevas)
+    if (filasNuevas.length > 0) await db.filas.bulkAdd(filasNuevas)
+  })
 
   const idsCreadas = nuevas.map((c) => c.id)
+  const idsFilas = filasNuevas.map((f) => f.id)
   return {
     creadas: nuevas.length,
     criteriosNoEncajan: validacion.criteriosNoEncajan,
-    deshacer: async () => void (await db.columnas.bulkDelete(idsCreadas)),
+    deshacer: async () => {
+      await db.transaction('rw', [db.columnas, db.filas], async () => {
+        await db.filas.bulkDelete(idsFilas)
+        await db.columnas.bulkDelete(idsCreadas)
+      })
+    },
   }
 }

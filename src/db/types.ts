@@ -218,12 +218,28 @@ export interface Observacion {
 
 // ——— PRIMARIA ———
 
+/**
+ * Unidad didáctica. Es la unidad de calificación de la Orden 130/2023 (art. 6):
+ * el peso vive en la UD dentro del trimestre, y en el instrumento dentro de la
+ * UD. Los criterios NO reciben nota: son referente y trazabilidad de cobertura.
+ *
+ * Nada aquí es obligatorio salvo lo que afecta al cálculo: una UD sin trimestre
+ * o con `computa` en falso es perfectamente válida, simplemente no entra en la
+ * nota. Se avisa, no se bloquea.
+ */
 export interface UnidadDidactica {
   id: Id
+  /** El curso, 1–6. Mismo significado que `Grupo.nivel`. */
   nivel: number
-  trimestre: Trimestre
+  /** `null` = unidad suelta, fuera de todo cálculo. */
+  trimestre: Trimestre | null
   titulo: string
-  criterios: string[] // códigos D.61/2022
+  /** Ids de `Criterio` ('EF.2C.1.1'), no códigos: el código se repite entre ciclos. */
+  criterios: string[]
+  /** Si es falso, la unidad no entra en la nota, pero sí en el informe de cobertura. */
+  computa: boolean
+  /** Peso de la unidad dentro de su trimestre, 0–100. Se ignora si `computa` es falso. */
+  pesoTrimestre: number
   /** Plantilla de la que salió, si se creó a partir de una. */
   plantillaId?: Id
 }
@@ -248,6 +264,17 @@ export type TipoColumna =
 export const TIPOS_NUMERICOS: TipoColumna[] = ['numero']
 
 /**
+ * Tipos que producen una nota y por tanto entran en el cálculo de la Orden 130
+ * (§ motor de `lib/notas.ts`): todos los que `valorNormalizado` sabe llevar a
+ * 0–10 por sí solos.
+ *
+ * Quedan fuera `texto` y `positivo_negativo` (un contador no es un logro sobre
+ * 10) y también `calculo`, que ya es una media de otras columnas: incluirla
+ * contaría esas notas dos veces.
+ */
+export const TIPOS_CALIFICABLES: TipoColumna[] = ['numero', 'caritas', 'si_no', 'rubrica']
+
+/**
  * Una columna que entra en un cálculo, con su peso. Los pesos se normalizan al
  * promediar (no tienen por qué sumar 100), igual que los pesos de rúbrica.
  */
@@ -265,9 +292,15 @@ export interface Columna {
   orden: number
   /** Fecha a la que corresponde la evaluación, si aplica. */
   fecha?: string
-  /** Unidad a la que pertenece: permite medias por unidad. */
+  /** Unidad a la que pertenece. Sin ella la columna existe, pero no computa. */
   udId?: Id
-  /** Criterio del decreto al que evalúa, si se quiere trazar. */
+  /** Peso del instrumento dentro de su unidad, 0–100. Solo cuenta si hay `udId`. */
+  pesoUd: number
+  /**
+   * LEGADO. Los criterios de un instrumento son la unión de los `criterioId` de
+   * sus filas (`FilaInstrumento`); este campo se conserva para no perder lo que
+   * ya había, pero no es fuente de verdad y la UI no lo ofrece.
+   */
   criterioCodigo?: string
   // — tipo 'numero' —
   escala?: { min: number; max: number; decimales: 0 | 1 | 2 }
@@ -277,6 +310,31 @@ export interface Columna {
   rubricaId?: Id
   // — tipo 'calculo' —
   calculo?: { componentes: ComponenteCalculo[] }
+}
+
+/**
+ * Fila de un instrumento: lo que de verdad se evalúa y lo que ata la nota a un
+ * criterio oficial.
+ *
+ * Un instrumento simple (una nota única) tiene UNA fila. Una rúbrica tiene N,
+ * cada una espejo de un criterio de la `Rubrica` y con SU propio criterio del
+ * decreto, distinto del de sus hermanas: ese es el caso normal.
+ *
+ * El criterio oficial y el peso viven aquí, en la columna, y no en el banco de
+ * rúbricas, para que una misma rúbrica pueda reutilizarse en ciclos distintos
+ * (los criterios de 1.er ciclo no son los de 3.º aunque compartan código).
+ */
+export interface FilaInstrumento {
+  id: Id
+  columnaId: Id
+  orden: number
+  descriptor: string
+  /** Id de `Criterio`. `null` = fila sin trazar a ningún criterio. */
+  criterioId: string | null
+  /** Peso dentro del instrumento. `null` = reparto equitativo con sus hermanas. */
+  pesoFila: number | null
+  /** Criterio de la `Rubrica` del que es espejo, cuando la columna es de rúbrica. */
+  criterioRubricaId?: Id
 }
 
 export interface NivelRubrica {

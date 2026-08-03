@@ -197,8 +197,13 @@ function VistaUnidades() {
 
   const unidades = useLiveQuery(async () => {
     const lista = await db.unidades.toArray()
+    // Las unidades sin trimestre van al final de su nivel: son las sueltas.
+    const orden = (t: number | null) => t ?? 9
     return lista.sort(
-      (a, b) => a.nivel - b.nivel || a.trimestre - b.trimestre || a.titulo.localeCompare(b.titulo, 'es'),
+      (a, b) =>
+        a.nivel - b.nivel ||
+        orden(a.trimestre) - orden(b.trimestre) ||
+        a.titulo.localeCompare(b.titulo, 'es'),
     )
   }, [])
 
@@ -232,7 +237,9 @@ function VistaUnidades() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-base font-bold">{u.titulo}</p>
                 <p className="cifra mt-0.5 text-sm texto-suave">
-                  {u.nivel}º · {u.trimestre}.º trimestre · {conteos?.[u.id] ?? 0} sesiones
+                  {u.nivel}º ·{' '}
+                  {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
+                  {conteos?.[u.id] ?? 0} sesiones
                 </p>
               </div>
               <button

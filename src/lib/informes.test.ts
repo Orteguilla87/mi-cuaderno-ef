@@ -36,10 +36,10 @@ afterEach(async () => {
 describe('exportarNotasXLSX', () => {
   it('mantiene el orden de la rejilla y calcula las columnas de tipo cálculo', async () => {
     const columnas: Columna[] = [
-      { id: 'c1', grupoId: 'g1', trimestre: 1, titulo: 'Salto', tipo: 'numero', orden: 0, escala: { min: 0, max: 10, decimales: 1 } },
+      { id: 'c1', grupoId: 'g1', trimestre: 1, titulo: 'Salto', tipo: 'numero', orden: 0, pesoUd: 0, escala: { min: 0, max: 10, decimales: 1 } },
       // Título duplicado a propósito: con `fila[c.titulo]` el segundo pisaba al primero.
-      { id: 'c2', grupoId: 'g1', trimestre: 1, titulo: 'Nota', tipo: 'numero', orden: 1, escala: { min: 0, max: 10, decimales: 1 } },
-      { id: 'c3', grupoId: 'g1', trimestre: 1, titulo: 'Nota', tipo: 'caritas', orden: 2, caritas: 3 },
+      { id: 'c2', grupoId: 'g1', trimestre: 1, titulo: 'Nota', tipo: 'numero', orden: 1, pesoUd: 0, escala: { min: 0, max: 10, decimales: 1 } },
+      { id: 'c3', grupoId: 'g1', trimestre: 1, titulo: 'Nota', tipo: 'caritas', orden: 2, pesoUd: 0, caritas: 3 },
       {
         id: 'c4',
         grupoId: 'g1',
@@ -47,6 +47,7 @@ describe('exportarNotasXLSX', () => {
         titulo: 'Media UD1',
         tipo: 'calculo',
         orden: 3,
+        pesoUd: 0,
         calculo: { componentes: [{ columnaId: 'c1', pesoPct: 50 }, { columnaId: 'c2', pesoPct: 50 }] },
       },
     ]

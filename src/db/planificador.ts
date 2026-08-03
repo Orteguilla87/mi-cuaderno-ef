@@ -1,3 +1,4 @@
+import { cicloDeCurso } from '../lib/ciclos'
 import { aISO, deISO, sumarDias } from '../lib/fechas'
 import { db, nuevoId } from './db'
 import type { Grupo, JuegoEnSesion, Plantilla, Recurso, Sesion, UnidadDidactica } from './types'
@@ -238,11 +239,18 @@ export async function aplicarPlantillaSesion(
   })
 }
 
+/**
+ * Crea una unidad. Solo el título es obligatorio: una UD sin trimestre, o que
+ * no compute, es válida —no entra en la nota, pero sí en la cobertura de
+ * criterios (Orden 130/2023, art. 6)—.
+ */
 export async function crearUnidad(datos: {
   titulo: string
   nivel: number
-  trimestre: 1 | 2 | 3
+  trimestre: 1 | 2 | 3 | null
   criterios?: string[]
+  computa?: boolean
+  pesoTrimestre?: number
   plantillaId?: string
 }): Promise<string> {
   const ud: UnidadDidactica = {
@@ -251,6 +259,8 @@ export async function crearUnidad(datos: {
     nivel: datos.nivel,
     trimestre: datos.trimestre,
     criterios: datos.criterios ?? [],
+    computa: datos.computa ?? true,
+    pesoTrimestre: datos.pesoTrimestre ?? 0,
     plantillaId: datos.plantillaId,
   }
   await db.unidades.add(ud)
@@ -265,7 +275,11 @@ export async function duplicarUnidad(udId: string, nivel: number): Promise<strin
     titulo: origen.titulo,
     nivel,
     trimestre: origen.trimestre,
-    criterios: origen.criterios,
+    // Los criterios NO se arrastran: son de un ciclo concreto y duplicar a otro
+    // nivel puede cambiar de ciclo, con lo que apuntarían a criterios que no
+    // aplican. El peso tampoco: el reparto es de cada curso.
+    criterios: cicloDeCurso(origen.nivel) === cicloDeCurso(nivel) ? origen.criterios : [],
+    computa: origen.computa,
     plantillaId: origen.plantillaId,
   })
 }
