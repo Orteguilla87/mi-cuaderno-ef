@@ -11,6 +11,7 @@ import type {
 import {
   calificacionOficial,
   notaInstrumento,
+  notaOficial,
   notaTrimestre,
   notaUd,
   type Evaluable,
@@ -117,6 +118,26 @@ describe('conversión a calificación oficial (Orden 130/2023, art. 19)', () => 
     expect(calificacionOficial(8.99)).toBe('NT')
     expect(calificacionOficial(9)).toBe('SB')
     expect(calificacionOficial(10)).toBe('SB')
+  })
+})
+
+describe('notaOficial (§ Bloque 3.2, Config.bandaSobre)', () => {
+  it('modo redondeada: aplica la banda sobre el entero, no sobre la nota real', () => {
+    // 7,51 redondea a 8, que es NT; sobre la nota real (7,51) también sería
+    // NT, así que el caso que de verdad distingue los dos modos es el borde.
+    expect(notaOficial(7.51, 'redondeada')).toEqual({ real: 7.51, redondeada: 8, oficial: 'NT' })
+    expect(notaOficial(8.51, 'redondeada')).toEqual({ real: 8.51, redondeada: 9, oficial: 'SB' })
+  })
+
+  it('modo real: aplica la banda sobre la nota sin redondear', () => {
+    // 6,6 redondea a 7 (NT), pero en modo «real» la banda mira el 6,6 tal
+    // cual, que cae en BI: es justo el ejemplo del enunciado.
+    expect(notaOficial(6.6, 'real')).toEqual({ real: 6.6, redondeada: 7, oficial: 'BI' })
+  })
+
+  it('la nota real y la redondeada se enseñan siempre, sea cual sea el modo', () => {
+    const r = notaOficial(4.5, 'real')
+    expect(r).toEqual({ real: 4.5, redondeada: 5, oficial: 'IN' })
   })
 })
 

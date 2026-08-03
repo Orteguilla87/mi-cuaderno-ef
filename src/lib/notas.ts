@@ -20,6 +20,7 @@
  */
 
 import type {
+  BandaSobre,
   CalificacionOficial,
   Columna,
   FilaInstrumento,
@@ -49,6 +50,29 @@ const BANDAS: { desde: number; oficial: CalificacionOficial }[] = [
 
 export function calificacionOficial(nota: number): CalificacionOficial {
   return BANDAS.find((b) => nota >= b.desde)?.oficial ?? 'IN'
+}
+
+export interface NotaOficial {
+  /** Nota tal cual la da el motor, sin tocar. Trazable para una reclamación. */
+  real: number
+  /** Redondeo al entero más cercano (mitad hacia arriba). */
+  redondeada: number
+  /** Banda del art. 19, calculada sobre `redondeada` o sobre `real` según `modo`. */
+  oficial: CalificacionOficial
+}
+
+/**
+ * Nota real, su redondeo y la banda que le corresponde (§ Bloque 3.2,
+ * `Config.bandaSobre`). Se muestran SIEMPRE las tres juntas en la UI: nunca
+ * solo la oficial, para que el decimal quede trazable (Orden 130/2023, art. 20).
+ */
+export function notaOficial(nota: number, modo: BandaSobre): NotaOficial {
+  const redondeada = Math.round(nota)
+  return {
+    real: nota,
+    redondeada,
+    oficial: calificacionOficial(modo === 'redondeada' ? redondeada : nota),
+  }
 }
 
 // ——————————————————————————— log ———————————————————————————

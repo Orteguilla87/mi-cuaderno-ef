@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  ChevronDown,
   Clipboard,
   ClipboardCheck,
   ClipboardX,
@@ -35,12 +36,14 @@ import {
   type ResultadoCalculo,
   type ResultadoValidacionPegado,
 } from '../db/cuaderno'
+import { useConfig } from '../db/config'
 import { db } from '../db/db'
 import { calificarGrupo } from '../db/notas'
 import { filasPorColumna } from '../db/filas'
-import { notaInstrumento, type MotivoExclusion } from '../lib/notas'
+import { notaInstrumento, notaOficial, type MotivoExclusion } from '../lib/notas'
 import type {
   Alumno,
+  CalificacionOficial,
   Columna,
   FilaInstrumento,
   Grupo,
@@ -415,12 +418,15 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
       )}
 
       {grupo?.etapa === 'primaria' && idEfectivo && (
-        <NotaDelTrimestre
-          grupoId={idEfectivo}
-          trimestre={trimestre}
-          alumnos={alumnos ?? []}
-          onRepartir={() => setRepartiendo(true)}
-        />
+        <>
+          <NotaDelTrimestre
+            grupoId={idEfectivo}
+            trimestre={trimestre}
+            alumnos={alumnos ?? []}
+            onRepartir={() => setRepartiendo(true)}
+          />
+          <ResumenDistribucion grupoId={idEfectivo} trimestre={trimestre} alumnos={alumnos ?? []} />
+        </>
       )}
 
       <MediasPorUnidad
@@ -749,6 +755,7 @@ function NotaDelTrimestre({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [detalle, setDetalle] = useState<string | null>(null)
+  const config = useConfig()
 
   // Depende de columnas, filas, valores y unidades: se observan las cuatro
   // tablas para que la nota se rehaga sola al tocar cualquier cosa.
@@ -761,13 +768,16 @@ function NotaDelTrimestre({
   const hayAlguna = [...notas.values()].some((r) => r.nota !== null)
 
   return (
-    <div className="px-4 pb-2">
-      <button
-        className="btn-suave w-full"
-        onClick={() => setAbierto((v) => !v)}
-        aria-expanded={abierto}
-      >
-        {abierto ? 'Ocultar' : 'Ver'} nota del {trimestre}.º trimestre
+    <div className="mt-4 px-4 pb-2">
+      <button className="desplegable w-full" onClick={() => setAbierto((v) => !v)} aria-expanded={abierto}>
+        <span className="flex-1 text-left text-sm font-bold">
+          Nota del {trimestre}.º trimestre
+        </span>
+        <ChevronDown
+          size={18}
+          className={'shrink-0 transition-transform ' + (abierto ? 'rotate-180' : '')}
+          aria-hidden
+        />
       </button>
 
       {abierto && (
@@ -788,6 +798,7 @@ function NotaDelTrimestre({
           <ul className="space-y-1">
             {alumnos.map((a) => {
               const res = notas.get(a.id)
+              const oficial = res?.nota != null ? notaOficial(res.nota, config.bandaSobre) : null
               const abiertoEste = detalle === a.id
               return (
                 <li key={a.id}>
@@ -799,11 +810,14 @@ function NotaDelTrimestre({
                     <span className="min-w-0 flex-1 truncate">
                       {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
                     </span>
-                    <span className="cifra font-bold">
-                      {res?.nota == null ? '—' : res.nota.toFixed(2)}
+                    {/* Real → redondeada (oficial), siempre juntas: el decimal
+                        real queda trazable para una reclamación (Orden 130,
+                        art. 20), sea cual sea el modo de redondeo elegido. */}
+                    <span className="cifra text-xs texto-suave">
+                      {oficial == null ? '—' : `${oficial.real.toFixed(2)} → ${oficial.redondeada}`}
                     </span>
                     <span className="pildora w-12 justify-center bg-agua-claro px-0 py-0.5 text-xs font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
-                      {res?.oficial ?? '—'}
+                      {oficial?.oficial ?? '—'}
                     </span>
                   </button>
 
@@ -843,6 +857,86 @@ function NotaDelTrimestre({
 }
 
 /**
+ * Recuento del trimestre por banda oficial (§ Bloque 3.3): absoluto y
+ * porcentaje. Quien no tiene nota calculable va aparte, en «Sin datos» —
+ * nunca como IN, que acusaría de suspenso a quien simplemente no tiene
+ * evidencia todavía.
+ */
+function ResumenDistribucion({
+  grupoId,
+  trimestre,
+  alumnos,
+}: {
+  grupoId: string
+  trimestre: Trimestre
+  alumnos: Alumno[]
+}) {
+  const config = useConfig()
+  const notas = useLiveQuery(async () => {
+    await Promise.all([db.columnas.count(), db.filas.count(), db.valores.count(), db.unidades.count()])
+    return calificarGrupo(grupoId, trimestre)
+  }, [grupoId, trimestre])
+
+  if (!notas || alumnos.length === 0) return null
+
+  const recuento: Record<CalificacionOficial | 'SIN_DATOS', number> = {
+    IN: 0,
+    SU: 0,
+    BI: 0,
+    NT: 0,
+    SB: 0,
+    SIN_DATOS: 0,
+  }
+  for (const a of alumnos) {
+    const res = notas.get(a.id)
+    if (res?.nota == null) recuento.SIN_DATOS++
+    else recuento[notaOficial(res.nota, config.bandaSobre).oficial]++
+  }
+
+  const total = alumnos.length
+  const pct = (n: number) => (total === 0 ? 0 : Math.round((n / total) * 100))
+
+  const bandas: { clave: CalificacionOficial; clase: string }[] = [
+    { clave: 'IN', clase: 'bg-acento/15 text-acento' },
+    {
+      clave: 'SU',
+      clase: 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua',
+    },
+    {
+      clave: 'BI',
+      clase: 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua',
+    },
+    {
+      clave: 'NT',
+      clase: 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua',
+    },
+    { clave: 'SB', clase: 'bg-lima/20 text-lima-oscuro dark:text-lima' },
+  ]
+
+  return (
+    <div className="px-4 pb-4">
+      <p className="etiqueta mb-2">
+        Distribución del {trimestre}.º trimestre
+      </p>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {bandas.map(({ clave, clase }) => (
+          <div key={clave} className={'rounded-xl2 p-2.5 text-center ' + clase}>
+            <p className="cifra text-xl font-bold">{recuento[clave]}</p>
+            <p className="text-xs font-bold">{clave}</p>
+            <p className="cifra text-xs">{pct(recuento[clave])}%</p>
+          </div>
+        ))}
+        <div className="rounded-xl2 bg-white p-2.5 text-center text-tinta-tenue dark:bg-noche-superficie">
+          <p className="cifra text-xl font-bold">{recuento.SIN_DATOS}</p>
+          <p className="text-xs font-bold">Sin datos</p>
+          <p className="cifra text-xs">{pct(recuento.SIN_DATOS)}%</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Media simple por unidad, informativa. NO es la nota oficial —esa la calcula
  * `NotaDelTrimestre` con los pesos de la Orden 130— sino el vistazo rápido de
  * «cómo va esta unidad», con todas las columnas valiendo igual.
@@ -867,13 +961,14 @@ function MediasPorUnidad({
   if (conUnidad.length === 0 || alumnos.length === 0) return null
 
   return (
-    <div className="p-4">
-      <button
-        className="btn-suave w-full"
-        onClick={() => setAbierto((v) => !v)}
-        aria-expanded={abierto}
-      >
-        {abierto ? 'Ocultar' : 'Ver'} medias por unidad
+    <div className="mt-2 p-4">
+      <button className="desplegable w-full" onClick={() => setAbierto((v) => !v)} aria-expanded={abierto}>
+        <span className="flex-1 text-left text-sm font-bold">Medias por unidad</span>
+        <ChevronDown
+          size={18}
+          className={'shrink-0 transition-transform ' + (abierto ? 'rotate-180' : '')}
+          aria-hidden
+        />
       </button>
 
       {abierto && (

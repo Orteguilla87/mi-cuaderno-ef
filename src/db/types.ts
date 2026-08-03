@@ -502,6 +502,16 @@ export interface BandasOficiales {
 }
 
 /**
+ * Sobre qué número se aplican las bandas del art. 19 (§ Bloque 3.2):
+ * `redondeada` — se redondea la nota primero y la banda se mira sobre el
+ * entero (7,51 → 8 → NT); `real` — la banda se mira directamente sobre la
+ * nota sin redondear (6,6 → BI). La nota real se enseña siempre, sea cual
+ * sea el modo: el decimal tiene que quedar trazable para una reclamación
+ * (Orden 130/2023, art. 20).
+ */
+export type BandaSobre = 'redondeada' | 'real'
+
+/**
  * PIN de acceso (§1.7). Solo se guarda el hash: el PIN en claro no se almacena
  * en ningún sitio. Con 4–6 dígitos el espacio es diminuto, así que el coste del
  * PBKDF2 es la única defensa real — de ahí que se guarden las iteraciones.
@@ -549,6 +559,8 @@ export interface Config {
   pesosTrimestres: [number, number, number]
   modoMedia: ModoMedia
   bandasOficiales: BandasOficiales
+  /** Sobre qué nota se aplican las bandas del art. 19: la redondeada o la real. */
+  bandaSobre: BandaSobre
   /** Etiquetas de un toque en el registro de observaciones (§5 M4). */
   quickTagsObservacion: string[]
   /** Colores de peto del generador de equipos, en orden de asignación. */

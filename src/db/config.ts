@@ -7,6 +7,7 @@ export const CONFIG_POR_DEFECTO: Config = {
   pesosTrimestres: [30, 30, 40],
   modoMedia: 'ponderada',
   bandasOficiales: { SU: 5, BI: 6, NT: 7, SB: 9 },
+  bandaSobre: 'redondeada',
   modeloAgente: 'claude-haiku-4-5-20251001',
   modoPista: false,
   tema: 'sistema',

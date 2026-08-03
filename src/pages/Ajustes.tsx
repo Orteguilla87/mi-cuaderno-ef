@@ -32,7 +32,7 @@ import { db } from '../db/db'
 import { leerCursoActivo } from '../db/curso'
 import { comprobarPin, definirPin, quitarPin } from '../db/pin'
 import { guardarConfigSincro } from '../db/sincro'
-import type { BandasOficiales, ConfigSincro, ConfigWebdav, ModoMedia } from '../db/types'
+import type { BandaSobre, BandasOficiales, ConfigSincro, ConfigWebdav, ModoMedia } from '../db/types'
 import {
   bajarBackup,
   ErrorWebdav,
@@ -174,6 +174,44 @@ export function Ajustes() {
               </p>
             </div>
           )}
+
+          <div>
+            <span className="etiqueta">Redondeo de la nota del trimestre</span>
+            <div className="space-y-2">
+              {(
+                [
+                  [
+                    'redondeada',
+                    'Redondear y mirar la banda',
+                    'La nota se redondea primero y la banda del art. 19 se aplica sobre el entero: 7,51 → 8 → NT.',
+                  ],
+                  [
+                    'real',
+                    'Mirar la banda sobre la nota real',
+                    'La banda se aplica directamente sobre la nota sin redondear: 6,6 → BI.',
+                  ],
+                ] as [BandaSobre, string, string][]
+              ).map(([valor, titulo, ayuda]) => (
+                <button
+                  key={valor}
+                  onClick={() => guardarConfig({ bandaSobre: valor })}
+                  className={
+                    'w-full rounded-xl border p-3 text-left ' +
+                    (config.bandaSobre === valor
+                      ? 'border-primario bg-primario/10'
+                      : 'border-borde dark:border-noche-borde')
+                  }
+                >
+                  <div className="font-semibold">{titulo}</div>
+                  <div className="text-sm texto-suave">{ayuda}</div>
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs texto-suave">
+              La nota real siempre se enseña junto a la redondeada y la oficial: el decimal queda
+              trazable para una reclamación (art. 20).
+            </p>
+          </div>
 
           <EditorBandas
             bandas={config.bandasOficiales}
