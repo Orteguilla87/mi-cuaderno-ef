@@ -8,15 +8,8 @@ import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
-import {
-  crearSesion,
-  crearUnidad,
-  duplicarUnidad,
-  lunesDe,
-  semanaActual,
-  semanaDe,
-  type HuecoSemana,
-} from '../db/planificador'
+import { crearSesion, crearUnidad, duplicarUnidad, lunesDe, semanaActual } from '../db/planificador'
+import { huecosDe, type HuecoCalendario } from '../db/sesiones'
 import type { UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
@@ -107,11 +100,14 @@ function VistaSemana({
   lunes: string
   onCambiarSemana: (l: string) => void
 }) {
-  const huecos = useLiveQuery(() => semanaDe(lunes), [lunes])
+  const huecos = useLiveQuery(
+    () => huecosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
+    [lunes],
+  )
   const curso = useLiveQuery(() => leerCursoActivo(), [])
   const hoy = aISO()
 
-  async function abrir(h: HuecoSemana) {
+  async function abrir(h: HuecoCalendario) {
     // Un hueco sin sesión la crea al vuelo: planificar no debe costar dos pasos.
     const id = h.sesion?.id ?? (await crearSesion(h.grupo.id, h.fecha))
     navegar(`/sesiones/${id}`)
@@ -211,7 +207,7 @@ function VistaSemana({
                             <BadgeEtapa etapa={h.grupo.etapa} nivel={h.grupo.nivel} />
                           </span>
                           <span className="cifra mt-0.5 block truncate text-sm texto-suave">
-                            {h.horaInicio}–{h.horaFin}
+                            {h.horaInicio && h.horaFin ? `${h.horaInicio}–${h.horaFin}` : 'Sin hora fija'}
                             {h.sesion?.titulo ? ` · ${h.sesion.titulo}` : ''}
                           </span>
                         </span>

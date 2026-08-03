@@ -3,6 +3,11 @@ import { CalendarCheck2, CalendarX2, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { db } from '../db/db'
 import { leerCursoActivo } from '../db/curso'
+import {
+  eliminarSesionesNoLectivas,
+  reubicarSesionesNoLectivas,
+  sesionesEnDiasNoLectivos,
+} from '../db/sesiones'
 import type { CursoEscolar, PeriodoNoLectivo, Trimestre } from '../db/types'
 import { parsearCalendario, type ResultadoCalendario } from '../lib/calendarioEscolar'
 import { formatoLargo } from '../lib/fechas'
@@ -192,11 +197,79 @@ export function CursoEscolarAjustes() {
         )}
       </div>
 
+      <SesionesNoLectivasAviso />
+
       <HojaPegarCalendario
         abierta={pegando}
         curso={curso}
         onCerrar={() => setPegando(false)}
       />
+    </div>
+  )
+}
+
+/**
+ * Sesiones ya guardadas cuya fecha cayó en festivo o periodo tras configurar
+ * el calendario (§ Bloque 8.4): nunca se tocan solas. Se listan aquí y el
+ * usuario decide, en bloque, reubicarlas a la siguiente clase libre o
+ * eliminarlas.
+ */
+function SesionesNoLectivasAviso() {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const huerfanas = useLiveQuery(() => sesionesEnDiasNoLectivos(), [])
+
+  if (!huerfanas || huerfanas.length === 0) return null
+
+  async function reubicarTodas() {
+    const ids = (huerfanas ?? []).map((h) => h.sesion.id)
+    const { reubicadas, sinHueco, deshacer } = await reubicarSesionesNoLectivas(ids)
+    mostrarAviso(
+      sinHueco > 0
+        ? `${reubicadas} reubicadas, ${sinHueco} sin hueco libre`
+        : `${reubicadas} sesiones reubicadas`,
+      deshacer,
+    )
+  }
+
+  async function eliminarTodas() {
+    const ids = (huerfanas ?? []).map((h) => h.sesion.id)
+    const { eliminadas, deshacer } = await eliminarSesionesNoLectivas(ids)
+    mostrarAviso(`${eliminadas} sesiones eliminadas`, deshacer)
+  }
+
+  return (
+    <div className="aviso-fuerte space-y-2">
+      <p className="font-bold">
+        {huerfanas.length} {huerfanas.length === 1 ? 'sesión guardada cae' : 'sesiones guardadas caen'}{' '}
+        en día no lectivo
+      </p>
+      <p>
+        El calendario cambió después de crearlas. Siguen guardadas tal cual; tú decides qué hacer.
+      </p>
+      <ul className="max-h-48 space-y-1 overflow-y-auto">
+        {huerfanas.map(({ sesion, grupo, estado }) => (
+          <li
+            key={sesion.id}
+            className="rounded-xl border border-acento/30 bg-white px-3 py-2 text-sm dark:bg-noche-superficie"
+          >
+            <span className="cifra font-semibold">{formatoLargo(sesion.fecha)}</span>
+            {' · '}
+            {grupo?.nombre ?? 'Grupo eliminado'}
+            {sesion.titulo && ` · ${sesion.titulo}`}
+            <span className="block text-xs texto-suave">
+              {estado.tipo === 'periodo' ? estado.nombre : estado.tipo === 'festivo' ? 'Día festivo' : 'Vacaciones'}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="grid grid-cols-2 gap-2">
+        <button className="btn-suave" onClick={() => void reubicarTodas()}>
+          Reubicar todas
+        </button>
+        <button className="btn-peligro" onClick={() => void eliminarTodas()}>
+          Eliminar todas
+        </button>
+      </div>
     </div>
   )
 }

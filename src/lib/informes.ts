@@ -210,8 +210,9 @@ export async function exportarAsistenciaCSV(grupo: Grupo, alumnos: Alumno[]): Pr
 
 export interface PlanClase {
   grupo: Grupo
-  horaInicio: string
-  horaFin: string
+  /** Ausente en una sesión movida a un día sin franja de horario propia. */
+  horaInicio?: string
+  horaFin?: string
   sesion?: Sesion
 }
 
@@ -237,7 +238,9 @@ export async function generarPlanDelDia(fecha: string, clases: PlanClase[]): Pro
   )
 
   let y = 30
-  const clasesOrdenadas = [...clases].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
+  const clasesOrdenadas = [...clases].sort((a, b) =>
+    (a.horaInicio ?? '').localeCompare(b.horaInicio ?? ''),
+  )
 
   for (const c of clasesOrdenadas) {
     if (y > 260) {
@@ -245,9 +248,10 @@ export async function generarPlanDelDia(fecha: string, clases: PlanClase[]): Pro
       y = 20
     }
 
+    const hora = c.horaInicio && c.horaFin ? `${c.horaInicio}–${c.horaFin}` : 'Sin hora fija'
     doc.setFontSize(12)
     doc.setFont('helvetica', 'bold')
-    doc.text(`${c.horaInicio}–${c.horaFin} · ${c.grupo.nombre}`, 14, y)
+    doc.text(`${hora} · ${c.grupo.nombre}`, 14, y)
     doc.setFont('helvetica', 'normal')
     y += 6
 

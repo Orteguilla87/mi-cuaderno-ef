@@ -5,9 +5,9 @@ import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { leerCursoActivo } from '../db/curso'
-import { db } from '../db/db'
-import { crearSesion, lunesDe, semanaActual, semanaDe, type HuecoSemana } from '../db/planificador'
-import type { CursoEscolar, Grupo, Sesion } from '../db/types'
+import { crearSesion, lunesDe, semanaActual } from '../db/planificador'
+import { getSesiones, huecosDe, type HuecoCalendario, type SesionConGrupo } from '../db/sesiones'
+import type { CursoEscolar } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, deISO, formatoCorto, formatoLargo, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
@@ -102,19 +102,18 @@ function VistaMes({ curso }: { curso: CursoEscolar | undefined }) {
   const gridInicio = semanas[0][0]
   const gridFin = semanas[semanas.length - 1][6]
 
+  // Única fuente de sesiones (§ Bloque 8.2): lee exclusivamente lo persistido
+  // y ya deja fuera lo que cae en festivo, periodo no lectivo o fuera de
+  // curso — esas sesiones siguen guardadas, se listan aparte en Ajustes.
   const datos = useLiveQuery(async () => {
-    const [grupos, sesiones] = await Promise.all([
-      db.grupos.toArray(),
-      db.sesiones.where('fecha').between(gridInicio, gridFin, true, true).toArray(),
-    ])
-    const gruposPorId = new Map(grupos.map((g) => [g.id, g]))
-    const porDia = new Map<string, Sesion[]>()
+    const sesiones = await getSesiones({ desde: gridInicio, hasta: gridFin })
+    const porDia = new Map<string, SesionConGrupo[]>()
     for (const s of sesiones) {
-      const lista = porDia.get(s.fecha)
+      const lista = porDia.get(s.sesion.fecha)
       if (lista) lista.push(s)
-      else porDia.set(s.fecha, [s])
+      else porDia.set(s.sesion.fecha, [s])
     }
-    return { gruposPorId, porDia }
+    return porDia
   }, [gridInicio, gridFin])
 
   function cambiarMes(delta: 1 | -1) {
@@ -151,7 +150,7 @@ function VistaMes({ curso }: { curso: CursoEscolar | undefined }) {
               enMes={fecha.slice(0, 7) === mes.slice(0, 7)}
               esHoy={fecha === hoy}
               seleccionado={fecha === diaSel}
-              nSesiones={datos?.porDia.get(fecha)?.length ?? 0}
+              nSesiones={datos?.get(fecha)?.length ?? 0}
               estado={curso ? estadoDia(fecha, curso) : undefined}
               onElegir={() => setDiaSel(fecha)}
             />
@@ -162,8 +161,7 @@ function VistaMes({ curso }: { curso: CursoEscolar | undefined }) {
       {diaSel && (
         <PanelDia
           fecha={diaSel}
-          sesiones={datos?.porDia.get(diaSel) ?? []}
-          gruposPorId={datos?.gruposPorId}
+          sesiones={datos?.get(diaSel) ?? []}
           estado={curso ? estadoDia(diaSel, curso) : undefined}
         />
       )}
@@ -234,19 +232,13 @@ function CeldaDia({
 function PanelDia({
   fecha,
   sesiones,
-  gruposPorId,
   estado,
 }: {
   fecha: string
-  sesiones: Sesion[]
-  gruposPorId: Map<string, Grupo> | undefined
+  sesiones: SesionConGrupo[]
   estado: EstadoDia | undefined
 }) {
-  const ordenadas = [...sesiones].sort((a, b) => {
-    const ga = gruposPorId?.get(a.grupoId)?.nombre ?? ''
-    const gb = gruposPorId?.get(b.grupoId)?.nombre ?? ''
-    return ga.localeCompare(gb, 'es')
-  })
+  const ordenadas = [...sesiones].sort((a, b) => a.grupo.nombre.localeCompare(b.grupo.nombre, 'es'))
   const noLectivo = estado && estado.tipo !== 'lectivo' ? estado : null
 
   return (
@@ -266,32 +258,29 @@ function PanelDia({
         </p>
       ) : (
         <ul className="space-y-2">
-          {ordenadas.map((s) => {
-            const grupo = gruposPorId?.get(s.grupoId)
-            return (
-              <li key={s.id}>
-                <button
-                  onClick={() => navegar(`/sesiones/${s.id}`)}
-                  className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
-                >
-                  <span
-                    className="h-10 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: grupo?.color }}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate font-bold">{grupo?.nombre ?? 'Grupo'}</span>
-                      {grupo && <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />}
-                    </span>
-                    <span className="mt-0.5 block truncate text-sm texto-suave">
-                      {s.titulo || 'Sin título'}
-                    </span>
+          {ordenadas.map(({ sesion, grupo }) => (
+            <li key={sesion.id}>
+              <button
+                onClick={() => navegar(`/sesiones/${sesion.id}`)}
+                className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
+              >
+                <span
+                  className="h-10 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: grupo.color }}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate font-bold">{grupo.nombre}</span>
+                    <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
                   </span>
-                </button>
-              </li>
-            )
-          })}
+                  <span className="mt-0.5 block truncate text-sm texto-suave">
+                    {sesion.titulo || 'Sin título'}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
         </ul>
       )}
     </section>
@@ -302,7 +291,10 @@ function PanelDia({
 
 function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
   const [lunes, setLunes] = useState(semanaActual)
-  const huecos = useLiveQuery(() => semanaDe(lunes), [lunes])
+  const huecos = useLiveQuery(
+    () => huecosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
+    [lunes],
+  )
   const viernes = sumarDias(lunes, 4)
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
@@ -340,10 +332,10 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
 
       {[1, 2, 3, 4, 5].map((d) => {
         const delDia = porDia(d)
-        if (delDia.length === 0) return null
         const fecha = sumarDias(lunes, d - 1)
         const est = curso ? estadoDia(fecha, curso) : undefined
         const noLectivo = est && est.tipo !== 'lectivo' ? est : null
+        if (delDia.length === 0 && !noLectivo) return null
         return (
           <section key={d}>
             <TituloSeccion>
@@ -368,7 +360,7 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
   )
 }
 
-function TarjetaHueco({ hueco }: { hueco: HuecoSemana }) {
+function TarjetaHueco({ hueco }: { hueco: HuecoCalendario }) {
   const { grupo, fecha, horaInicio, horaFin, sesion } = hueco
 
   async function editar() {
@@ -392,7 +384,7 @@ function TarjetaHueco({ hueco }: { hueco: HuecoSemana }) {
           <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
         </span>
         <span className="cifra mt-0.5 block truncate text-sm texto-suave">
-          {horaInicio}–{horaFin}
+          {horaInicio && horaFin ? `${horaInicio}–${horaFin}` : 'Sin hora fija'}
           {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
         </span>
       </span>

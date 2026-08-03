@@ -20,7 +20,8 @@ import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
-import { crearSesion, lunesDe, semanaActual, semanaDe, type HuecoSemana } from '../db/planificador'
+import { crearSesion, lunesDe, semanaActual } from '../db/planificador'
+import { huecosDe, type HuecoCalendario } from '../db/sesiones'
 import type { CursoEscolar, Grupo, Sesion } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import {
@@ -36,8 +37,8 @@ import { navegar } from '../lib/router'
 
 interface Clase {
   grupo: Grupo
-  horaInicio: string
-  horaFin: string
+  horaInicio?: string
+  horaFin?: string
   registrados: number
   totalAlumnos: number
   sesion?: Sesion
@@ -66,47 +67,46 @@ export function Hoy() {
   const dia = estado?.tipo === 'lectivo' ? estado.dia : null
 
   /**
-   * Todas las lecturas al principio y el cruce en memoria, como `semanaDe()`.
-   *
-   * Antes leía la sesión de cada grupo DENTRO de los callbacks de un
-   * `Promise.all`, tras un par de `await`: ahí `useLiveQuery` deja de seguirle
-   * la pista a lo que se ha leído, y borrar una sesión desde el Planificador no
-   * refrescaba esta vista (la de semana sí, porque ya usaba este patrón).
-   * De paso pasa de tres consultas por grupo a cuatro en total.
+   * Huecos del día desde la fuente única (§ Bloque 8.2, `db/sesiones.ts`), con
+   * alumnado y asistencia enganchados encima: son datos de ESTA vista, no del
+   * calendario. Todas las lecturas al principio y el cruce en memoria, para
+   * que `useLiveQuery` le siga la pista a todo lo leído — antes lo hacía
+   * dentro de los callbacks de un `Promise.all`, tras un `await`, y ahí deja
+   * de vigilar: borrar una sesión desde el Planificador no refrescaba esta
+   * vista.
    */
   const clases = useLiveQuery(async (): Promise<Clase[]> => {
     if (dia === null) return []
-    const [grupos, alumnos, sesiones, asistencias] = await Promise.all([
-      db.grupos.toArray(),
+    const [huecos, alumnos, asistencias] = await Promise.all([
+      huecosDe({ desde: fecha, hasta: fecha }),
       db.alumnos.toArray(),
-      db.sesiones.where('fecha').equals(fecha).toArray(),
       db.asistencias.where('fecha').equals(fecha).toArray(),
     ])
 
     const registrados = new Set(asistencias.map((a) => a.alumnoId))
 
-    return grupos
-      .flatMap((grupo) =>
-        grupo.horario
-          .filter((f) => f.diaSemana === dia)
-          .map((franja) => {
-            const activos = alumnos.filter((a) => a.grupoId === grupo.id && a.activo)
-            return {
-              grupo,
-              horaInicio: franja.horaInicio,
-              horaFin: franja.horaFin,
-              registrados: activos.filter((a) => registrados.has(a.id)).length,
-              totalAlumnos: activos.length,
-              sesion: sesiones.find((s) => s.grupoId === grupo.id),
-            }
-          }),
-      )
-      .sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
+    return huecos
+      .map((h) => {
+        const activos = alumnos.filter((a) => a.grupoId === h.grupo.id && a.activo)
+        return {
+          grupo: h.grupo,
+          horaInicio: h.horaInicio,
+          horaFin: h.horaFin,
+          registrados: activos.filter((a) => registrados.has(a.id)).length,
+          totalAlumnos: activos.length,
+          sesion: h.sesion,
+        }
+      })
+      .sort((a, b) => (a.horaInicio ?? '').localeCompare(b.horaInicio ?? ''))
   }, [dia, fecha])
 
   // Solo la jornada de hoy conoce «ahora»: en otros días no hay clase en curso.
-  const enCurso = esHoy ? clases?.find((c) => c.horaInicio <= ahora && ahora < c.horaFin) : undefined
-  const siguiente = esHoy ? clases?.find((c) => c.horaInicio > ahora) : undefined
+  // Una clase sin hora fija (sesión movida a un día sin franja) no puede estar
+  // «en curso» ni ser «la siguiente»: no hay con qué comparar.
+  const enCurso = esHoy
+    ? clases?.find((c) => c.horaInicio != null && c.horaFin != null && c.horaInicio <= ahora && ahora < c.horaFin)
+    : undefined
+  const siguiente = esHoy ? clases?.find((c) => c.horaInicio != null && c.horaInicio > ahora) : undefined
   // Lo que hay que atender ahora: la clase en curso o, si no, la próxima.
   const destacada = enCurso ?? siguiente
 
@@ -190,7 +190,7 @@ export function Hoy() {
                       clase={c}
                       fecha={fecha}
                       enCurso={c === enCurso}
-                      pasada={esHoy && c.horaFin <= ahora && c !== enCurso}
+                      pasada={esHoy && c.horaFin != null && c.horaFin <= ahora && c !== enCurso}
                     />
                   </li>
                 ))}
@@ -357,7 +357,10 @@ function NavegadorFecha({
  */
 function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | undefined }) {
   const [lunes, setLunes] = useState(semanaActual)
-  const huecos = useLiveQuery(() => semanaDe(lunes), [lunes])
+  const huecos = useLiveQuery(
+    () => huecosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
+    [lunes],
+  )
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
 
@@ -390,13 +393,13 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
 
       {[1, 2, 3, 4, 5].map((d) => {
         const delDia = porDia(d)
-        if (delDia.length === 0) return null
         const fecha = sumarDias(lunes, d - 1)
-        // Un día con horario pero no lectivo (festivo, vacaciones o fuera de
-        // curso) no enseña sus clases: contradiría al calendario. Se mantiene la
-        // cabecera con el motivo, para que no parezca que se han perdido.
+        // `huecosDe` ya no devuelve nada en un día no lectivo (festivo,
+        // periodo o fuera de curso): sin este chequeo aparte, ese día
+        // desaparecería sin más en vez de enseñar el motivo.
         const est = curso ? estadoDia(fecha, curso) : undefined
         const noLectivo = est && est.tipo !== 'lectivo' ? est : null
+        if (delDia.length === 0 && !noLectivo) return null
         return (
           <section key={d}>
             <TituloSeccion>
@@ -422,7 +425,7 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
   )
 }
 
-function TarjetaSesionSemana({ hueco }: { hueco: HuecoSemana }) {
+function TarjetaSesionSemana({ hueco }: { hueco: HuecoCalendario }) {
   const [abierta, setAbierta] = useState(false)
   const { grupo, fecha, horaInicio, horaFin, sesion } = hueco
 
@@ -467,7 +470,7 @@ function TarjetaSesionSemana({ hueco }: { hueco: HuecoSemana }) {
             <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
           </span>
           <span className="cifra mt-0.5 block truncate text-sm texto-suave">
-            {horaInicio}–{horaFin}
+            {horaInicio && horaFin ? `${horaInicio}–${horaFin}` : 'Sin hora fija'}
             {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
           </span>
         </span>
@@ -572,7 +575,8 @@ function TarjetaClase({
               )}
             </span>
             <span className="cifra mt-0.5 block text-sm texto-suave">
-              {horaInicio}–{horaFin} · {totalAlumnos} {totalAlumnos === 1 ? 'alumno' : 'alumnos'}
+              {horaInicio && horaFin ? `${horaInicio}–${horaFin} · ` : ''}
+              {totalAlumnos} {totalAlumnos === 1 ? 'alumno' : 'alumnos'}
             </span>
             {sesion?.titulo && <span className="mt-0.5 block truncate text-sm">{sesion.titulo}</span>}
           </span>

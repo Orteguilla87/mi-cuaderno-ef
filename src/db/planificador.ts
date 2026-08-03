@@ -21,50 +21,6 @@ export function lunesDe(iso: string): string {
   return sumarDias(iso, desplazamiento)
 }
 
-export interface HuecoSemana {
-  fecha: string
-  diaSemana: number
-  grupo: Grupo
-  horaInicio: string
-  horaFin: string
-  sesion?: Sesion
-}
-
-/**
- * Rejilla de la semana: una entrada por cada clase del horario, con su sesión
- * si ya existe. Es la vista principal del planificador (§5 M3).
- */
-export async function semanaDe(lunes: string): Promise<HuecoSemana[]> {
-  const grupos = await db.grupos.toArray()
-  const fin = sumarDias(lunes, 4)
-  const sesiones = await db.sesiones
-    .where('fecha')
-    .between(lunes, fin, true, true)
-    .toArray()
-
-  const huecos: HuecoSemana[] = []
-  for (let i = 0; i < 5; i++) {
-    const fecha = sumarDias(lunes, i)
-    const diaSemana = i + 1
-    for (const grupo of grupos) {
-      for (const franja of grupo.horario) {
-        if (franja.diaSemana !== diaSemana) continue
-        huecos.push({
-          fecha,
-          diaSemana,
-          grupo,
-          horaInicio: franja.horaInicio,
-          horaFin: franja.horaFin,
-          sesion: sesiones.find((s) => s.grupoId === grupo.id && s.fecha === fecha),
-        })
-      }
-    }
-  }
-  return huecos.sort(
-    (a, b) => a.fecha.localeCompare(b.fecha) || a.horaInicio.localeCompare(b.horaInicio),
-  )
-}
-
 /** Crea una sesión vacía para un hueco del horario y devuelve su id. */
 export async function crearSesion(
   grupoId: string,
