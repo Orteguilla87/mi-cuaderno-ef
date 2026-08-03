@@ -204,7 +204,6 @@ export function Celda({
   columna,
   alumno,
   valor,
-  rubrica,
   calculado,
   onCambiar,
   onAbrirEditor,
@@ -212,8 +211,7 @@ export function Celda({
   columna: Columna
   alumno: Alumno
   valor?: ValorCelda
-  rubrica?: Rubrica
-  /** Resultado de una columna de tipo 'calculo'; lo aporta la rejilla. */
+  /** Resultado de una columna de tipo 'calculo' o 'rubrica'; lo aporta la rejilla. */
   calculado?: ResultadoCalculo
   onCambiar: (cambios: Cambios) => void | Promise<void>
   onAbrirEditor: () => void
@@ -297,21 +295,25 @@ export function Celda({
     }
 
     case 'rubrica': {
-      // Siempre se abre en tabla (alumno × criterio): nunca se separa en
-      // columnas sueltas de la rejilla, así que la celda es solo un resumen.
-      const puestos = rubrica
-        ? rubrica.criterios.filter((c) => valor?.rubrica?.[c.id]).length
-        : 0
-      const total = rubrica?.criterios.length ?? 0
+      // Nota ponderada de la rúbrica (§ Bloque 2), no el recuento de ítems
+      // evaluados: `calculado` la aporta la rejilla con el mismo motor que
+      // certifica el trimestre (notaInstrumento). Nunca se separa en columnas
+      // sueltas: el toque abre el evaluador por alumno.
+      const n = calculado?.valor ?? null
+      const suspenso = n != null && n < 5
+      const parcial = calculado != null && calculado.contadas < calculado.total && calculado.total > 0
       return (
         <button
-          className={base}
+          className={base + ' flex-col gap-0 ' + (suspenso ? 'text-acento' : '')}
           onClick={onAbrirEditor}
-          aria-label={`${nombre}, ${columna.titulo}: ${puestos} de ${total} criterios`}
+          aria-label={`${nombre}, ${columna.titulo}: ${n == null ? 'sin evaluar' : n.toFixed(1)}`}
         >
-          <span className="cifra text-xs">
-            {puestos === 0 ? '·' : `${puestos}/${total}`}
-          </span>
+          <span className="cifra text-lg">{n == null ? '·' : n.toFixed(1)}</span>
+          {parcial && (
+            <span className="cifra text-xs font-semibold texto-suave">
+              {calculado!.contadas}/{calculado!.total}
+            </span>
+          )}
         </button>
       )
     }

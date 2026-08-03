@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../components/Celda'
 import { EstadoVacio } from '../components/EstadoVacio'
+import { EvaluadorRubrica } from '../components/EvaluadorRubrica'
 import { Hoja } from '../components/Hoja'
 import { HojaColumna } from '../components/HojaColumna'
 import { HojaObservacion } from '../components/HojaObservacion'
@@ -29,16 +30,19 @@ import {
   pegarColumnas,
   TIPOS_APLICABLES_GRUPO,
   validarPegado,
+  valorNormalizado,
   valoresDe,
   type ResultadoCalculo,
   type ResultadoValidacionPegado,
 } from '../db/cuaderno'
 import { db } from '../db/db'
 import { calificarGrupo } from '../db/notas'
-import type { MotivoExclusion } from '../lib/notas'
+import { filasPorColumna } from '../db/filas'
+import { notaInstrumento, type MotivoExclusion } from '../lib/notas'
 import type {
   Alumno,
   Columna,
+  FilaInstrumento,
   Grupo,
   Rubrica,
   SignoObservacion,
@@ -62,6 +66,9 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
   const [evaluando, setEvaluando] = useState<{ columna: Columna; indice: number } | null>(null)
+  const [evaluandoRubrica, setEvaluandoRubrica] = useState<{ columna: Columna; indice: number } | null>(
+    null,
+  )
   const [tablaRubrica, setTablaRubrica] = useState<Columna | null>(null)
   const [aplicando, setAplicando] = useState<Columna | null>(null)
   const [sorteando, setSorteando] = useState(false)
@@ -111,6 +118,15 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
     [columnas],
   )
 
+  const idsColumnasRubrica = useMemo(
+    () => (columnas ?? []).filter((c) => c.tipo === 'rubrica').map((c) => c.id),
+    [columnas],
+  )
+  const filasRubrica = useLiveQuery(
+    async () => filasPorColumna(idsColumnasRubrica),
+    [idsColumnasRubrica],
+  )
+
   /**
    * Resultado de cada columna de cálculo por alumno, en un solo pase.
    *
@@ -135,20 +151,46 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
     return res
   }, [columnas, alumnos, valores, rubricas, columnasPorId])
 
-  // La rúbrica siempre se abre en tabla (alumno × criterio): nunca se separa
-  // en columnas sueltas de la rejilla, así que aquí es siempre una columna 1:1.
+  /**
+   * Nota ponderada de cada columna de rúbrica por alumno (§ Bloque 2.1): el
+   * MISMO motor que certifica el trimestre (`notaInstrumento`), no un
+   * recuento aparte. `contadas`/`total` alimentan el aviso de nota parcial,
+   * igual que en las columnas de cálculo.
+   */
+  const notasRubrica = useMemo(() => {
+    const res = new Map<string, ResultadoCalculo>()
+    const colsRubrica = (columnas ?? []).filter((c) => c.tipo === 'rubrica')
+    if (colsRubrica.length === 0) return res
+    const vals = valores ?? new Map<string, ValorCelda>()
+    const rubs = rubricas ?? new Map<string, Rubrica>()
+    const filasPorCol = filasRubrica ?? new Map<string, FilaInstrumento[]>()
+    for (const c of colsRubrica) {
+      const filas = filasPorCol.get(c.id) ?? []
+      const rubrica = c.rubricaId ? rubs.get(c.rubricaId) : undefined
+      for (const a of alumnos ?? []) {
+        const valor = vals.get(`${c.id}|${a.id}`)
+        const resultado = notaInstrumento({ columna: c, filas, rubrica }, valor, valorNormalizado)
+        const contadas = filas.filter(
+          (f) => f.criterioRubricaId && valor?.rubrica?.[f.criterioRubricaId],
+        ).length
+        res.set(`${c.id}|${a.id}`, { valor: resultado.valor, contadas, total: filas.length })
+      }
+    }
+    return res
+  }, [columnas, alumnos, valores, rubricas, filasRubrica])
+
   const visibles = columnas ?? []
 
   /**
-   * Rúbrica → tabla; número/texto → recorrido por alumno; el resto se edita al
-   * toque.
+   * Rúbrica → evaluador por alumno; número/texto → recorrido por alumno; el
+   * resto se edita al toque.
    *
    * `indice` es la fila tocada: el recorrido arranca en ESE alumno, no en el
    * primero de la clase. Empezar siempre por el 0 obligaba a avanzar a mano
    * hasta la fila que se acababa de tocar.
    */
   function abrirEditor(columna: Columna, indice: number) {
-    if (columna.tipo === 'rubrica') setTablaRubrica(columna)
+    if (columna.tipo === 'rubrica') setEvaluandoRubrica({ columna, indice })
     else setEvaluando({ columna, indice })
   }
 
@@ -361,8 +403,8 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           alumnos={alumnos ?? []}
           visibles={visibles}
           valores={mapaValores}
-          rubricas={mapaRubricas}
           calculos={calculos}
+          notasRubrica={notasRubrica}
           contadoresObs={contadoresObs ?? new Map()}
           grupoId={idEfectivo!}
           onConfigurar={setConfigurando}
@@ -422,6 +464,29 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           valores={mapaValores}
           onIndice={(indice) => setEvaluando({ ...evaluando, indice })}
           onCerrar={() => setEvaluando(null)}
+        />
+      )}
+
+      {evaluandoRubrica && (
+        <EvaluadorRubrica
+          columna={evaluandoRubrica.columna}
+          rubrica={
+            evaluandoRubrica.columna.rubricaId
+              ? mapaRubricas.get(evaluandoRubrica.columna.rubricaId)
+              : undefined
+          }
+          filas={filasRubrica?.get(evaluandoRubrica.columna.id) ?? []}
+          alumnos={alumnos ?? []}
+          indice={evaluandoRubrica.indice}
+          valores={mapaValores}
+          onCambiar={cambiar}
+          onIndice={(indice) => setEvaluandoRubrica({ ...evaluandoRubrica, indice })}
+          onCerrar={() => setEvaluandoRubrica(null)}
+          onVerTabla={() => {
+            const columna = evaluandoRubrica.columna
+            setEvaluandoRubrica(null)
+            setTablaRubrica(columna)
+          }}
         />
       )}
 
@@ -501,8 +566,8 @@ function Rejilla({
   alumnos,
   visibles,
   valores,
-  rubricas,
   calculos,
+  notasRubrica,
   contadoresObs,
   grupoId,
   onConfigurar,
@@ -513,8 +578,8 @@ function Rejilla({
   alumnos: Alumno[]
   visibles: Columna[]
   valores: Map<string, import('../db/types').ValorCelda>
-  rubricas: Map<string, Rubrica>
   calculos: Map<string, ResultadoCalculo>
+  notasRubrica: Map<string, ResultadoCalculo>
   contadoresObs: Map<string, ContadorSigno>
   grupoId: string
   onConfigurar: (c: Columna) => void
@@ -618,11 +683,12 @@ function Rejilla({
                     columna={columna}
                     alumno={a}
                     valor={valores.get(`${columna.id}|${a.id}`)}
-                    rubrica={columna.rubricaId ? rubricas.get(columna.rubricaId) : undefined}
                     calculado={
                       columna.tipo === 'calculo'
                         ? calculos.get(`${columna.id}|${a.id}`)
-                        : undefined
+                        : columna.tipo === 'rubrica'
+                          ? notasRubrica.get(`${columna.id}|${a.id}`)
+                          : undefined
                     }
                     // Escritura optimista sin aviso (§7): un toque suelto no
                     // necesita confirmación, igual que en el pase de lista.
