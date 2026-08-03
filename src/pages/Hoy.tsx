@@ -175,7 +175,7 @@ export function Hoy() {
                 </TituloSeccion>
 
                 {destacada ? (
-                  <TarjetaClase clase={destacada} destacada enCurso={!!enCurso} />
+                  <TarjetaClase clase={destacada} fecha={fecha} destacada enCurso={!!enCurso} />
                 ) : (
                   <p className="text-sm texto-suave">
                     Ya no quedan clases hoy. Puedes repasar lo registrado más abajo.
@@ -191,6 +191,7 @@ export function Hoy() {
                   <li key={`${c.grupo.id}-${c.horaInicio}`}>
                     <TarjetaClase
                       clase={c}
+                      fecha={fecha}
                       enCurso={c === enCurso}
                       pasada={esHoy && c.horaFin <= ahora && c !== enCurso}
                     />
@@ -506,11 +507,13 @@ function TarjetaSesionSemana({ hueco }: { hueco: HuecoSemana }) {
  */
 function TarjetaClase({
   clase,
+  fecha,
   destacada = false,
   enCurso = false,
   pasada = false,
 }: {
   clase: Clase
+  fecha: string
   destacada?: boolean
   enCurso?: boolean
   pasada?: boolean
@@ -522,6 +525,18 @@ function TarjetaClase({
     sesion &&
     (sesion.notas || sesion.recursosNecesarios || sesion.comentarios || sesion.juegos.length > 0)
   )
+
+  // Como en la vista de semana: si el día aún no tiene sesión, se crea al vuelo,
+  // así valorar o editar funciona igual haya planificación o no.
+  async function editar() {
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    navegar(`/sesiones/${id}`)
+  }
+
+  async function valorar(v: 1 | 2 | 3 | 4 | 5 | undefined) {
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    await db.sesiones.update(id, { valoracion: v })
+  }
 
   return (
     <div
@@ -569,10 +584,11 @@ function TarjetaClase({
 
         <button
           onClick={() => navegar(`/cuaderno/${grupo.id}`)}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-agua-claro text-primario-oscuro transition active:scale-95 dark:bg-noche-elevada dark:text-agua"
-          aria-label={`Abrir ${grupo.nombre} en el Cuaderno`}
+          className="flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold text-primario dark:text-agua"
+          aria-label={`Grupo ${grupo.nombre} en el Cuaderno`}
         >
-          <Table2 size={20} aria-hidden />
+          <Table2 size={22} aria-hidden />
+          Grupo
         </button>
 
         <button
@@ -598,7 +614,8 @@ function TarjetaClase({
       </div>
 
       {abierta && (
-        <div className="mt-3 space-y-1.5 border-t border-borde pt-3 text-sm dark:border-noche-borde">
+        <div className="mt-3 space-y-3 border-t border-borde pt-3 text-sm dark:border-noche-borde">
+          <div className="space-y-1.5">
           {hayDescripcion ? (
             <>
               {sesion!.notas && (
@@ -628,6 +645,16 @@ function TarjetaClase({
           ) : (
             <p className="texto-suave">Sin planificación para esta sesión.</p>
           )}
+          </div>
+
+          <div>
+            <p className="etiqueta">Valoración</p>
+            <ValoracionSesion valor={sesion?.valoracion} onCambio={(v) => void valorar(v)} />
+          </div>
+
+          <button className="btn-suave w-full" onClick={() => void editar()}>
+            Editar sesión
+          </button>
         </div>
       )}
     </div>
