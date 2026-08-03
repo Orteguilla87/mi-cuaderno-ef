@@ -113,26 +113,31 @@ export function CursoEscolarAjustes() {
 
       <div>
         <span className="etiqueta">Trimestres</span>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {NUMEROS_TRIMESTRE.map((n) => {
             const t = trimestreDe(n)
             return (
-              <div key={n} className="flex items-center gap-2">
-                <span className="cifra w-6 shrink-0 text-sm font-bold texto-suave">{n}.º</span>
-                <input
-                  type="date"
-                  className="campo cifra flex-1"
-                  aria-label={`Inicio del ${n}.º trimestre`}
-                  value={t?.inicio ?? ''}
-                  onChange={(e) => actualizarTrimestre(n, 'inicio', e.target.value)}
-                />
-                <input
-                  type="date"
-                  className="campo cifra flex-1"
-                  aria-label={`Fin del ${n}.º trimestre`}
-                  value={t?.fin ?? ''}
-                  onChange={(e) => actualizarTrimestre(n, 'fin', e.target.value)}
-                />
+              // Etiqueta encima y las dos fechas en su propia fila (§ Bloque 5
+              // aplicado aquí también): un input de fecha nativo no encoge lo
+              // bastante para caber tres en una fila a 360px sin desbordar.
+              <div key={n}>
+                <span className="cifra mb-1 block text-xs font-bold texto-suave">{n}.º trimestre</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="date"
+                    className="campo cifra"
+                    aria-label={`Inicio del ${n}.º trimestre`}
+                    value={t?.inicio ?? ''}
+                    onChange={(e) => actualizarTrimestre(n, 'inicio', e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    className="campo cifra"
+                    aria-label={`Fin del ${n}.º trimestre`}
+                    value={t?.fin ?? ''}
+                    onChange={(e) => actualizarTrimestre(n, 'fin', e.target.value)}
+                  />
+                </div>
               </div>
             )
           })}
@@ -448,10 +453,13 @@ function PeriodosNoLectivosEditor({ curso }: { curso: CursoEscolar }) {
           placeholder="Vacaciones de Navidad"
           aria-label="Nombre del periodo"
         />
-        <div className="flex gap-2">
+        {/* Las dos fechas en su propia fila y el botón debajo, a todo lo
+            ancho (igual que los trimestres): tres controles de fecha nativos
+            no caben en una sola fila a 360px sin desbordar. */}
+        <div className="grid grid-cols-2 gap-2">
           <input
             type="date"
-            className="campo cifra flex-1"
+            className="campo cifra"
             value={inicio}
             min={curso.inicio}
             max={curso.fin}
@@ -460,24 +468,25 @@ function PeriodosNoLectivosEditor({ curso }: { curso: CursoEscolar }) {
           />
           <input
             type="date"
-            className="campo cifra flex-1"
+            className="campo cifra"
             value={fin}
             min={curso.inicio}
             max={curso.fin}
             onChange={(e) => setFin(e.target.value)}
             aria-label="Fin del periodo"
           />
-          <button
-            className="btn-suave px-3"
-            onClick={() => void anadir()}
-            disabled={!nombre.trim() || !inicio || !fin || rangoInvalido}
-          >
-            <Plus size={18} aria-hidden />
-          </button>
         </div>
         {rangoInvalido && (
           <p className="text-sm font-semibold text-acento">El fin debe ser posterior al inicio.</p>
         )}
+        <button
+          className="btn-suave w-full"
+          onClick={() => void anadir()}
+          disabled={!nombre.trim() || !inicio || !fin || rangoInvalido}
+        >
+          <Plus size={18} aria-hidden />
+          Añadir periodo
+        </button>
       </div>
     </div>
   )
