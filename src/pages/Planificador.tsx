@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
+import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { db } from '../db/db'
 import {
@@ -15,6 +16,7 @@ import {
   semanaDe,
   type HuecoSemana,
 } from '../db/planificador'
+import type { UnidadDidactica } from '../db/types'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -191,6 +193,7 @@ function VistaSemana({
 
 function VistaUnidades() {
   const [creando, setCreando] = useState(false)
+  const [editando, setEditando] = useState<UnidadDidactica | null>(null)
   const [duplicando, setDuplicando] = useState<{ id: string; titulo: string; nivel: number } | null>(
     null,
   )
@@ -232,35 +235,39 @@ function VistaUnidades() {
 
       <ul className="space-y-2">
         {unidades?.map((u) => (
-          <li key={u.id} className="tarjeta py-3">
-            <div className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-base font-bold">{u.titulo}</p>
-                  {!u.computa && (
-                    <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
-                      No cuenta
-                    </span>
-                  )}
-                </div>
-                <p className="cifra mt-0.5 text-sm texto-suave">
-                  {u.nivel}º ·{' '}
-                  {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
-                  {conteos?.[u.id] ?? 0} sesiones
-                </p>
+          <li key={u.id} className="tarjeta flex items-start gap-2 py-3">
+            <button
+              className="min-w-0 flex-1 text-left"
+              onClick={() => setEditando(u)}
+              aria-label={`Editar unidad ${u.titulo}`}
+            >
+              <div className="flex items-center gap-2">
+                <p className="truncate text-base font-bold">{u.titulo}</p>
+                {!u.computa && (
+                  <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
+                    No cuenta
+                  </span>
+                )}
               </div>
-              <button
-                className="btn-suave shrink-0 px-3 text-xs"
-                onClick={() => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
-              >
-                Duplicar
-              </button>
-            </div>
+              <p className="cifra mt-0.5 text-sm texto-suave">
+                {u.nivel}º ·{' '}
+                {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
+                {conteos?.[u.id] ?? 0} sesiones ·{' '}
+                {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
+              </p>
+            </button>
+            <button
+              className="btn-suave shrink-0 px-3 text-xs"
+              onClick={() => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
+            >
+              Duplicar
+            </button>
           </li>
         ))}
       </ul>
 
       <HojaNuevaUnidad abierta={creando} onCerrar={() => setCreando(false)} />
+      <HojaEditarUnidad unidad={editando} onCerrar={() => setEditando(null)} />
       <HojaDuplicarUnidad unidad={duplicando} onCerrar={() => setDuplicando(null)} />
     </>
   )
@@ -328,10 +335,17 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
   const [nivel, setNivel] = useState(1)
   const [trimestre, setTrimestre] = useState<1 | 2 | 3 | null>(1)
   const [computa, setComputa] = useState(true)
+  const [criterios, setCriterios] = useState<string[]>([])
+
+  // Los criterios ofrecidos dependen del ciclo del nivel: al cambiarlo, los ya
+  // elegidos de otro ciclo dejarían de tener sentido.
+  useEffect(() => {
+    if (abierta) setCriterios([])
+  }, [abierta, nivel])
 
   async function guardar() {
     if (!titulo.trim()) return
-    const id = await crearUnidad({ titulo, nivel, trimestre, computa })
+    const id = await crearUnidad({ titulo, nivel, trimestre, computa, criterios })
     setTitulo('')
     onCerrar()
     mostrarAviso(`Unidad «${titulo.trim()}» creada`, async () => {
@@ -414,12 +428,120 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
           </span>
         </label>
 
-        <p className="text-xs texto-suave">
-          Los criterios de evaluación se ligan a la unidad al crear sus instrumentos en el Cuaderno.
-        </p>
+        <SelectorCriterios nivel={nivel} seleccionados={criterios} onCambio={setCriterios} />
 
         <button className="btn-primario w-full" onClick={() => void guardar()} disabled={!titulo.trim()}>
           Crear unidad
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/**
+ * Edición de una unidad ya creada: no existía antes (§ Bloque 1). El nivel se
+ * enseña de solo lectura porque cambiarlo cambiaría el ciclo de sus criterios
+ * ya asignados; para eso está «Duplicar a otro nivel».
+ */
+function HojaEditarUnidad({
+  unidad,
+  onCerrar,
+}: {
+  unidad: UnidadDidactica | null
+  onCerrar: () => void
+}) {
+  const [titulo, setTitulo] = useState('')
+  const [trimestre, setTrimestre] = useState<1 | 2 | 3 | null>(1)
+  const [computa, setComputa] = useState(true)
+  const [criterios, setCriterios] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!unidad) return
+    setTitulo(unidad.titulo)
+    setTrimestre(unidad.trimestre)
+    setComputa(unidad.computa)
+    setCriterios(unidad.criterios)
+  }, [unidad])
+
+  if (!unidad) return null
+
+  async function guardar() {
+    if (!unidad || !titulo.trim()) return
+    await db.unidades.update(unidad.id, {
+      titulo: titulo.trim(),
+      trimestre,
+      computa,
+      criterios,
+    })
+    onCerrar()
+  }
+
+  return (
+    <Hoja abierta={!!unidad} titulo="Editar unidad" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <div>
+          <label className="etiqueta" htmlFor="ud-editar-titulo">
+            Título
+          </label>
+          <input
+            id="ud-editar-titulo"
+            className="campo"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="panel-agua text-sm">
+          Nivel: <strong>{unidad.nivel}º</strong>. Para cambiarlo, duplica la unidad al nivel
+          destino desde la lista.
+        </div>
+
+        <div>
+          <span className="etiqueta">Trimestre</span>
+          <div className="grid grid-cols-4 gap-2">
+            {([1, 2, 3] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTrimestre(t)}
+                className={(trimestre === t ? 'btn-primario' : 'btn-suave') + ' px-0'}
+              >
+                {t}.º
+              </button>
+            ))}
+            <button
+              onClick={() => setTrimestre(null)}
+              className={(trimestre === null ? 'btn-primario' : 'btn-suave') + ' px-0 text-xs'}
+            >
+              Ninguno
+            </button>
+          </div>
+        </div>
+
+        <label className="tarjeta flex cursor-pointer items-center gap-3 py-3">
+          <input
+            type="checkbox"
+            className="h-6 w-6 shrink-0 accent-primario"
+            checked={computa}
+            onChange={(e) => setComputa(e.target.checked)}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">Cuenta para la nota</span>
+            <span className="mt-0.5 block text-xs texto-suave">
+              Si lo desmarcas, la unidad se sigue programando y evaluando, pero no entra en el
+              reparto de pesos del trimestre.
+            </span>
+          </span>
+        </label>
+
+        <SelectorCriterios nivel={unidad.nivel} seleccionados={criterios} onCambio={setCriterios} />
+
+        <button
+          className="btn-primario w-full"
+          onClick={() => void guardar()}
+          disabled={!titulo.trim()}
+        >
+          Guardar cambios
         </button>
       </div>
     </Hoja>

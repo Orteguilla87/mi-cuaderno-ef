@@ -70,6 +70,9 @@ export function HojaColumna({
   const [componentes, setComponentes] = useState<ComponenteCalculo[]>([])
   const [editandoRubrica, setEditandoRubrica] = useState<string | null>(null)
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
+  // Criterio elegido ANTES de que exista la fila: solo tiene sentido en una
+  // columna nueva de tipo simple, que nace con una única fila (§ Bloque 1).
+  const [criterioNueva, setCriterioNueva] = useState<string | null>(null)
 
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
   const rubricas = useLiveQuery(() => db.rubricas.toArray(), [])
@@ -108,8 +111,18 @@ export function HojaColumna({
       setCaritas(3)
       setMax(10)
       setComponentes([])
+      setCriterioNueva(null)
     }
   }, [estado])
+
+  // Se reinicia al cambiar de unidad: el criterio suelto de otra unidad no
+  // tendría sentido de golpe en la nueva.
+  useEffect(() => setCriterioNueva(null), [udId])
+
+  const delCiclo = useLiveQuery(
+    async () => (grupo && grupo.etapa === 'primaria' ? criteriosDeGrupo('primaria', grupo.nivel) : []),
+    [grupo?.etapa, grupo?.nivel],
+  )
 
   if (!estado || !grupo) return null
 
@@ -123,6 +136,9 @@ export function HojaColumna({
   const unidadesDelCurso = (unidades ?? []).filter(
     (u) => u.nivel === grupo.nivel || u.id === udId,
   )
+  const deLaUnidadNueva = (unidadesDelCurso.find((u) => u.id === udId)?.criterios ?? [])
+    .map((id) => (delCiclo ?? []).find((c) => c.id === id))
+    .filter((c): c is Criterio => !!c)
 
   // Un cálculo sin componentes no promedia nada: se exige al menos uno.
   const guardable = !((tipo === 'rubrica' && !rubricaId) || (tipo === 'calculo' && componentes.length === 0))
@@ -135,7 +151,7 @@ export function HojaColumna({
       const nCalculos = (hermanas ?? []).filter((c) => c.tipo === 'calculo').length
       const tituloPorDefecto =
         tipo === 'calculo' ? `Cálculo ${nCalculos + 1}` : tipos.find((t) => t.tipo === tipo)?.etiqueta || 'Columna'
-      await crearColumna({
+      const idNueva = await crearColumna({
         grupoId: grupo!.id,
         trimestre,
         titulo: titulo || tituloPorDefecto,
@@ -148,6 +164,19 @@ export function HojaColumna({
         calculo: tipo === 'calculo' ? { componentes } : undefined,
         fecha: aISO(),
       })
+      // Instrumento simple: nace con una sola fila. Si se eligió criterio antes
+      // de crear, se asigna ya —misma propagación a la unidad que en cualquier
+      // otro momento, con su aviso y su Deshacer.
+      if (criterioNueva && tipo !== 'rubrica' && tipo !== 'calculo') {
+        const [filaInicial] = await filasDe(idNueva)
+        if (filaInicial) {
+          const { anadidoALaUnidad, deshacer } = await asignarCriterio(filaInicial.id, criterioNueva)
+          if (anadidoALaUnidad) {
+            const codigo = (delCiclo ?? []).find((c) => c.id === criterioNueva)?.codigo ?? criterioNueva
+            mostrarAviso(`Criterio ${codigo} añadido también a la unidad «${anadidoALaUnidad}»`, deshacer)
+          }
+        }
+      }
     } else if (columna) {
       await db.columnas.update(columna.id, {
         titulo,
@@ -384,11 +413,25 @@ export function HojaColumna({
               udId={udId}
               rubrica={rubricas?.find((r) => r.id === rubricaId)}
             />
+          ) : grupo.etapa === 'primaria' && tipo !== 'rubrica' && tipo !== 'calculo' ? (
+            <div>
+              <span className="etiqueta">Qué se evalúa</span>
+              <SelectorCriterioUnico
+                criterioId={criterioNueva}
+                deLaUnidad={deLaUnidadNueva}
+                delCiclo={delCiclo ?? []}
+                onElegir={setCriterioNueva}
+              />
+              <p className="mt-2 text-xs texto-suave">
+                El criterio no cambia la nota: sirve para saber qué se ha evaluado y qué queda
+                por evaluar.
+              </p>
+            </div>
           ) : (
             grupo.etapa === 'primaria' && (
               <p className="text-xs texto-suave">
-                Los criterios del decreto se asignan al volver a abrir esta columna, cuando ya
-                existe lo que se evalúa.
+                Los criterios de la rúbrica se asignan al volver a abrir esta columna, cuando ya
+                existe una fila por cada nivel.
               </p>
             )
           )}
@@ -585,51 +628,36 @@ function EditorFilas({
   )
 }
 
-function FilaEditable({
-  fila,
-  editableElDescriptor,
-  variasFilas,
+/**
+ * Chips de los criterios de la unidad (de un toque) + desplegable con el resto
+ * del ciclo. Único sitio donde vive este patrón: lo usan tanto la fila de un
+ * instrumento existente como el selector de la columna al crearla.
+ */
+function SelectorCriterioUnico({
+  criterioId,
   deLaUnidad,
   delCiclo,
   onElegir,
 }: {
-  fila: FilaInstrumento
-  editableElDescriptor: boolean
-  variasFilas: boolean
+  criterioId: string | null
   deLaUnidad: Criterio[]
   delCiclo: Criterio[]
   onElegir: (criterioId: string | null) => void
 }) {
-  const [descriptor, setDescriptor] = useState(fila.descriptor)
-  useEffect(() => setDescriptor(fila.descriptor), [fila.descriptor])
-
-  // Los de la unidad, primero y de un toque. El resto, a un desplegable.
   const resto = delCiclo.filter((c) => !deLaUnidad.some((u) => u.id === c.id))
 
   return (
-    <li className="tarjeta space-y-2 py-3">
-      {editableElDescriptor ? (
-        <input
-          className="campo"
-          value={descriptor}
-          onChange={(e) => setDescriptor(e.target.value)}
-          onBlur={() => void fijarDescriptorFila(fila.id, descriptor)}
-          aria-label="Qué se evalúa en esta fila"
-        />
-      ) : (
-        <p className="font-semibold">{fila.descriptor}</p>
-      )}
-
+    <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
         {deLaUnidad.map((c) => (
           <button
             key={c.id}
             title={c.texto}
-            aria-pressed={fila.criterioId === c.id}
-            onClick={() => onElegir(fila.criterioId === c.id ? null : c.id)}
+            aria-pressed={criterioId === c.id}
+            onClick={() => onElegir(criterioId === c.id ? null : c.id)}
             className={
               'pildora min-h-[36px] px-2.5 text-xs font-bold ' +
-              (fila.criterioId === c.id
+              (criterioId === c.id
                 ? 'bg-primario text-white'
                 : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
             }
@@ -646,9 +674,9 @@ function FilaEditable({
 
       <select
         className="campo text-sm"
-        value={fila.criterioId ?? ''}
+        value={criterioId ?? ''}
         onChange={(e) => onElegir(e.target.value || null)}
-        aria-label="Criterio del decreto que evalúa esta fila"
+        aria-label="Criterio del decreto"
       >
         <option value="">Sin criterio</option>
         {deLaUnidad.length > 0 && (
@@ -668,6 +696,48 @@ function FilaEditable({
           ))}
         </optgroup>
       </select>
+    </div>
+  )
+}
+
+function FilaEditable({
+  fila,
+  editableElDescriptor,
+  variasFilas,
+  deLaUnidad,
+  delCiclo,
+  onElegir,
+}: {
+  fila: FilaInstrumento
+  editableElDescriptor: boolean
+  variasFilas: boolean
+  deLaUnidad: Criterio[]
+  delCiclo: Criterio[]
+  onElegir: (criterioId: string | null) => void
+}) {
+  const [descriptor, setDescriptor] = useState(fila.descriptor)
+  useEffect(() => setDescriptor(fila.descriptor), [fila.descriptor])
+
+  return (
+    <li className="tarjeta space-y-2 py-3">
+      {editableElDescriptor ? (
+        <input
+          className="campo"
+          value={descriptor}
+          onChange={(e) => setDescriptor(e.target.value)}
+          onBlur={() => void fijarDescriptorFila(fila.id, descriptor)}
+          aria-label="Qué se evalúa en esta fila"
+        />
+      ) : (
+        <p className="font-semibold">{fila.descriptor}</p>
+      )}
+
+      <SelectorCriterioUnico
+        criterioId={fila.criterioId}
+        deLaUnidad={deLaUnidad}
+        delCiclo={delCiclo}
+        onElegir={onElegir}
+      />
 
       {variasFilas && (
         <div className="flex items-center gap-2">

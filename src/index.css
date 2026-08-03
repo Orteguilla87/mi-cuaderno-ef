@@ -199,6 +199,17 @@
            uppercase tracking-wide;
   }
 
+  /* ——— Desplegable ———
+     Tercer rol de §5 Bloque 4, distinto del botón (relleno sólido) y de la
+     pestaña (indicador inferior): borde contenedor, fondo neutro y chevron
+     obligatorio, para que un acordeón nunca se confunda con una acción. */
+  .desplegable {
+    @apply flex min-h-tap items-center gap-2 rounded-xl border border-borde bg-agua-claro px-3
+           text-left transition
+           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40
+           dark:border-noche-borde dark:bg-noche-elevada;
+  }
+
   /* ——— Cajas de aviso ———
      El mismo patrón (borde + fondo tenue + texto) se copiaba suelto en cada
      pantalla con radios distintos (`lg` unas veces, `xl` otras). Una caja para
