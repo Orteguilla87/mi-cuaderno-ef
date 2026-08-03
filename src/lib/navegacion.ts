@@ -8,6 +8,7 @@ import {
   MessageSquareText,
   Settings,
   Table2,
+  Target,
   Timer,
   Users,
   type LucideIcon,
@@ -83,6 +84,13 @@ export const ENTRADAS_MAS: EntradaMas[] = [
   //   Icono: BarChart3,
   //   disponible: false,
   // },
+  {
+    ruta: '/cobertura',
+    titulo: 'Cobertura de criterios',
+    descripcion: 'Qué criterios del decreto se han evaluado y cuáles faltan',
+    Icono: Target,
+    disponible: true,
+  },
   {
     ruta: '/informes',
     titulo: 'Informes',

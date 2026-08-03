@@ -17,6 +17,7 @@ import { useUI } from './store/ui'
 import { Ajustes } from './pages/Ajustes'
 import { AlumnoDetalle } from './pages/AlumnoDetalle'
 import { Calendario } from './pages/Calendario'
+import { Cobertura } from './pages/Cobertura'
 import { Cuaderno } from './pages/Cuaderno'
 import { EdicionMasivaAlumnos } from './pages/EdicionMasivaAlumnos'
 import { EnConstruccion } from './pages/EnConstruccion'
@@ -38,7 +39,7 @@ import { SesionDetalle } from './pages/SesionDetalle'
 // Secciones cuyo contenido es una rejilla que de verdad aprovecha el ancho de
 // escritorio (Cuaderno, Infantil, Rúbricas): el resto son texto y formularios,
 // que a `lg:max-w-7xl` se estiraban a una medida de lectura absurda.
-const SECCIONES_ANCHO_COMPLETO = new Set(['cuaderno', 'infantil', 'rubricas'])
+const SECCIONES_ANCHO_COMPLETO = new Set(['cuaderno', 'infantil', 'rubricas', 'cobertura'])
 
 function anchoCompleto(ruta: string): boolean {
   return SECCIONES_ANCHO_COMPLETO.has(segmentos(ruta)[0] ?? 'hoy')
@@ -105,6 +106,8 @@ function Contenido({ ruta }: { ruta: string }) {
       return <Ajustes />
     case 'evaluacion':
       return <EnConstruccion titulo="Evaluación final" fase="fases 4 y 5" atras />
+    case 'cobertura':
+      return <Cobertura />
     case 'informes':
       return <Informes />
     case 'calendario':
