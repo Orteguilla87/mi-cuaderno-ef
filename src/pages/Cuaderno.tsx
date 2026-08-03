@@ -21,6 +21,7 @@ import { Hoja } from '../components/Hoja'
 import { HojaColumna } from '../components/HojaColumna'
 import { HojaObservacion } from '../components/HojaObservacion'
 import { HojaPesosTrimestre } from '../components/HojaPesosTrimestre'
+import { SelectorGrupo } from '../components/SelectorGrupo'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import {
   agruparPorUnidad,
@@ -55,6 +56,7 @@ import type {
 import { contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
+import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { useUI } from '../store/ui'
 
@@ -65,7 +67,16 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   const copiarColumnas = usePortapapelesColumnas((s) => s.copiar)
   const limpiarPortapapelesColumnas = usePortapapelesColumnas((s) => s.limpiar)
 
-  const [grupoId, setGrupoId] = useState<string | null>(grupoIdInicial ?? null)
+  // Grupo activo compartido con el Planificador (§ Bloque 6.3): la llegada
+  // directa desde otra pantalla (`grupoIdInicial`, p. ej. desde Hoy) manda y
+  // además deja fijado ese grupo para la próxima vez.
+  const grupoIdGuardado = useGrupoActivo((s) => s.grupoId)
+  const fijarGrupoActivo = useGrupoActivo((s) => s.fijarGrupo)
+  useEffect(() => {
+    if (grupoIdInicial) fijarGrupoActivo(grupoIdInicial)
+  }, [grupoIdInicial, fijarGrupoActivo])
+  const grupoId = grupoIdInicial ?? grupoIdGuardado
+
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
   const [evaluando, setEvaluando] = useState<{ columna: Columna; indice: number } | null>(null)
@@ -85,6 +96,16 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
 
   const grupo = grupos?.find((g) => g.id === grupoId) ?? grupos?.[0] ?? null
   const idEfectivo = grupo?.id ?? null
+
+  // El id guardado puede haber quedado obsoleto (grupo borrado, u orfandad del
+  // localStorage persistido): se corrige al primero por orden, sin esperar a
+  // que el usuario lo note. No corre si llega un `grupoIdInicial` explícito.
+  useEffect(() => {
+    if (grupoIdInicial) return
+    if (grupos && grupos.length > 0 && !grupos.some((g) => g.id === grupoIdGuardado)) {
+      fijarGrupoActivo(grupos[0].id)
+    }
+  }, [grupoIdInicial, grupos, grupoIdGuardado, fijarGrupoActivo])
 
   const alumnos = useLiveQuery(async () => {
     if (!idEfectivo) return []
@@ -256,28 +277,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
       )}
 
       <div className="space-y-3 p-4 pb-2">
-        <div className="flex flex-wrap gap-2">
-          {grupos.map((g) => (
-            <button
-              key={g.id}
-              onClick={() => setGrupoId(g.id)}
-              aria-pressed={idEfectivo === g.id}
-              className={
-                'pildora min-h-[40px] gap-1.5 px-3 ' +
-                (idEfectivo === g.id
-                  ? 'bg-primario text-white'
-                  : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
-              }
-            >
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: g.color }}
-                aria-hidden
-              />
-              {g.nombre}
-            </button>
-          ))}
-        </div>
+        <SelectorGrupo grupos={grupos} valor={idEfectivo} onCambio={fijarGrupoActivo} />
 
         <div role="tablist" aria-label="Trimestre" className="pestanas">
           {([1, 2, 3] as const).map((t) => (

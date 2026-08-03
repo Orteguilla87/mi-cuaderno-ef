@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Hoja } from '../components/Hoja'
 import { HojaConfirmar } from '../components/HojaConfirmar'
+import { SelectorGrupo } from '../components/SelectorGrupo'
 import { db } from '../db/db'
 import {
   copiarPlanificacion,
@@ -18,6 +19,7 @@ import {
 import type { FranjaHorario, Grupo, Sesion } from '../db/types'
 import { aISO, formatoDiaCorto } from '../lib/fechas'
 import { navegar } from '../lib/router'
+import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
 import { EditorHorario } from './Grupos'
@@ -29,7 +31,9 @@ import { EditorHorario } from './Grupos'
  */
 export function PlanGrupo() {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
-  const [grupoId, setGrupoId] = useState<string | null>(null)
+  // Grupo activo compartido con el Cuaderno (§ Bloque 6.3).
+  const grupoId = useGrupoActivo((s) => s.grupoId)
+  const fijarGrupoActivo = useGrupoActivo((s) => s.fijarGrupo)
   const [copiando, setCopiando] = useState(false)
   const [editandoHorario, setEditandoHorario] = useState(false)
   const [confirmandoVaciar, setConfirmandoVaciar] = useState(false)
@@ -39,10 +43,14 @@ export function PlanGrupo() {
     return lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
   }, [])
 
-  // Al entrar se elige el primer grupo: la vista sin grupo no aporta nada.
+  // Sin grupo elegido, o con uno que ya no existe (borrado, u orfandad del
+  // localStorage persistido): se cae al primero por orden. La vista sin
+  // grupo no aporta nada.
   useEffect(() => {
-    if (!grupoId && grupos && grupos.length > 0) setGrupoId(grupos[0].id)
-  }, [grupos, grupoId])
+    if (grupos && grupos.length > 0 && !grupos.some((g) => g.id === grupoId)) {
+      fijarGrupoActivo(grupos[0].id)
+    }
+  }, [grupos, grupoId, fijarGrupoActivo])
 
   const grupo = grupos?.find((g) => g.id === grupoId) ?? null
   const sesiones = useLiveQuery(
@@ -121,28 +129,7 @@ export function PlanGrupo() {
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
-        {grupos?.map((g) => (
-          <button
-            key={g.id}
-            onClick={() => setGrupoId(g.id)}
-            aria-pressed={grupoId === g.id}
-            className={
-              'pildora min-h-[40px] gap-1.5 px-3 ' +
-              (grupoId === g.id
-                ? 'bg-primario text-white'
-                : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
-            }
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: g.color }}
-              aria-hidden
-            />
-            {g.nombre}
-          </button>
-        ))}
-      </div>
+      <SelectorGrupo grupos={grupos ?? []} valor={grupoId} onCambio={fijarGrupoActivo} />
 
       {grupo && (
         <>

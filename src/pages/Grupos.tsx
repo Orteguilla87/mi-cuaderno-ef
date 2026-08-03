@@ -1,5 +1,20 @@
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Users } from 'lucide-react'
+import { GripVertical, Users } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -22,6 +37,7 @@ const DIAS = ['L', 'M', 'X', 'J', 'V'] as const
 
 export function Grupos() {
   const [abierta, setAbierta] = useState(false)
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
 
   const grupos = useLiveQuery(async () => {
     const curso = await leerCursoActivo()
@@ -36,6 +52,38 @@ export function Grupos() {
     for (const a of alumnos) mapa[a.grupoId] = (mapa[a.grupoId] ?? 0) + 1
     return mapa
   }, [])
+
+  // Distancia mínima antes de activar el arrastre (§ Bloque 6.1): sin esto, un
+  // toque para navegar a la ficha del grupo se interpretaría como el inicio de
+  // un arrastre y el toque nunca llegaría a disparar la navegación. Pointer
+  // Events cubre ratón y táctil con el mismo sensor.
+  const sensores = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  )
+
+  /** Único punto de escritura del orden: reescribe `Grupo.orden` de todos a la vez. */
+  async function reordenar(idsEnOrden: string[]) {
+    const previos = (grupos ?? []).map((g) => ({ id: g.id, orden: g.orden }))
+    await db.transaction('rw', db.grupos, async () => {
+      for (let i = 0; i < idsEnOrden.length; i++) {
+        await db.grupos.update(idsEnOrden[i], { orden: i })
+      }
+    })
+    mostrarAviso('Orden de grupos actualizado', async () => {
+      await db.transaction('rw', db.grupos, async () => {
+        for (const { id, orden } of previos) await db.grupos.update(id, { orden })
+      })
+    })
+  }
+
+  function alSoltar(evento: DragEndEvent) {
+    const { active, over } = evento
+    if (!over || active.id === over.id || !grupos) return
+    const desde = grupos.findIndex((g) => g.id === active.id)
+    const hasta = grupos.findIndex((g) => g.id === over.id)
+    if (desde === -1 || hasta === -1) return
+    void reordenar(arrayMove(grupos, desde, hasta).map((g) => g.id))
+  }
 
   return (
     <>
@@ -63,40 +111,75 @@ export function Grupos() {
           />
         )}
 
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-        {grupos?.map((g) => (
-          <button
-            key={g.id}
-            onClick={() => navegar(`/grupos/${g.id}`)}
-            className="tarjeta flex w-full items-center gap-3 text-left"
-          >
-            <span
-              className="h-12 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: g.color }}
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-2">
-                <span className="truncate text-lg font-bold">{g.nombre}</span>
-                <BadgeEtapa etapa={g.etapa} nivel={g.nivel} />
-              </span>
-              <span className="mt-0.5 block text-sm texto-suave">
-                {conteos?.[g.id] ?? 0} alumnos
-                {g.horario.length > 0 &&
-                  ' · ' +
-                    g.horario.map((h) => `${DIAS[h.diaSemana - 1]} ${h.horaInicio}`).join(' · ')}
-              </span>
-            </span>
-            <span className="text-2xl text-tinta-tenue" aria-hidden>
-              ›
-            </span>
-          </button>
-        ))}
-        </div>
+        {grupos && grupos.length > 0 && (
+          <DndContext sensors={sensores} collisionDetection={closestCenter} onDragEnd={alSoltar}>
+            <SortableContext items={grupos.map((g) => g.id)} strategy={rectSortingStrategy}>
+              <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                {grupos.map((g) => (
+                  <GrupoTarjeta key={g.id} grupo={g} alumnos={conteos?.[g.id] ?? 0} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
       </div>
 
       <HojaNuevoGrupo abierta={abierta} onCerrar={() => setAbierta(false)} orden={grupos?.length ?? 0} />
     </>
+  )
+}
+
+/** Tarjeta de grupo arrastrable: el asa de arrastre va aparte del toque que navega. */
+function GrupoTarjeta({ grupo: g, alumnos }: { grupo: Grupo; alumnos: number }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: g.id,
+  })
+  const estilo = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={estilo}
+      className="flex items-stretch gap-1 rounded-xl2 border border-borde bg-white dark:border-noche-borde dark:bg-noche-superficie"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        style={{ touchAction: 'none' }}
+        className="flex shrink-0 cursor-grab items-center px-2 text-tinta-tenue active:cursor-grabbing"
+        aria-label={`Reordenar ${g.nombre}`}
+      >
+        <GripVertical size={18} aria-hidden />
+      </button>
+      <button
+        onClick={() => navegar(`/grupos/${g.id}`)}
+        className="flex min-w-0 flex-1 items-center gap-3 py-4 pr-4 text-left"
+      >
+        <span
+          className="h-12 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: g.color }}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate text-lg font-bold">{g.nombre}</span>
+            <BadgeEtapa etapa={g.etapa} nivel={g.nivel} />
+          </span>
+          <span className="mt-0.5 block text-sm texto-suave">
+            {alumnos} alumnos
+            {g.horario.length > 0 &&
+              ' · ' + g.horario.map((h) => `${DIAS[h.diaSemana - 1]} ${h.horaInicio}`).join(' · ')}
+          </span>
+        </span>
+        <span className="text-2xl text-tinta-tenue" aria-hidden>
+          ›
+        </span>
+      </button>
+    </div>
   )
 }
 
