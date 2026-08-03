@@ -23,3 +23,11 @@ export function cicloDeCurso(curso: number): 1 | 2 | 3 {
 export function idCriterioPrimaria(ciclo: 1 | 2 | 3, codigo: string): string {
   return `EF.${ciclo}C.${codigo}`
 }
+
+/**
+ * «1.er ciclo», «2.º ciclo», «3.er ciclo». La abreviatura del ordinal en
+ * español depende del número: «primer» y «tercer» se apocopan, «segundo» no.
+ */
+export function ordinalCiclo(ciclo: 1 | 2 | 3): string {
+  return ciclo === 2 ? '2.º' : `${ciclo}.er`
+}

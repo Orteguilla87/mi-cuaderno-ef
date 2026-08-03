@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, ChevronLeft, ChevronRight, Copy, Plus, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { cicloDeCurso, criteriosDeGrupo } from '../db/criterios'
+import { ordinalCiclo } from '../lib/ciclos'
 import {
   crearColumna,
   crearRubrica,
@@ -10,7 +12,24 @@ import {
   tiposDisponibles,
 } from '../db/cuaderno'
 import { db } from '../db/db'
-import type { ComponenteCalculo, Columna, Grupo, TipoColumna, Trimestre } from '../db/types'
+import {
+  asignarCriterio,
+  fijarDescriptorFila,
+  fijarPesoFila,
+  filasDe,
+  sincronizarFilasConRubrica,
+} from '../db/filas'
+import type {
+  ComponenteCalculo,
+  Columna,
+  Criterio,
+  FilaInstrumento,
+  Grupo,
+  Rubrica,
+  TipoColumna,
+  Trimestre,
+} from '../db/types'
+import { TIPOS_CALIFICABLES } from '../db/types'
 import { aISO } from '../lib/fechas'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { useUI } from '../store/ui'
@@ -44,6 +63,7 @@ export function HojaColumna({
   const [titulo, setTitulo] = useState('')
   const [tipo, setTipo] = useState<TipoColumna>('numero')
   const [udId, setUdId] = useState('')
+  const [pesoUd, setPesoUd] = useState(0)
   const [rubricaId, setRubricaId] = useState('')
   const [caritas, setCaritas] = useState<3 | 5>(3)
   const [max, setMax] = useState(10)
@@ -73,6 +93,7 @@ export function HojaColumna({
       setTitulo(columna.titulo)
       setTipo(columna.tipo)
       setUdId(columna.udId ?? '')
+      setPesoUd(columna.pesoUd)
       setRubricaId(columna.rubricaId ?? '')
       setCaritas(columna.caritas ?? 3)
       setMax(columna.escala?.max ?? 10)
@@ -82,6 +103,7 @@ export function HojaColumna({
       // Infantil no ofrece números, así que el tipo por defecto no puede serlo.
       setTipo(tipos[0]?.tipo ?? 'caritas')
       setUdId('')
+      setPesoUd(0)
       setRubricaId('')
       setCaritas(3)
       setMax(10)
@@ -90,6 +112,17 @@ export function HojaColumna({
   }, [estado])
 
   if (!estado || !grupo) return null
+
+  const esCalificable = TIPOS_CALIFICABLES.includes(tipo)
+  // Solo las unidades del curso del grupo: ofrecer las de 5º al configurar una
+  // columna de 3ºA sería ofrecer criterios de otro ciclo.
+  //
+  // La que ya tenga puesta se cuela igual aunque sea de otro curso. Si no, el
+  // desplegable enseñaría «Sin unidad» y guardar la borraría sin que nadie
+  // hubiera pedido tal cosa.
+  const unidadesDelCurso = (unidades ?? []).filter(
+    (u) => u.nivel === grupo.nivel || u.id === udId,
+  )
 
   // Un cálculo sin componentes no promedia nada: se exige al menos uno.
   const guardable = !((tipo === 'rubrica' && !rubricaId) || (tipo === 'calculo' && componentes.length === 0))
@@ -108,6 +141,7 @@ export function HojaColumna({
         titulo: titulo || tituloPorDefecto,
         tipo,
         udId: udId || undefined,
+        pesoUd: udId ? pesoUd : 0,
         rubricaId: rubricaId || undefined,
         caritas,
         escala: { min: 0, max, decimales: 1 },
@@ -118,12 +152,18 @@ export function HojaColumna({
       await db.columnas.update(columna.id, {
         titulo,
         udId: udId || undefined,
+        // Un peso sin unidad no significa nada: se limpia en vez de quedarse
+        // guardado esperando a que alguien vuelva a asignar una unidad.
+        pesoUd: udId ? pesoUd : 0,
         rubricaId: rubricaId || undefined,
         caritas,
         escala: columna.tipo === 'numero' ? { min: 0, max, decimales: 1 } : undefined,
         // El cálculo es el único tipo cuyos parámetros se editan tras crearlo.
         calculo: columna.tipo === 'calculo' ? { componentes } : undefined,
       })
+      // La rúbrica ligada puede haber cambiado: las filas la siguen, sin perder
+      // los criterios ni los pesos ya asignados a las que sobreviven.
+      if (columna.tipo === 'rubrica') await sincronizarFilasConRubrica(columna.id)
     }
     onCerrar()
   }
@@ -297,16 +337,61 @@ export function HojaColumna({
               onChange={(e) => setUdId(e.target.value)}
             >
               <option value="">Sin unidad</option>
-              {unidades?.map((u) => (
+              {unidadesDelCurso.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.titulo} ({u.nivel}º · T{u.trimestre})
+                  {u.titulo} ({u.nivel}º ·{' '}
+                  {u.trimestre === null ? 'sin trimestre' : `T${u.trimestre}`})
                 </option>
               ))}
             </select>
             <p className="mt-1 text-xs texto-suave">
-              Ligarla a una unidad permite después calcular la media de esa unidad.
+              {udId
+                ? 'La nota de esta columna entra en la de su unidad, con el peso de abajo.'
+                : 'Sin unidad la columna existe y se evalúa, pero no entra en ninguna nota.'}
             </p>
           </div>
+
+          {esCalificable && udId && (
+            <div>
+              <label className="etiqueta" htmlFor="col-peso-ud">
+                Peso dentro de la unidad
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="col-peso-ud"
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="campo cifra w-24 text-center"
+                  value={pesoUd}
+                  onChange={(e) => setPesoUd(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                />
+                <span className="text-sm texto-suave">%</span>
+              </div>
+              <SumaDeLaUnidad
+                udId={udId}
+                columnaId={columna?.id ?? null}
+                pesoEnEdicion={pesoUd}
+                cuenta={esCalificable}
+              />
+            </div>
+          )}
+
+          {!esNueva && columna ? (
+            <EditorFilas
+              columna={columna}
+              grupo={grupo}
+              udId={udId}
+              rubrica={rubricas?.find((r) => r.id === rubricaId)}
+            />
+          ) : (
+            grupo.etapa === 'primaria' && (
+              <p className="text-xs texto-suave">
+                Los criterios del decreto se asignan al volver a abrir esta columna, cuando ya
+                existe lo que se evalúa.
+              </p>
+            )
+          )}
 
           {columna && (
             <div>
@@ -374,6 +459,238 @@ export function HojaColumna({
         onCerrar={() => setEditandoRubrica(null)}
       />
     </>
+  )
+}
+
+/**
+ * Cuánto suman los pesos de los instrumentos calificables de la unidad, con el
+ * que se está editando ya contado. Debe dar 100; si no da, se dice y ya está.
+ * Repartir mal un trimestre es un estado de paso, no un error que impedir.
+ */
+function SumaDeLaUnidad({
+  udId,
+  columnaId,
+  pesoEnEdicion,
+  cuenta,
+}: {
+  udId: string
+  columnaId: string | null
+  pesoEnEdicion: number
+  cuenta: boolean
+}) {
+  const hermanas = useLiveQuery(
+    async () => (await db.columnas.where('udId').equals(udId).toArray()).filter((c) => c.id !== columnaId),
+    [udId, columnaId],
+  )
+  if (!hermanas) return null
+
+  const suma =
+    hermanas.filter((c) => TIPOS_CALIFICABLES.includes(c.tipo)).reduce((n, c) => n + c.pesoUd, 0) +
+    (cuenta ? pesoEnEdicion : 0)
+  const cuadra = suma === 100
+
+  return (
+    <p className={'mt-1 text-xs ' + (cuadra ? 'font-semibold text-lima-oscuro' : 'text-aviso-oscuro')}>
+      Los instrumentos de esta unidad suman {suma} %{cuadra ? '.' : ', y deberían sumar 100 %.'}
+    </p>
+  )
+}
+
+/**
+ * Filas del instrumento: lo que de verdad se evalúa y lo único que se ata a un
+ * criterio del Decreto 61/2022.
+ *
+ * En una rúbrica hay una fila por criterio de la rúbrica y lo normal es que
+ * cada una apunte a un criterio oficial distinto. Los criterios de la unidad se
+ * ofrecen primero, de un toque; el resto del ciclo queda debajo, a un
+ * desplegable, porque elegir fuera de la unidad es la excepción y no debería
+ * costar lo mismo que lo habitual.
+ */
+function EditorFilas({
+  columna,
+  grupo,
+  udId,
+  rubrica,
+}: {
+  columna: Columna
+  grupo: Grupo
+  udId: string
+  rubrica: Rubrica | undefined
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const filas = useLiveQuery(() => filasDe(columna.id), [columna.id, rubrica?.id])
+  const unidad = useLiveQuery(async () => (udId ? db.unidades.get(udId) : undefined), [udId])
+  const delCiclo = useLiveQuery(
+    async () => (grupo.etapa === 'primaria' ? criteriosDeGrupo('primaria', grupo.nivel) : []),
+    [grupo.etapa, grupo.nivel],
+  )
+
+  if (grupo.etapa !== 'primaria' || !filas || !delCiclo) return null
+
+  const porId = new Map(delCiclo.map((c) => [c.id, c]))
+  const deLaUnidad = (unidad?.criterios ?? [])
+    .map((id) => porId.get(id))
+    .filter((c): c is Criterio => !!c)
+
+  // La unidad y el criterio tienen que ser del mismo ciclo. Con el selector
+  // filtrado por el ciclo del grupo esto solo puede pasar si la unidad es de
+  // otro curso; entonces no hay nada que elegir y se dice por qué.
+  const cicloUnidad = unidad ? cicloDeCurso(unidad.nivel) : null
+  const cicloGrupo = cicloDeCurso(grupo.nivel)
+  const chocanLosCiclos = cicloUnidad !== null && cicloUnidad !== cicloGrupo
+
+  async function elegir(filaId: string, criterioId: string | null) {
+    const { anadidoALaUnidad, deshacer } = await asignarCriterio(filaId, criterioId)
+    if (anadidoALaUnidad && criterioId) {
+      const codigo = porId.get(criterioId)?.codigo ?? criterioId
+      mostrarAviso(`Criterio ${codigo} añadido también a la unidad «${anadidoALaUnidad}»`, deshacer)
+    }
+  }
+
+  return (
+    <div>
+      <span className="etiqueta">
+        {rubrica ? 'Criterios de la rúbrica' : 'Qué se evalúa'}
+      </span>
+
+      {chocanLosCiclos ? (
+        <div className="panel-agua text-sm">
+          «{unidad!.titulo}» es de {unidad!.nivel}º ({ordinalCiclo(cicloUnidad!)} ciclo) y este
+          grupo es de {grupo.nivel}º ({ordinalCiclo(cicloGrupo)} ciclo). Sus criterios no son los
+          mismos, así que no se pueden asignar. Elige una unidad de {grupo.nivel}º o duplica esta
+          al curso.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {filas.map((fila) => (
+            <FilaEditable
+              key={fila.id}
+              fila={fila}
+              editableElDescriptor={!rubrica}
+              variasFilas={filas.length > 1}
+              deLaUnidad={deLaUnidad}
+              delCiclo={delCiclo}
+              onElegir={(criterioId) => void elegir(fila.id, criterioId)}
+            />
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-2 text-xs texto-suave">
+        {rubrica
+          ? 'Cada criterio de la rúbrica puede evaluar un criterio del decreto distinto: es lo normal. Los descriptores se editan en la rúbrica.'
+          : 'El criterio no cambia la nota: sirve para saber qué se ha evaluado y qué queda por evaluar.'}
+      </p>
+    </div>
+  )
+}
+
+function FilaEditable({
+  fila,
+  editableElDescriptor,
+  variasFilas,
+  deLaUnidad,
+  delCiclo,
+  onElegir,
+}: {
+  fila: FilaInstrumento
+  editableElDescriptor: boolean
+  variasFilas: boolean
+  deLaUnidad: Criterio[]
+  delCiclo: Criterio[]
+  onElegir: (criterioId: string | null) => void
+}) {
+  const [descriptor, setDescriptor] = useState(fila.descriptor)
+  useEffect(() => setDescriptor(fila.descriptor), [fila.descriptor])
+
+  // Los de la unidad, primero y de un toque. El resto, a un desplegable.
+  const resto = delCiclo.filter((c) => !deLaUnidad.some((u) => u.id === c.id))
+
+  return (
+    <li className="tarjeta space-y-2 py-3">
+      {editableElDescriptor ? (
+        <input
+          className="campo"
+          value={descriptor}
+          onChange={(e) => setDescriptor(e.target.value)}
+          onBlur={() => void fijarDescriptorFila(fila.id, descriptor)}
+          aria-label="Qué se evalúa en esta fila"
+        />
+      ) : (
+        <p className="font-semibold">{fila.descriptor}</p>
+      )}
+
+      <div className="flex flex-wrap gap-1.5">
+        {deLaUnidad.map((c) => (
+          <button
+            key={c.id}
+            title={c.texto}
+            aria-pressed={fila.criterioId === c.id}
+            onClick={() => onElegir(fila.criterioId === c.id ? null : c.id)}
+            className={
+              'pildora min-h-[36px] px-2.5 text-xs font-bold ' +
+              (fila.criterioId === c.id
+                ? 'bg-primario text-white'
+                : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
+            }
+          >
+            {c.codigo}
+          </button>
+        ))}
+        {deLaUnidad.length === 0 && (
+          <span className="text-xs texto-suave">
+            La unidad aún no declara criterios. Elige uno abajo y se le añade.
+          </span>
+        )}
+      </div>
+
+      <select
+        className="campo text-sm"
+        value={fila.criterioId ?? ''}
+        onChange={(e) => onElegir(e.target.value || null)}
+        aria-label="Criterio del decreto que evalúa esta fila"
+      >
+        <option value="">Sin criterio</option>
+        {deLaUnidad.length > 0 && (
+          <optgroup label="De esta unidad">
+            {deLaUnidad.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.codigo} · {c.texto.slice(0, 70)}…
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Resto del ciclo (se añadirá a la unidad)">
+          {resto.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.codigo} · {c.texto.slice(0, 70)}…
+            </option>
+          ))}
+        </optgroup>
+      </select>
+
+      {variasFilas && (
+        <div className="flex items-center gap-2">
+          <label className="text-xs texto-suave" htmlFor={`peso-${fila.id}`}>
+            Peso
+          </label>
+          <input
+            id={`peso-${fila.id}`}
+            type="number"
+            min={0}
+            className="campo cifra w-20 py-1 text-center text-sm"
+            placeholder="auto"
+            value={fila.pesoFila ?? ''}
+            onChange={(e) =>
+              void fijarPesoFila(fila.id, e.target.value === '' ? null : Number(e.target.value))
+            }
+          />
+          <span className="text-xs texto-suave">
+            {fila.pesoFila === null ? 'a partes iguales con las demás' : '%'}
+          </span>
+        </div>
+      )}
+    </li>
   )
 }
 

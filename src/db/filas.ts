@@ -127,13 +127,59 @@ export async function sincronizarFilasConRubrica(columnaId: string): Promise<voi
   })
 }
 
-/** Cambia el criterio oficial de una fila. Devuelve la función de deshacer. */
+export interface ResultadoAsignarCriterio {
+  /** Título de la unidad a la que se ha añadido el criterio de paso, si ha pasado. */
+  anadidoALaUnidad?: string
+  deshacer: () => Promise<void>
+}
+
+/**
+ * Asigna el criterio oficial de una fila.
+ *
+ * Si el criterio no estaba en la unidad, se añade también a ella: evaluar algo
+ * con un criterio y que la unidad diga que no lo trabaja sería una
+ * contradicción, y obligar a ir a otra pantalla a declararlo primero sería un
+ * peaje. Se hace y se cuenta, con Deshacer, que es lo que hace el resto del
+ * cuaderno.
+ */
 export async function asignarCriterio(
   filaId: string,
   criterioId: string | null,
-): Promise<() => Promise<void>> {
+): Promise<ResultadoAsignarCriterio> {
   const antes = await db.filas.get(filaId)
-  if (!antes) return async () => {}
-  await db.filas.update(filaId, { criterioId })
-  return async () => void (await db.filas.update(filaId, { criterioId: antes.criterioId }))
+  if (!antes) return { deshacer: async () => {} }
+
+  const columna = await db.columnas.get(antes.columnaId)
+  const unidad = columna?.udId ? await db.unidades.get(columna.udId) : undefined
+  const anadir = !!(criterioId && unidad && !unidad.criterios.includes(criterioId))
+
+  await db.transaction('rw', [db.filas, db.unidades], async () => {
+    await db.filas.update(filaId, { criterioId })
+    if (anadir && unidad && criterioId)
+      await db.unidades.update(unidad.id, { criterios: [...unidad.criterios, criterioId] })
+  })
+
+  return {
+    anadidoALaUnidad: anadir ? unidad!.titulo : undefined,
+    deshacer: async () => {
+      await db.transaction('rw', [db.filas, db.unidades], async () => {
+        await db.filas.update(filaId, { criterioId: antes.criterioId })
+        if (anadir && unidad) await db.unidades.update(unidad.id, { criterios: unidad.criterios })
+      })
+    },
+  }
+}
+
+/** Cambia el peso de una fila dentro de su instrumento. */
+export async function fijarPesoFila(filaId: string, pesoFila: number | null): Promise<void> {
+  await db.filas.update(filaId, { pesoFila })
+}
+
+/**
+ * Cambia el descriptor de una fila. Solo tiene sentido en instrumentos simples:
+ * en una rúbrica el descriptor lo pone el banco, y editarlo aquí lo dejaría
+ * desincronizado con lo que se ve al calificar.
+ */
+export async function fijarDescriptorFila(filaId: string, descriptor: string): Promise<void> {
+  await db.filas.update(filaId, { descriptor })
 }
