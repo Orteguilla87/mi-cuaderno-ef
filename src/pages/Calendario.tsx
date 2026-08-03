@@ -14,15 +14,15 @@ import { navegar } from '../lib/router'
 
 const INICIALES_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'] as const
 
-type TipoNoLectivo = Exclude<EstadoDia, { tipo: 'lectivo' }>['tipo']
-
 /** Etiqueta corta del motivo por el que un día no es lectivo. */
-function etiquetaNoLectivo(tipo: TipoNoLectivo): string {
-  switch (tipo) {
+function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): string {
+  switch (estado.tipo) {
     case 'finDeSemana':
       return 'Fin de semana'
     case 'festivo':
       return 'Día festivo'
+    case 'periodo':
+      return estado.nombre
     case 'vacaciones':
       return 'Vacaciones'
     case 'antesDeCurso':
@@ -247,7 +247,7 @@ function PanelDia({
     const gb = gruposPorId?.get(b.grupoId)?.nombre ?? ''
     return ga.localeCompare(gb, 'es')
   })
-  const noLectivo = estado && estado.tipo !== 'lectivo'
+  const noLectivo = estado && estado.tipo !== 'lectivo' ? estado : null
 
   return (
     <section>
@@ -256,7 +256,7 @@ function PanelDia({
       {noLectivo && (
         <div className="tarjeta mb-2 flex items-center gap-2 bg-agua-claro dark:bg-noche-elevada">
           <CalendarOff size={18} className="shrink-0 texto-suave" aria-hidden />
-          <span className="text-sm font-semibold">{etiquetaNoLectivo(estado.tipo)}</span>
+          <span className="text-sm font-semibold">{etiquetaNoLectivo(noLectivo)}</span>
         </div>
       )}
 
@@ -351,7 +351,7 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
               <span className="cifra text-sm font-normal texto-suave">{formatoCorto(fecha)}</span>
             </TituloSeccion>
             {noLectivo ? (
-              <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo.tipo)}</p>
+              <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
               <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
                 {delDia.map((h) => (

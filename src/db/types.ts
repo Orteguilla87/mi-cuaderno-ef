@@ -18,6 +18,13 @@ export interface Trimestre1a3 {
   fin: string // 'YYYY-MM-DD'
 }
 
+/** Rango de días sin clase con motivo (Navidad, Semana Santa…), § Bloque 7. */
+export interface PeriodoNoLectivo {
+  nombre: string
+  inicio: string // 'YYYY-MM-DD'
+  fin: string // 'YYYY-MM-DD'
+}
+
 export interface CursoEscolar {
   id: Id
   nombre: string // "2026-2027"
@@ -31,8 +38,15 @@ export interface CursoEscolar {
   fin: string
   /** Tramos de evaluación. Vacío hasta que el usuario los fija en Ajustes. */
   trimestres: Trimestre1a3[]
-  /** Días sin clase (festivos y vacaciones): 'YYYY-MM-DD'. El pase de lista los salta. */
+  /** Días sueltos sin clase (festivos, no lectivos de centro): 'YYYY-MM-DD'. */
   festivos: string[]
+  /** Rangos sin clase con nombre (vacaciones de Navidad, Semana Santa…). */
+  periodosNoLectivos: PeriodoNoLectivo[]
+  /**
+   * El calendario se precargó con datos editables (CAM 2026-2027) que el
+   * usuario aún no ha confirmado. Solo informa; nunca bloquea nada.
+   */
+  calendarioPendienteConfirmar?: boolean
 }
 
 export interface FranjaHorario {

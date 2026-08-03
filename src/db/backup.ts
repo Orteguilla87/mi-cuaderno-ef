@@ -126,6 +126,15 @@ export const MIGRACIONES: Migracion[] = [
       )
     },
   },
+  {
+    // Espejo de db.ts v16: periodos no lectivos con nombre en el curso. No se
+    // precarga el calendario CAM aquí —eso solo pasa al crear un curso nuevo o
+    // al abrir la base con Dexie— para no pisar lo que el usuario ya tuviera.
+    hasta: 16,
+    aplicar: (t) => {
+      for (const c of filas(t, 'cursos')) c.periodosNoLectivos ??= []
+    },
+  },
 ]
 
 /** Aplica en orden las migraciones pendientes entre `desde` y ESQUEMA_ACTUAL. */

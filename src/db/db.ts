@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { CALENDARIO_CAM_2026_27 } from '../lib/calendarioEscolar'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/migracion15'
 import type {
@@ -298,6 +299,42 @@ class CuadernoDB extends Dexie {
         const filas = crearFilasDeColumnas(columnas, grupos, rubricas, nuevoId)
         if (filas.length) await tx.table('filas').bulkAdd(filas)
       })
+
+    /**
+     * v16 — Bloque 7. `CursoEscolar` gana `periodosNoLectivos` (rangos con
+     * nombre: Navidad, Semana Santa…) y `calendarioPendienteConfirmar`.
+     *
+     * El curso «2026-2027» que todavía no tenga nada cargado (ni trimestres
+     * ni festivos: sigue con los límites genéricos de `limitesPorDefecto`)
+     * recibe el calendario oficial de la Comunidad de Madrid precargado y
+     * marcado pendiente de confirmar — igual que hace `obtenerCursoActivo`
+     * al crear un curso nuevo, para quien ya lo tenía creado antes de esta
+     * versión. Cualquier otro curso solo gana el array vacío.
+     */
+    this.version(16)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('cursos')
+          .toCollection()
+          .modify((c) => {
+            c.periodosNoLectivos ??= []
+            if (
+              c.nombre === '2026-2027' &&
+              Array.isArray(c.trimestres) &&
+              c.trimestres.length === 0 &&
+              Array.isArray(c.festivos) &&
+              c.festivos.length === 0
+            ) {
+              c.inicio = CALENDARIO_CAM_2026_27.inicio
+              c.fin = CALENDARIO_CAM_2026_27.fin
+              c.trimestres = CALENDARIO_CAM_2026_27.trimestres
+              c.festivos = CALENDARIO_CAM_2026_27.festivos
+              c.periodosNoLectivos = CALENDARIO_CAM_2026_27.periodosNoLectivos
+              c.calendarioPendienteConfirmar = true
+            }
+          })
+      })
   }
 }
 
@@ -306,7 +343,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 15
+export const ESQUEMA_ACTUAL = 16
 
 export const db = new CuadernoDB()
 

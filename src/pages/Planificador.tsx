@@ -1,11 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarRange, ChevronLeft, ChevronRight, Layers, Plus, Users } from 'lucide-react'
+import { CalendarOff, CalendarRange, ChevronLeft, ChevronRight, Layers, Plus, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
 import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
+import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import {
   crearSesion,
@@ -17,10 +18,29 @@ import {
   type HuecoSemana,
 } from '../db/planificador'
 import type { UnidadDidactica } from '../db/types'
+import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 import { PlanGrupo } from './PlanGrupo'
+
+/** Etiqueta corta del motivo por el que un día no es lectivo (misma lógica que Hoy/Calendario). */
+function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): string {
+  switch (estado.tipo) {
+    case 'finDeSemana':
+      return 'Fin de semana'
+    case 'festivo':
+      return 'Día festivo'
+    case 'periodo':
+      return estado.nombre
+    case 'vacaciones':
+      return 'Vacaciones'
+    case 'antesDeCurso':
+      return 'El curso aún no ha empezado'
+    case 'despuesDeCurso':
+      return 'El curso ha terminado'
+  }
+}
 
 type Vista = 'grupo' | 'semana' | 'unidades'
 
@@ -88,6 +108,7 @@ function VistaSemana({
   onCambiarSemana: (l: string) => void
 }) {
   const huecos = useLiveQuery(() => semanaDe(lunes), [lunes])
+  const curso = useLiveQuery(() => leerCursoActivo(), [])
   const hoy = aISO()
 
   async function abrir(h: HuecoSemana) {
@@ -97,6 +118,20 @@ function VistaSemana({
   }
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
+
+  // Un día no lectivo (§ Bloque 7.2) se enseña marcado, sin huecos «Planificar»
+  // ni creación de sesión al vuelo: la fuente de «¿toca clase?» es SIEMPRE
+  // `estadoDia`, la misma que usan Hoy y el Calendario — nunca una comprobación
+  // de festivos por su cuenta.
+  const estados: (EstadoDia | undefined)[] = [1, 2, 3, 4, 5].map((d) =>
+    curso ? estadoDia(sumarDias(lunes, d - 1), curso) : undefined,
+  )
+  // Fuera del periodo lectivo (§ Bloque 7.3): TODA la semana cae antes del
+  // inicio o después del fin de curso. Un festivo suelto o unas vacaciones no
+  // cuentan como «fuera»: eso ya lo dice cada día marcado.
+  const fueraDePeriodo =
+    curso != null &&
+    estados.every((e) => e?.tipo === 'antesDeCurso' || e?.tipo === 'despuesDeCurso')
 
   return (
     <>
@@ -120,7 +155,17 @@ function VistaSemana({
         </button>
       </div>
 
-      {huecos?.length === 0 && (
+      {fueraDePeriodo ? (
+        <div className="tarjeta text-center">
+          <CalendarOff className="mx-auto text-tinta-tenue" size={32} aria-hidden />
+          <p className="mt-2 text-base font-semibold">Fuera del periodo lectivo</p>
+          <p className="mt-1 text-sm texto-suave">
+            {estados[0]?.tipo === 'antesDeCurso'
+              ? `Las clases empiezan el ${formatoCorto(curso!.inicio)}.`
+              : `El curso acabó el ${formatoCorto(curso!.fin)}.`}
+          </p>
+        </div>
+      ) : huecos?.length === 0 ? (
         <div className="tarjeta text-center">
           <p className="text-base font-semibold">Sin clases esta semana</p>
           <p className="mt-1 text-sm texto-suave">
@@ -130,59 +175,63 @@ function VistaSemana({
             Ir a Grupos
           </button>
         </div>
+      ) : (
+        [1, 2, 3, 4, 5].map((d) => {
+          const delDia = porDia(d)
+          const estado = estados[d - 1]
+          const noLectivo = estado && estado.tipo !== 'lectivo' ? estado : null
+          if (delDia.length === 0 && !noLectivo) return null
+          const fecha = sumarDias(lunes, d - 1)
+          return (
+            <section key={d}>
+              <TituloSeccion>
+                {NOMBRES_DIA[d - 1]}{' '}
+                <span className="cifra text-sm font-normal texto-suave">{formatoCorto(fecha)}</span>
+                {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
+              </TituloSeccion>
+
+              {noLectivo ? (
+                <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
+              ) : (
+                <ul className="space-y-2">
+                  {delDia.map((h) => (
+                    <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                      <button
+                        className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
+                        onClick={() => void abrir(h)}
+                      >
+                        <span
+                          className="h-10 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: h.grupo.color }}
+                          aria-hidden
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate font-bold">{h.grupo.nombre}</span>
+                            <BadgeEtapa etapa={h.grupo.etapa} nivel={h.grupo.nivel} />
+                          </span>
+                          <span className="cifra mt-0.5 block truncate text-sm texto-suave">
+                            {h.horaInicio}–{h.horaFin}
+                            {h.sesion?.titulo ? ` · ${h.sesion.titulo}` : ''}
+                          </span>
+                        </span>
+                        <span
+                          className={
+                            'shrink-0 text-xs font-bold ' +
+                            (h.sesion ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
+                          }
+                        >
+                          {h.sesion ? `${h.sesion.juegos.length} juegos` : 'Planificar'}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )
+        })
       )}
-
-      {[1, 2, 3, 4, 5].map((d) => {
-        const delDia = porDia(d)
-        if (delDia.length === 0) return null
-        const fecha = sumarDias(lunes, d - 1)
-        return (
-          <section key={d}>
-            <TituloSeccion>
-              {NOMBRES_DIA[d - 1]}{' '}
-              <span className="cifra text-sm font-normal texto-suave">{formatoCorto(fecha)}</span>
-              {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
-            </TituloSeccion>
-
-            <ul className="space-y-2">
-              {delDia.map((h) => (
-                <li key={`${h.grupo.id}-${h.horaInicio}`}>
-                  <button
-                    className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
-                    onClick={() => void abrir(h)}
-                  >
-                    <span
-                      className="h-10 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: h.grupo.color }}
-                      aria-hidden
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="truncate font-bold">{h.grupo.nombre}</span>
-                        <BadgeEtapa etapa={h.grupo.etapa} nivel={h.grupo.nivel} />
-                      </span>
-                      <span className="cifra mt-0.5 block truncate text-sm texto-suave">
-                        {h.horaInicio}–{h.horaFin}
-                        {h.sesion?.titulo ? ` · ${h.sesion.titulo}` : ''}
-                      </span>
-                    </span>
-                    <span
-                      className={
-                        'shrink-0 text-xs font-bold ' +
-                        (h.sesion ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
-                      }
-                    >
-                      {h.sesion
-                        ? `${h.sesion.juegos.length} juegos`
-                        : 'Planificar'}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
     </>
   )
 }

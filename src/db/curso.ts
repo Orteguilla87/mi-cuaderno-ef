@@ -1,3 +1,4 @@
+import { CALENDARIO_CAM_2026_27 } from '../lib/calendarioEscolar'
 import { db, nuevoId } from './db'
 import type { CursoEscolar } from './types'
 
@@ -44,15 +45,25 @@ export function obtenerCursoActivo(): Promise<CursoEscolar> {
       if (activo) return activo
 
       // Trimestres y festivos nacen vacíos a propósito: las fechas las publica
-      // cada año la Consejería, así que las fija el usuario en Ajustes.
+      // cada año la Consejería, así que las fija el usuario en Ajustes. Para
+      // el curso 2026-2027 se conoce el calendario oficial (§ Bloque 7.1), así
+      // que se precarga editable y marcado pendiente de confirmar; cualquier
+      // otro curso arranca con los límites genéricos de siempre.
       const nombre = nombreCursoActual()
       const nuevo: CursoEscolar = {
         id: nuevoId(),
         nombre,
         activo: true,
-        ...limitesPorDefecto(nombre),
-        trimestres: [],
-        festivos: [],
+        ...(nombre === '2026-2027'
+          ? {
+              inicio: CALENDARIO_CAM_2026_27.inicio,
+              fin: CALENDARIO_CAM_2026_27.fin,
+              trimestres: CALENDARIO_CAM_2026_27.trimestres,
+              festivos: CALENDARIO_CAM_2026_27.festivos,
+              periodosNoLectivos: CALENDARIO_CAM_2026_27.periodosNoLectivos,
+              calendarioPendienteConfirmar: true,
+            }
+          : { ...limitesPorDefecto(nombre), trimestres: [], festivos: [], periodosNoLectivos: [] }),
       }
       await db.cursos.add(nuevo)
       return nuevo

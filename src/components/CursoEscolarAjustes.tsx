@@ -1,12 +1,15 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarX2, Plus, Trash2 } from 'lucide-react'
+import { CalendarCheck2, CalendarX2, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { db } from '../db/db'
 import { leerCursoActivo } from '../db/curso'
+import type { CursoEscolar, PeriodoNoLectivo, Trimestre } from '../db/types'
 import { parsearCalendario, type ResultadoCalendario } from '../lib/calendarioEscolar'
 import { formatoLargo } from '../lib/fechas'
 import { useUI } from '../store/ui'
 import { Hoja } from './Hoja'
+
+const NUMEROS_TRIMESTRE: Trimestre[] = [1, 2, 3]
 
 /**
  * Fechas del curso y días no lectivos. El planificador los necesita para generar
@@ -42,8 +45,34 @@ export function CursoEscolarAjustes() {
     })
   }
 
+  const trimestreDe = (n: Trimestre) => curso.trimestres.find((t) => t.n === n)
+
+  function actualizarTrimestre(n: Trimestre, campo: 'inicio' | 'fin', valor: string) {
+    const trimestres = NUMEROS_TRIMESTRE.map((num) => {
+      const actual = trimestreDe(num) ?? { n: num, inicio: '', fin: '' }
+      return num === n ? { ...actual, [campo]: valor } : actual
+    })
+    actualizar({ trimestres })
+  }
+
   return (
     <div className="space-y-4">
+      {curso.calendarioPendienteConfirmar && (
+        <div className="aviso flex items-center justify-between gap-3">
+          <span className="min-w-0 flex-1">
+            Calendario precargado de la Comunidad de Madrid para 2026-2027, pendiente de confirmar
+            con tu centro.
+          </span>
+          <button
+            className="btn-suave shrink-0 text-xs"
+            onClick={() => actualizar({ calendarioPendienteConfirmar: false })}
+          >
+            <CalendarCheck2 size={16} aria-hidden />
+            Confirmar
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="etiqueta" htmlFor="curso-inicio">
@@ -76,6 +105,40 @@ export function CursoEscolarAjustes() {
           El fin del curso debe ser posterior al inicio.
         </p>
       )}
+
+      <div>
+        <span className="etiqueta">Trimestres</span>
+        <div className="space-y-2">
+          {NUMEROS_TRIMESTRE.map((n) => {
+            const t = trimestreDe(n)
+            return (
+              <div key={n} className="flex items-center gap-2">
+                <span className="cifra w-6 shrink-0 text-sm font-bold texto-suave">{n}.º</span>
+                <input
+                  type="date"
+                  className="campo cifra flex-1"
+                  aria-label={`Inicio del ${n}.º trimestre`}
+                  value={t?.inicio ?? ''}
+                  onChange={(e) => actualizarTrimestre(n, 'inicio', e.target.value)}
+                />
+                <input
+                  type="date"
+                  className="campo cifra flex-1"
+                  aria-label={`Fin del ${n}.º trimestre`}
+                  value={t?.fin ?? ''}
+                  onChange={(e) => actualizarTrimestre(n, 'fin', e.target.value)}
+                />
+              </div>
+            )
+          })}
+        </div>
+        <p className="mt-1 text-xs texto-suave">
+          El trimestre de una sesión se deduce de su fecha. Un hueco entre trimestres (Navidad,
+          Semana Santa…) cuenta como no lectivo aunque no le pongas un periodo con nombre abajo.
+        </p>
+      </div>
+
+      <PeriodosNoLectivosEditor curso={curso} />
 
       <div>
         <div className="flex items-center justify-between">
@@ -233,5 +296,116 @@ function HojaPegarCalendario({
         </div>
       </div>
     </Hoja>
+  )
+}
+
+/**
+ * Rangos con nombre (Navidad, Semana Santa…), distintos de los días sueltos de
+ * arriba: un periodo entero se marca con un solo motivo en vez de listar cada
+ * día por separado (§ Bloque 7.1).
+ */
+function PeriodosNoLectivosEditor({ curso }: { curso: CursoEscolar }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [nombre, setNombre] = useState('')
+  const [inicio, setInicio] = useState('')
+  const [fin, setFin] = useState('')
+
+  const periodos = [...curso.periodosNoLectivos].sort((a, b) => a.inicio.localeCompare(b.inicio))
+  const rangoInvalido = !!inicio && !!fin && fin < inicio
+
+  async function anadir() {
+    if (!nombre.trim() || !inicio || !fin || rangoInvalido) return
+    const nuevo: PeriodoNoLectivo = { nombre: nombre.trim(), inicio, fin }
+    await db.cursos.update(curso.id, { periodosNoLectivos: [...curso.periodosNoLectivos, nuevo] })
+    setNombre('')
+    setInicio('')
+    setFin('')
+  }
+
+  async function quitar(indice: number) {
+    const previos = curso.periodosNoLectivos
+    const quitado = periodos[indice]
+    const nuevos = previos.filter((p) => p !== quitado)
+    await db.cursos.update(curso.id, { periodosNoLectivos: nuevos })
+    mostrarAviso(`«${quitado.nombre}» quitado`, async () => {
+      await db.cursos.update(curso.id, { periodosNoLectivos: previos })
+    })
+  }
+
+  return (
+    <div>
+      <span className="etiqueta">Periodos no lectivos ({periodos.length})</span>
+
+      {periodos.length === 0 ? (
+        <p className="mb-2 text-sm texto-suave">
+          Sin periodos con nombre todavía. Añade Navidad, Semana Santa o los que marque tu centro.
+        </p>
+      ) : (
+        <ul className="mb-2 space-y-1">
+          {periodos.map((p, i) => (
+            <li
+              key={`${p.nombre}-${p.inicio}`}
+              className="flex items-center gap-2 rounded-xl border border-borde bg-white px-3 py-2 text-sm dark:border-noche-borde dark:bg-noche-superficie"
+            >
+              <CalendarX2 size={16} className="shrink-0 text-aviso-oscuro" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{p.nombre}</span>
+                <span className="cifra block text-xs texto-suave">
+                  {formatoLargo(p.inicio)} – {formatoLargo(p.fin)}
+                </span>
+              </span>
+              <button
+                onClick={() => void quitar(i)}
+                className="flex min-h-tap min-w-tap items-center justify-center rounded-xl text-tinta-tenue
+                           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
+                aria-label={`Quitar ${p.nombre}`}
+              >
+                <Trash2 size={16} aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="space-y-2">
+        <input
+          className="campo"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Vacaciones de Navidad"
+          aria-label="Nombre del periodo"
+        />
+        <div className="flex gap-2">
+          <input
+            type="date"
+            className="campo cifra flex-1"
+            value={inicio}
+            min={curso.inicio}
+            max={curso.fin}
+            onChange={(e) => setInicio(e.target.value)}
+            aria-label="Inicio del periodo"
+          />
+          <input
+            type="date"
+            className="campo cifra flex-1"
+            value={fin}
+            min={curso.inicio}
+            max={curso.fin}
+            onChange={(e) => setFin(e.target.value)}
+            aria-label="Fin del periodo"
+          />
+          <button
+            className="btn-suave px-3"
+            onClick={() => void anadir()}
+            disabled={!nombre.trim() || !inicio || !fin || rangoInvalido}
+          >
+            <Plus size={18} aria-hidden />
+          </button>
+        </div>
+        {rangoInvalido && (
+          <p className="text-sm font-semibold text-acento">El fin debe ser posterior al inicio.</p>
+        )}
+      </div>
+    </div>
   )
 }

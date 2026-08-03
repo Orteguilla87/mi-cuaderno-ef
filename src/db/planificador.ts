@@ -1,4 +1,5 @@
 import { cicloDeCurso } from '../lib/ciclos'
+import { estadoDia, type CursoFechas } from '../lib/calendarioEscolar'
 import { aISO, deISO, sumarDias } from '../lib/fechas'
 import { db, nuevoId } from './db'
 import type {
@@ -386,28 +387,25 @@ export async function sesionesDeGrupo(grupoId: string): Promise<Sesion[]> {
 /**
  * TODAS las fechas en que un grupo tiene clase durante el curso: se recorre el
  * calendario entre `inicio` y `fin`, se conservan los días de la semana que
- * aparecen en su horario y se descartan los festivos y vacaciones.
+ * aparecen en su horario y se descartan festivos, periodos no lectivos y los
+ * huecos fuera de todo trimestre (§ Bloque 7.2) — el mismo `estadoDia` que usa
+ * «Hoy» y el Calendario, no una comprobación de festivos por su cuenta.
  *
  * Es la base tanto de generar el curso completo como de copiar planificaciones
  * entre grupos con horarios distintos.
  */
-export function fechasDeClase(
-  grupo: Grupo,
-  curso: { inicio: string; fin: string; festivos: string[] },
-  desde?: string,
-): string[] {
+export function fechasDeClase(grupo: Grupo, curso: CursoFechas, desde?: string): string[] {
   if (grupo.horario.length === 0) return []
 
   const dias = new Set(grupo.horario.map((f) => f.diaSemana))
-  const festivos = new Set(curso.festivos)
   const arranque = desde && desde > curso.inicio ? desde : curso.inicio
 
   const fechas: string[] = []
   let fecha = arranque
   // Tope de seguridad por si las fechas del curso vinieran mal (fin < inicio).
   for (let i = 0; fecha <= curso.fin && i < 500; i++) {
-    const dow = deISO(fecha).getDay()
-    if (dias.has(dow as 1 | 2 | 3 | 4 | 5) && !festivos.has(fecha)) fechas.push(fecha)
+    const estado = estadoDia(fecha, curso)
+    if (estado.tipo === 'lectivo' && dias.has(estado.dia)) fechas.push(fecha)
     fecha = sumarDias(fecha, 1)
   }
   return fechas

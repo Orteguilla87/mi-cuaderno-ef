@@ -1,3 +1,4 @@
+import type { Trimestre } from '../db/types'
 import { aISO, deISO, diaLectivo, sumarDias, type DiaSemana } from './fechas'
 
 /**
@@ -133,7 +134,7 @@ export function parsearCalendario(
 /**
  * Qué es un día concreto para el calendario del curso. Es la ÚNICA fuente de
  * verdad de «¿toca clase hoy?»: la usan tanto «Hoy» como el Calendario, para no
- * repartir por dos sitios la comprobación de festivos, límites y trimestres.
+ * repartir por dos sitios la comprobación de festivos, periodos y trimestres.
  */
 export type EstadoDia =
   | { tipo: 'lectivo'; dia: DiaSemana }
@@ -141,7 +142,9 @@ export type EstadoDia =
   | { tipo: 'antesDeCurso' }
   | { tipo: 'despuesDeCurso' }
   | { tipo: 'festivo' }
-  /** Dentro del curso pero fuera de todo trimestre: Navidad, Semana Santa… */
+  /** Dentro de un periodo con nombre (Navidad, Semana Santa…), § Bloque 7. */
+  | { tipo: 'periodo'; nombre: string }
+  /** Dentro del curso pero fuera de todo trimestre: el hueco no tiene nombre propio. */
   | { tipo: 'vacaciones' }
 
 /** Curso mínimo que necesita `estadoDia`: solo fechas, ni ids ni el resto. */
@@ -150,6 +153,7 @@ export interface CursoFechas {
   fin: string
   festivos: string[]
   trimestres: { inicio: string; fin: string }[]
+  periodosNoLectivos?: { nombre: string; inicio: string; fin: string }[]
 }
 
 /**
@@ -157,10 +161,11 @@ export interface CursoFechas {
  * el motivo que se enseña sea el más informativo:
  *  1. Fin de semana: nunca hay clase, gane lo que gane el resto.
  *  2. Antes / después del curso: aún no ha empezado o ya terminó.
- *  3. Festivo explícito (incluye los rangos de vacaciones pegados a mano).
- *  4. Con trimestres cargados, un día lectivo fuera de todos ellos es vacaciones
- *     (el hueco entre trimestres). Sin trimestres, este paso no aplica.
- *  5. Si no, día lectivo.
+ *  3. Festivo explícito (día suelto pegado a mano).
+ *  4. Periodo no lectivo con nombre (Navidad, Semana Santa…).
+ *  5. Con trimestres cargados, un día lectivo fuera de todos ellos es vacaciones
+ *     (el hueco entre trimestres, sin nombre propio). Sin trimestres, no aplica.
+ *  6. Si no, día lectivo.
  */
 export function estadoDia(iso: string, curso: CursoFechas): EstadoDia {
   const dia = diaLectivo(iso)
@@ -168,6 +173,8 @@ export function estadoDia(iso: string, curso: CursoFechas): EstadoDia {
   if (iso < curso.inicio) return { tipo: 'antesDeCurso' }
   if (iso > curso.fin) return { tipo: 'despuesDeCurso' }
   if (curso.festivos.includes(iso)) return { tipo: 'festivo' }
+  const periodo = (curso.periodosNoLectivos ?? []).find((p) => iso >= p.inicio && iso <= p.fin)
+  if (periodo) return { tipo: 'periodo', nombre: periodo.nombre }
   if (curso.trimestres.length > 0 && !curso.trimestres.some((t) => iso >= t.inicio && iso <= t.fin))
     return { tipo: 'vacaciones' }
   return { tipo: 'lectivo', dia }
@@ -176,4 +183,52 @@ export function estadoDia(iso: string, curso: CursoFechas): EstadoDia {
 /** Atajo: ¿toca clase este día? Azúcar sobre `estadoDia` para condiciones sueltas. */
 export function esDiaLectivo(iso: string, curso: CursoFechas): boolean {
   return estadoDia(iso, curso).tipo === 'lectivo'
+}
+
+/**
+ * Trimestre al que pertenece una fecha, según los tramos cargados en el curso
+ * (§ Bloque 7.4: el trimestre de una sesión se DEDUCE de su fecha, no se
+ * arrastra a mano). `null` si cae fuera de los tres tramos o no hay ninguno
+ * cargado todavía.
+ */
+export function trimestreDe(
+  iso: string,
+  curso: { trimestres: { n: Trimestre; inicio: string; fin: string }[] },
+): Trimestre | null {
+  return curso.trimestres.find((t) => iso >= t.inicio && iso <= t.fin)?.n ?? null
+}
+
+/**
+ * Calendario escolar 2026-2027 de la Comunidad de Madrid, precargado en
+ * Ajustes como punto de partida editable (§ Bloque 7.1). Fuente: calendario
+ * oficial publicado por la Consejería de Educación (BOCM), curso 2026-2027,
+ * etapas Infantil/Primaria. Los trimestres NO son parte del calendario
+ * oficial —cada centro fija los suyos—, así que aquí son solo un reparto
+ * razonable alrededor de Navidad y Semana Santa. Todo queda marcado
+ * «pendiente de confirmar» hasta que el usuario lo valide con su centro.
+ */
+export const CALENDARIO_CAM_2026_27 = {
+  inicio: '2026-09-07',
+  fin: '2027-06-18',
+  trimestres: [
+    { n: 1 as Trimestre, inicio: '2026-09-07', fin: '2026-12-22' },
+    { n: 2 as Trimestre, inicio: '2027-01-11', fin: '2027-03-18' },
+    { n: 3 as Trimestre, inicio: '2027-03-30', fin: '2027-06-18' },
+  ],
+  periodosNoLectivos: [
+    { nombre: 'Vacaciones de Navidad', inicio: '2026-12-23', fin: '2027-01-10' },
+    { nombre: 'Vacaciones de Semana Santa', inicio: '2027-03-19', fin: '2027-03-29' },
+  ],
+  festivos: [
+    '2026-10-12', // Fiesta Nacional de España
+    '2026-11-02', // Todos los Santos (traslado, cae en domingo)
+    '2026-11-09', // Virgen de la Almudena (festivo local, Madrid capital)
+    '2026-12-07', // Día de la Constitución (traslado, cae en domingo)
+    '2026-12-08', // Inmaculada Concepción
+    '2027-02-12', // Carnaval (no lectivo de centro)
+    '2027-02-15', // Carnaval (no lectivo de centro)
+    // San Isidro (15 de mayo, festivo local de Madrid capital) queda fuera:
+    // las fuentes consultadas no coinciden en si cae en día lectivo ese año.
+    // Añádelo a mano si tu centro lo confirma como no lectivo.
+  ],
 }

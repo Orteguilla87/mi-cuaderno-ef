@@ -231,7 +231,7 @@ function MensajeNoLectivo({
   estado: Exclude<EstadoDia, { tipo: 'lectivo' }>
   curso: CursoEscolar | undefined
 }) {
-  const textos: Record<typeof estado.tipo, { titulo: string; texto: string }> = {
+  const textos: Record<Exclude<typeof estado.tipo, 'periodo'>, { titulo: string; texto: string }> = {
     finDeSemana: { titulo: 'Fin de semana', texto: 'No hay clases programadas.' },
     festivo: {
       titulo: 'Día festivo',
@@ -250,7 +250,12 @@ function MensajeNoLectivo({
       texto: curso ? `El curso acabó el ${formatoLargo(curso.fin)}.` : 'El curso ya ha terminado.',
     },
   }
-  const { titulo, texto } = textos[estado.tipo]
+  // El periodo lleva su propio nombre (Navidad, Semana Santa…): no encaja en
+  // la tabla de textos fijos de arriba.
+  const { titulo, texto } =
+    estado.tipo === 'periodo'
+      ? { titulo: estado.nombre, texto: 'No hay clase durante este periodo.' }
+      : textos[estado.tipo]
 
   return (
     <div className="tarjeta text-center">
@@ -262,12 +267,14 @@ function MensajeNoLectivo({
 }
 
 /** Etiqueta corta de un día no lectivo, para listas donde no cabe la tarjeta entera. */
-function etiquetaNoLectivo(tipo: Exclude<EstadoDia, { tipo: 'lectivo' }>['tipo']): string {
-  switch (tipo) {
+function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): string {
+  switch (estado.tipo) {
     case 'finDeSemana':
       return 'Fin de semana'
     case 'festivo':
       return 'Día festivo'
+    case 'periodo':
+      return estado.nombre
     case 'vacaciones':
       return 'Vacaciones'
     case 'antesDeCurso':
@@ -398,7 +405,7 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
               {fecha === hoy && <span className="pildora ml-2 bg-primario text-white">Hoy</span>}
             </TituloSeccion>
             {noLectivo ? (
-              <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo.tipo)}</p>
+              <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
               <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
                 {delDia.map((h) => (
