@@ -6,6 +6,7 @@ import {
   Copy,
   Minus,
   Plus,
+  Scale,
   Settings2,
   Shuffle,
   Table2,
@@ -17,6 +18,7 @@ import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { HojaColumna } from '../components/HojaColumna'
 import { HojaObservacion } from '../components/HojaObservacion'
+import { HojaPesosTrimestre } from '../components/HojaPesosTrimestre'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import {
   agruparPorUnidad,
@@ -62,6 +64,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   const [aplicando, setAplicando] = useState<Columna | null>(null)
   const [sorteando, setSorteando] = useState(false)
   const [pegando, setPegando] = useState(false)
+  const [repartiendo, setRepartiendo] = useState(false)
 
   const grupos = useLiveQuery(async () => {
     const lista = await db.grupos.toArray()
@@ -270,16 +273,29 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          {([1, 2, 3] as const).map((t) => (
+        <div className="flex gap-2">
+          <div className="grid flex-1 grid-cols-3 gap-2">
+            {([1, 2, 3] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTrimestre(t)}
+                className={(trimestre === t ? 'btn-primario' : 'btn-suave') + ' px-0'}
+              >
+                {t}.º trimestre
+              </button>
+            ))}
+          </div>
+          {/* Solo Primaria: en Infantil no hay notas que repartir (§6). */}
+          {grupo?.etapa === 'primaria' && (
             <button
-              key={t}
-              onClick={() => setTrimestre(t)}
-              className={(trimestre === t ? 'btn-primario' : 'btn-suave') + ' px-0'}
+              className="btn-suave w-11 shrink-0 px-0"
+              onClick={() => setRepartiendo(true)}
+              title="Pesos de las unidades en el trimestre"
+              aria-label="Pesos de las unidades en el trimestre"
             >
-              {t}.º trimestre
+              <Scale size={18} aria-hidden />
             </button>
-          ))}
+          )}
         </div>
 
         {copiadas && (
@@ -360,6 +376,13 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
         valores={mapaValores}
         rubricas={mapaRubricas}
         unidades={unidades ?? []}
+      />
+
+      <HojaPesosTrimestre
+        abierta={repartiendo}
+        grupo={grupo}
+        trimestre={trimestre}
+        onCerrar={() => setRepartiendo(false)}
       />
 
       <HojaColumna

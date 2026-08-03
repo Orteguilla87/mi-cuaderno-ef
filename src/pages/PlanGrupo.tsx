@@ -52,6 +52,10 @@ export function PlanGrupo() {
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
   const { sesionCopiada, copiar: copiarEnPortapapeles, limpiar: limpiarPortapapeles } = usePortapapeles()
 
+  // Solo cuentan las que ya tienen algo escrito: el esqueleto vacío que genera
+  // «Generar curso completo» aún no es una sesión que echar de menos en una UD.
+  const sinUnidad = (sesiones ?? []).filter((s) => !s.udId && (s.titulo.trim() || s.juegos.length > 0))
+
   function copiarSesion(s: Sesion) {
     copiarEnPortapapeles({
       titulo: s.titulo,
@@ -246,8 +250,9 @@ export function PlanGrupo() {
                       <span className="cifra mt-0.5 block truncate text-sm texto-suave">
                         {formatoDiaCorto(s.fecha)}
                         {s.juegos.length > 0 && ` · ${s.juegos.length} juegos`}
-                        {s.udId &&
-                          ` · ${unidades?.find((u) => u.id === s.udId)?.titulo ?? 'unidad'}`}
+                        {s.udId
+                          ? ` · ${unidades?.find((u) => u.id === s.udId)?.titulo ?? 'unidad'}`
+                          : ' · sin unidad'}
                       </span>
                     </span>
                   </button>
@@ -270,6 +275,17 @@ export function PlanGrupo() {
                 </li>
               ))}
             </ol>
+          )}
+
+          {/* Una sesión sin unidad es perfectamente válida —hay clases que no
+              pertenecen a ninguna UD—, pero conviene saber cuántas hay: no
+              cuentan para la cobertura de criterios de su unidad. Se informa,
+              no se corrige por nadie. */}
+          {sinUnidad.length > 0 && (
+            <div className="panel-agua text-sm">
+              {sinUnidad.length} {sinUnidad.length === 1 ? 'sesión' : 'sesiones'} sin unidad
+              didáctica. Son válidas; simplemente no cuentan para ninguna unidad.
+            </div>
           )}
 
           {(sesiones?.length ?? 0) > 0 && (

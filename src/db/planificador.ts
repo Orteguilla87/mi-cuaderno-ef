@@ -1,7 +1,15 @@
 import { cicloDeCurso } from '../lib/ciclos'
 import { aISO, deISO, sumarDias } from '../lib/fechas'
 import { db, nuevoId } from './db'
-import type { Grupo, JuegoEnSesion, Plantilla, Recurso, Sesion, UnidadDidactica } from './types'
+import type {
+  Grupo,
+  JuegoEnSesion,
+  Plantilla,
+  Recurso,
+  Sesion,
+  Trimestre,
+  UnidadDidactica,
+} from './types'
 
 /** Lunes de la semana a la que pertenece una fecha. */
 export function lunesDe(iso: string): string {
@@ -282,6 +290,71 @@ export async function duplicarUnidad(udId: string, nivel: number): Promise<strin
     computa: origen.computa,
     plantillaId: origen.plantillaId,
   })
+}
+
+/**
+ * Unidades de un curso en un trimestre, ordenadas. Es la base de la pantalla de
+ * reparto de pesos: la UD pertenece al CURSO, no al grupo, así que 3ºA y 3ºB
+ * comparten unidades y comparten reparto.
+ *
+ * Las unidades sueltas (`trimestre: null`) no salen nunca por aquí, y no por un
+ * filtro: IndexedDB no indexa los nulos, así que quedan fuera del índice
+ * `[nivel+trimestre]` por construcción. Es justo lo que se quiere —no tienen
+ * trimestre en el que repartirse—, pero conviene saberlo antes de añadir otra
+ * consulta por ese índice y preguntarse dónde han ido.
+ */
+export async function unidadesDe(nivel: number, trimestre: Trimestre): Promise<UnidadDidactica[]> {
+  const lista = await db.unidades.where('[nivel+trimestre]').equals([nivel, trimestre]).toArray()
+  return lista.sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'))
+}
+
+/** Unidades del curso que no computan, para el listado informativo aparte. */
+export async function unidadesQueNoComputan(nivel: number): Promise<UnidadDidactica[]> {
+  const lista = await db.unidades.where('nivel').equals(nivel).toArray()
+  return lista
+    .filter((u) => !u.computa)
+    .sort((a, b) => (a.trimestre ?? 9) - (b.trimestre ?? 9) || a.titulo.localeCompare(b.titulo, 'es'))
+}
+
+/**
+ * Escribe el reparto de pesos de un trimestre de una vez. Devuelve la función
+ * de deshacer: repartir es fácil de hacer sin querer y el usuario debe poder
+ * volver al reparto anterior de un toque, como en el resto del cuaderno.
+ */
+export async function guardarPesosTrimestre(
+  pesos: { udId: string; pesoTrimestre: number }[],
+): Promise<() => Promise<void>> {
+  const ids = pesos.map((p) => p.udId)
+  const antes = await db.unidades.bulkGet(ids)
+  const previos = antes
+    .filter((u): u is UnidadDidactica => !!u)
+    .map((u) => ({ udId: u.id, pesoTrimestre: u.pesoTrimestre }))
+
+  await db.transaction('rw', db.unidades, async () => {
+    for (const { udId, pesoTrimestre } of pesos) {
+      await db.unidades.update(udId, { pesoTrimestre })
+    }
+  })
+
+  return async () => {
+    await db.transaction('rw', db.unidades, async () => {
+      for (const { udId, pesoTrimestre } of previos) {
+        await db.unidades.update(udId, { pesoTrimestre })
+      }
+    })
+  }
+}
+
+/**
+ * Reparto a partes iguales sobre las unidades dadas. El sobrante de la división
+ * entera va a las primeras (100 entre 3 → 34, 33, 33) para que la suma dé
+ * exactamente 100 y el total salga en verde.
+ */
+export function repartirAPartesIguales(udIds: string[]): { udId: string; pesoTrimestre: number }[] {
+  if (udIds.length === 0) return []
+  const base = Math.floor(100 / udIds.length)
+  const sobra = 100 - base * udIds.length
+  return udIds.map((udId, i) => ({ udId, pesoTrimestre: base + (i < sobra ? 1 : 0) }))
 }
 
 export async function unidadAPlantilla(udId: string): Promise<string> {

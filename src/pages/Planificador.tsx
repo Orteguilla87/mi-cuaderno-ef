@@ -235,7 +235,14 @@ function VistaUnidades() {
           <li key={u.id} className="tarjeta py-3">
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-base font-bold">{u.titulo}</p>
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-base font-bold">{u.titulo}</p>
+                  {!u.computa && (
+                    <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
+                      No cuenta
+                    </span>
+                  )}
+                </div>
                 <p className="cifra mt-0.5 text-sm texto-suave">
                   {u.nivel}º ·{' '}
                   {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
@@ -319,11 +326,12 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [titulo, setTitulo] = useState('')
   const [nivel, setNivel] = useState(1)
-  const [trimestre, setTrimestre] = useState<1 | 2 | 3>(1)
+  const [trimestre, setTrimestre] = useState<1 | 2 | 3 | null>(1)
+  const [computa, setComputa] = useState(true)
 
   async function guardar() {
     if (!titulo.trim()) return
-    const id = await crearUnidad({ titulo, nivel, trimestre })
+    const id = await crearUnidad({ titulo, nivel, trimestre, computa })
     setTitulo('')
     onCerrar()
     mostrarAviso(`Unidad «${titulo.trim()}» creada`, async () => {
@@ -365,22 +373,49 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
 
         <div>
           <span className="etiqueta">Trimestre</span>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {([1, 2, 3] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTrimestre(t)}
-                className={trimestre === t ? 'btn-primario' : 'btn-suave'}
+                className={(trimestre === t ? 'btn-primario' : 'btn-suave') + ' px-0'}
               >
                 {t}.º
               </button>
             ))}
+            <button
+              onClick={() => setTrimestre(null)}
+              className={(trimestre === null ? 'btn-primario' : 'btn-suave') + ' px-0 text-xs'}
+            >
+              Ninguno
+            </button>
           </div>
+          {trimestre === null && (
+            <p className="mt-1 text-xs texto-suave">
+              Una unidad suelta: no entra en la nota de ningún trimestre, pero sí cuenta en la
+              cobertura de criterios.
+            </p>
+          )}
         </div>
 
+        <label className="tarjeta flex cursor-pointer items-center gap-3 py-3">
+          <input
+            type="checkbox"
+            className="h-6 w-6 shrink-0 accent-primario"
+            checked={computa}
+            onChange={(e) => setComputa(e.target.checked)}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">Cuenta para la nota</span>
+            <span className="mt-0.5 block text-xs texto-suave">
+              Si lo desmarcas, la unidad se sigue programando y evaluando, pero no entra en el
+              reparto de pesos del trimestre.
+            </span>
+          </span>
+        </label>
+
         <p className="text-xs texto-suave">
-          Los criterios de evaluación se ligan a la unidad cuando cargues los del Decreto 61/2022
-          en Ajustes.
+          Los criterios de evaluación se ligan a la unidad al crear sus instrumentos en el Cuaderno.
         </p>
 
         <button className="btn-primario w-full" onClick={() => void guardar()} disabled={!titulo.trim()}>
