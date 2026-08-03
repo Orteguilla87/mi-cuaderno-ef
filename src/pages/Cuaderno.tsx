@@ -34,6 +34,8 @@ import {
   type ResultadoValidacionPegado,
 } from '../db/cuaderno'
 import { db } from '../db/db'
+import { calificarGrupo } from '../db/notas'
+import type { MotivoExclusion } from '../lib/notas'
 import type {
   Alumno,
   Columna,
@@ -370,6 +372,15 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
         />
       )}
 
+      {grupo?.etapa === 'primaria' && idEfectivo && (
+        <NotaDelTrimestre
+          grupoId={idEfectivo}
+          trimestre={trimestre}
+          alumnos={alumnos ?? []}
+          onRepartir={() => setRepartiendo(true)}
+        />
+      )}
+
       <MediasPorUnidad
         columnas={columnas ?? []}
         alumnos={alumnos ?? []}
@@ -637,7 +648,139 @@ function Rejilla({
   )
 }
 
-/** Media por unidad didáctica: el uso que se le dará a estas columnas después. */
+/** Motivos del log del motor, en español y en una línea. */
+const EXPLICACION: Record<MotivoExclusion, string> = {
+  sin_unidad: 'sin unidad didáctica',
+  tipo_no_califica: 'no da nota',
+  es_calculo: 'es una columna de cálculo',
+  unidad_no_computa: 'la unidad no cuenta para la nota',
+  unidad_sin_trimestre: 'la unidad no tiene trimestre',
+  unidad_sin_instrumentos: 'la unidad no tiene ningún instrumento que dé nota',
+  sin_evidencia: 'sin evaluar',
+  renormalizado: 'pesos reajustados por lo que falta',
+  sin_pesos: 'faltan los pesos',
+}
+
+/**
+ * Nota del trimestre según la Orden 130/2023: instrumento → unidad → trimestre,
+ * con su conversión oficial.
+ *
+ * Es la nota buena, la que se traslada a Raíces, y por eso enseña también el
+ * porqué: qué unidad ha aportado cuánto y qué se ha quedado fuera. Una nota que
+ * sale de descartar cosas sin evidencia tiene que poder explicarse delante de
+ * quien pregunte.
+ */
+function NotaDelTrimestre({
+  grupoId,
+  trimestre,
+  alumnos,
+  onRepartir,
+}: {
+  grupoId: string
+  trimestre: Trimestre
+  alumnos: Alumno[]
+  onRepartir: () => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const [detalle, setDetalle] = useState<string | null>(null)
+
+  // Depende de columnas, filas, valores y unidades: se observan las cuatro
+  // tablas para que la nota se rehaga sola al tocar cualquier cosa.
+  const notas = useLiveQuery(async () => {
+    await Promise.all([db.columnas.count(), db.filas.count(), db.valores.count(), db.unidades.count()])
+    return calificarGrupo(grupoId, trimestre)
+  }, [grupoId, trimestre])
+
+  if (!notas || alumnos.length === 0) return null
+  const hayAlguna = [...notas.values()].some((r) => r.nota !== null)
+
+  return (
+    <div className="px-4 pb-2">
+      <button
+        className="btn-suave w-full"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+      >
+        {abierto ? 'Ocultar' : 'Ver'} nota del {trimestre}.º trimestre
+      </button>
+
+      {abierto && (
+        <div className="tarjeta mt-3 py-3">
+          <h3 className="text-base font-bold">Nota del {trimestre}.º trimestre</h3>
+          <div className="linea-pista mb-2 mt-1.5" aria-hidden />
+
+          {!hayAlguna && (
+            <div className="panel-agua mb-2 text-sm">
+              Todavía no sale ninguna nota. Hace falta que las unidades tengan peso en el trimestre
+              y que sus instrumentos tengan peso dentro de la unidad.
+              <button className="btn-suave mt-2 w-full" onClick={onRepartir}>
+                Repartir pesos del trimestre
+              </button>
+            </div>
+          )}
+
+          <ul className="space-y-1">
+            {alumnos.map((a) => {
+              const res = notas.get(a.id)
+              const abiertoEste = detalle === a.id
+              return (
+                <li key={a.id}>
+                  <button
+                    className="flex w-full items-center gap-2 py-1 text-left text-sm"
+                    onClick={() => setDetalle(abiertoEste ? null : a.id)}
+                    aria-expanded={abiertoEste}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
+                    </span>
+                    <span className="cifra font-bold">
+                      {res?.nota == null ? '—' : res.nota.toFixed(2)}
+                    </span>
+                    <span className="pildora w-12 justify-center bg-agua-claro px-0 py-0.5 text-xs font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+                      {res?.oficial ?? '—'}
+                    </span>
+                  </button>
+
+                  {abiertoEste && res && (
+                    <div className="mb-1 ml-2 border-l-2 border-agua pl-3 text-xs">
+                      {res.porUnidad.map((u) => (
+                        <p key={u.udId} className="cifra">
+                          {u.titulo}: <strong>{u.nota.toFixed(2)}</strong> × {u.peso} %
+                        </p>
+                      ))}
+                      {res.log.length > 0 && (
+                        <ul className="mt-1 texto-suave">
+                          {res.log.map((l, i) => (
+                            <li key={i}>
+                              {l.referencia}: {EXPLICACION[l.motivo]}
+                              {l.detalle ? ` (${l.detalle})` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+
+          <p className="mt-2 text-xs texto-suave">
+            Orden 130/2023: cada instrumento pesa dentro de su unidad y cada unidad dentro del
+            trimestre. Lo que no está evaluado se excluye y el resto se reajusta; toca un alumno
+            para ver el desglose.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Media simple por unidad, informativa. NO es la nota oficial —esa la calcula
+ * `NotaDelTrimestre` con los pesos de la Orden 130— sino el vistazo rápido de
+ * «cómo va esta unidad», con todas las columnas valiendo igual.
+ */
 function MediasPorUnidad({
   columnas,
   alumnos,
@@ -694,8 +837,8 @@ function MediasPorUnidad({
                   })}
                 </ul>
                 <p className="mt-2 text-xs texto-suave">
-                  Media sobre 10 de las columnas promediables. Los positivos/negativos y el texto
-                  no entran.
+                  Media simple sobre 10, con todas las columnas valiendo igual. Es un vistazo, no
+                  la nota oficial: esa lleva los pesos de la Orden 130.
                 </p>
               </section>
             )
