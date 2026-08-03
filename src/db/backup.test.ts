@@ -191,6 +191,54 @@ describe('import de un esquema anterior', () => {
       horario: [{ diaSemana: 2, horaInicio: '10:15', horaFin: '11:00' }],
     })
   })
+
+  it('crea las filas de los instrumentos de una copia anterior a la v15', async () => {
+    // Una copia hecha con la v14: columnas con `criterioCodigo` y sin filas. Sin
+    // esta migración se restauraría con instrumentos sin evidencia posible, y
+    // todas las notas del curso saldrían vacías.
+    const tablasV14: Tablas = {
+      cursos: [{ id: ID_CURSO, nombre: '2025-2026', activo: true, inicio: '2025-09-01', fin: '2026-06-30', trimestres: [], festivos: [] }],
+      grupos: [
+        { id: ID_GRUPO, cursoEscolarId: ID_CURSO, nombre: '3ºB', etapa: 'primaria', nivel: 3, color: '#006A80', orden: 1, horario: [] },
+      ],
+      unidades: [{ id: 'ud-1', nivel: 3, trimestre: 1, titulo: 'Habilidades', criterios: ['2.3'] }],
+      rubricas: [
+        {
+          id: 'rub-1',
+          titulo: 'Coreografía',
+          niveles: [{ id: 'n1', etiqueta: 'Conseguido', valor: 10 }],
+          criterios: [
+            { id: 'rc1', titulo: 'Ritmo', pesoPct: 70 },
+            { id: 'rc2', titulo: 'Expresividad', pesoPct: 30 },
+          ],
+        },
+      ],
+      columnas: [
+        { id: 'col-1', grupoId: ID_GRUPO, trimestre: 1, titulo: 'Salto', tipo: 'numero', orden: 0, udId: 'ud-1', criterioCodigo: '2.3', escala: { min: 0, max: 10, decimales: 1 } },
+        { id: 'col-2', grupoId: ID_GRUPO, trimestre: 1, titulo: 'Coreografía', tipo: 'rubrica', orden: 1, udId: 'ud-1', rubricaId: 'rub-1' },
+      ],
+    }
+
+    const { fichero } = await empaquetar(tablasV14, CLAVE, { esquema: 14, ...RAPIDO })
+    const resultado = await restaurarBackup(fichero, CLAVE)
+    expect(resultado.migrado).toBe(true)
+
+    const unidad = await db.unidades.get('ud-1')
+    expect(unidad).toMatchObject({ computa: true, pesoTrimestre: 0, criterios: ['EF.2C.2.3'] })
+    expect((await db.columnas.get('col-1'))?.pesoUd).toBe(0)
+
+    const simple = await db.filas.where('columnaId').equals('col-1').toArray()
+    expect(simple).toHaveLength(1)
+    expect(simple[0]).toMatchObject({ descriptor: 'Salto', criterioId: 'EF.2C.2.3', pesoFila: null })
+
+    const deRubrica = (await db.filas.where('columnaId').equals('col-2').toArray()).sort(
+      (a, b) => a.orden - b.orden,
+    )
+    expect(deRubrica.map((f) => [f.descriptor, f.pesoFila])).toEqual([
+      ['Ritmo', 70],
+      ['Expresividad', 30],
+    ])
+  })
 })
 
 describe('esquema posterior al de la app', () => {

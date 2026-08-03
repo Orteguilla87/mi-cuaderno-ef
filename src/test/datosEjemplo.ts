@@ -262,7 +262,7 @@ export function datosEjemplo(): Tablas {
     ],
     criterios: [
       {
-        id: 'PRI:2:1.1',
+        id: 'EF.2C.1.1',
         codigo: '1.1',
         etapa: 'primaria',
         competenciaCodigo: 'CE1',

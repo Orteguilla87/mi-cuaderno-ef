@@ -431,17 +431,22 @@ export interface EvalFinal {
 // ——— INFANTIL ———
 
 /**
- * Criterio de evaluación oficial. Se siembra desde `seeds/` con textos
- * PENDIENTE y el usuario los sustituye por los literales del decreto: la app
- * no inventa textos legales (§9).
+ * Criterio de evaluación oficial, con los literales de los Decretos 36/2022
+ * (Infantil) y 61/2022 (Primaria) tal como los aporta el usuario: la app no
+ * inventa textos legales (§9).
+ *
+ * Es tabla de solo lectura: se resiembra en cada arranque desde `seeds/` y
+ * nada de la app la escribe. Los criterios no reciben nota (Orden 130/2023);
+ * son el referente de las filas de instrumento y la base de la cobertura.
  */
 export interface Criterio {
   /**
-   * Clave primaria compuesta: 'INF:I.1.1' · 'PRI:2:1.1'.
+   * Clave primaria. En Primaria es el id del propio decreto ('EF.2C.1.1'); en
+   * Infantil se compone aquí ('INF:I.1.1').
    *
-   * El código del decreto NO basta: en Primaria «1.1» existe en los tres ciclos
-   * con textos distintos (46 criterios, solo 17 códigos únicos). Usar el código
-   * como clave los colapsaría y se perderían criterios sin avisar.
+   * El código NO basta: en Primaria «1.1» existe en los tres ciclos con textos
+   * distintos (46 criterios, solo 17 códigos únicos). Usarlo como clave los
+   * colapsaría y se perderían criterios sin avisar.
    */
   id: string
   codigo: string

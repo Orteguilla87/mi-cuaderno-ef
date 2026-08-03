@@ -811,7 +811,8 @@ function HojaGuardar({
             <option value="">Sin unidad</option>
             {unidades.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.titulo} ({u.nivel}º · T{u.trimestre})
+                {u.titulo} ({u.nivel}º ·{' '}
+                {u.trimestre === null ? 'sin trimestre' : `T${u.trimestre}`})
               </option>
             ))}
           </select>
