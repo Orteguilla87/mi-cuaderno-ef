@@ -1,7 +1,10 @@
 import infantilJson from '../../seeds/criterios_infantil.json'
 import primariaJson from '../../seeds/criterios_primaria.json'
+import { cicloDeCurso } from '../lib/ciclos'
 import { db } from './db'
 import type { Criterio, Etapa } from './types'
+
+export { cicloDeCurso, idCriterioPrimaria } from '../lib/ciclos'
 
 /**
  * Criterios oficiales de los Decretos 36/2022 (Infantil) y 61/2022 (Primaria).
@@ -27,15 +30,22 @@ interface AreaInfantilJson {
   competencias: CompetenciaInfantilJson[]
 }
 
-interface CriterioPrimariaJson {
-  codigo: string
-  competencia: string
+/**
+ * Forma del JSON de Primaria: competencias específicas numeradas 1–5 y los 46
+ * criterios en una lista plana, cada uno con su `id` ya único (lleva el ciclo
+ * dentro) tal como lo publica el decreto.
+ */
+interface CompetenciaPrimariaJson {
+  id: number
   texto: string
 }
-interface CicloPrimariaJson {
+interface CriterioPrimariaJson {
+  id: string
   ciclo: number
   cursos: number[]
-  criterios: CriterioPrimariaJson[]
+  competencia: number
+  codigo: string
+  texto: string
 }
 
 export function criteriosInfantil(): Criterio[] {
@@ -59,40 +69,89 @@ export function criteriosInfantil(): Criterio[] {
 
 export function criteriosPrimaria(): Criterio[] {
   const datos = primariaJson as {
-    competencias_especificas: { codigo: string; texto: string }[]
-    ciclos: CicloPrimariaJson[]
+    competencias: CompetenciaPrimariaJson[]
+    criterios: CriterioPrimariaJson[]
   }
-  const competencias = new Map(datos.competencias_especificas.map((c) => [c.codigo, c.texto]))
+  const competencias = new Map(datos.competencias.map((c) => [c.id, c.texto]))
 
-  return datos.ciclos.flatMap((ciclo) =>
-    ciclo.criterios.map((c) => ({
-      // El ciclo entra en la clave: el mismo código existe en los tres.
-      id: `PRI:${ciclo.ciclo}:${c.codigo}`,
-      codigo: c.codigo,
-      etapa: 'primaria' as Etapa,
-      competenciaCodigo: c.competencia,
-      competenciaTexto: competencias.get(c.competencia) ?? '',
-      texto: c.texto,
-      ciclo: ciclo.ciclo as 1 | 2 | 3,
-      cursos: ciclo.cursos,
-    })),
-  )
+  return datos.criterios.map((c) => ({
+    // El id viene del propio decreto ('EF.2C.1.1') y lleva el ciclo dentro: el
+    // código solo no vale, «1.1» existe en los tres con textos distintos.
+    id: c.id,
+    codigo: c.codigo,
+    etapa: 'primaria' as Etapa,
+    competenciaCodigo: `CE${c.competencia}`,
+    competenciaTexto: competencias.get(c.competencia) ?? '',
+    texto: c.texto,
+    ciclo: c.ciclo as 1 | 2 | 3,
+    cursos: c.cursos,
+  }))
+}
+
+/** Lo que el JSON de Primaria tiene que cumplir para poder fiarse de él. */
+export const CRITERIOS_PRIMARIA_ESPERADOS = 46
+
+export class ErrorSemillaCriterios extends Error {
+  constructor(public readonly problemas: string[]) {
+    super(`La semilla de criterios de Primaria no cuadra:\n· ${problemas.join('\n· ')}`)
+    this.name = 'ErrorSemillaCriterios'
+  }
+}
+
+/**
+ * Comprueba la semilla de Primaria antes de escribirla.
+ *
+ * Los criterios son la referencia legal de toda la evaluación: si el fichero
+ * llega incompleto o con códigos repetidos dentro de un ciclo, los selectores
+ * ofrecerían criterios que no existen y la cobertura mentiría. Mejor gritar que
+ * seguir con una base a medias.
+ */
+export function validarCriteriosPrimaria(lista: Criterio[]): string[] {
+  const problemas: string[] = []
+
+  if (lista.length !== CRITERIOS_PRIMARIA_ESPERADOS)
+    problemas.push(`hay ${lista.length} criterios y deberían ser ${CRITERIOS_PRIMARIA_ESPERADOS}`)
+
+  const ciclos = new Set(lista.map((c) => c.ciclo))
+  if (ciclos.size !== 3) problemas.push(`hay ${ciclos.size} ciclos y deberían ser 3`)
+
+  const vistos = new Set<string>()
+  for (const c of lista) {
+    const clave = `${c.ciclo}:${c.codigo}`
+    if (vistos.has(clave)) problemas.push(`código ${c.codigo} repetido en el ciclo ${c.ciclo}`)
+    vistos.add(clave)
+    if (!c.competenciaTexto)
+      problemas.push(`${c.id} apunta a la competencia ${c.competenciaCodigo}, que no está en el fichero`)
+  }
+
+  const ids = new Set(lista.map((c) => c.id))
+  if (ids.size !== lista.length) problemas.push('hay ids de criterio repetidos')
+
+  return problemas
 }
 
 /**
  * Vuelca los criterios en la base. `bulkPut` actualiza los textos si cambian y
  * respeta los ids, así que es seguro llamarlo en cada arranque.
+ *
+ * Lanza `ErrorSemillaCriterios` si la semilla de Primaria no valida: quien
+ * llama decide cómo enseñarlo, pero nunca en silencio.
  */
 export async function sembrarCriterios(): Promise<void> {
-  const todos = [...criteriosInfantil(), ...criteriosPrimaria()]
-  await db.criterios.bulkPut(todos)
-}
+  const primaria = criteriosPrimaria()
+  const problemas = validarCriteriosPrimaria(primaria)
+  if (problemas.length > 0) throw new ErrorSemillaCriterios(problemas)
 
-/** Ciclo de Primaria (1–3) al que pertenece un curso (1–6). */
-export function cicloDeCurso(curso: number): 1 | 2 | 3 {
-  if (curso <= 2) return 1
-  if (curso <= 4) return 2
-  return 3
+  await db.criterios.bulkPut([...criteriosInfantil(), ...primaria])
+
+  // Los ids de Primaria cambiaron de 'PRI:2:1.1' al del propio decreto
+  // ('EF.2C.1.1'). `bulkPut` no toca los antiguos, así que se barren aquí: si
+  // no, los selectores enseñarían cada criterio dos veces.
+  const vigentes = new Set(primaria.map((c) => c.id))
+  const sobrantes = (await db.criterios.where('etapa').equals('primaria').toArray())
+    .filter((c) => !vigentes.has(c.id))
+    .map((c) => c.id)
+  if (sobrantes.length > 0) await db.criterios.bulkDelete(sobrantes)
 }
 
 /** Criterios que aplican a un grupo, según su etapa y su nivel. */

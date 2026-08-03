@@ -22,6 +22,13 @@ interface EstadoUI {
   capasAbiertas: number
   abrirCapa: () => void
   cerrarCapa: () => void
+  /**
+   * Fallo al sembrar los criterios oficiales. No es un aviso pasajero: los
+   * criterios son la referencia legal de toda la evaluación, así que si la
+   * semilla no cuadra hay que verlo hasta arreglarlo, no durante 1,8 segundos.
+   */
+  errorSemilla: string | null
+  fijarErrorSemilla: (mensaje: string | null) => void
 }
 
 let siguienteId = 1
@@ -66,4 +73,6 @@ export const useUI = create<EstadoUI>((set) => ({
   capasAbiertas: 0,
   abrirCapa: () => set((s) => ({ capasAbiertas: s.capasAbiertas + 1 })),
   cerrarCapa: () => set((s) => ({ capasAbiertas: Math.max(0, s.capasAbiertas - 1) })),
+  errorSemilla: null,
+  fijarErrorSemilla: (errorSemilla) => set({ errorSemilla }),
 }))

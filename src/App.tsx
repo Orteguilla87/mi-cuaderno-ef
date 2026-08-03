@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react'
 import { useEffect } from 'react'
 import { AgenteVoz } from './components/AgenteVoz'
 import { BloqueoPin } from './components/BloqueoPin'
@@ -41,6 +42,35 @@ const SECCIONES_ANCHO_COMPLETO = new Set(['cuaderno', 'infantil', 'rubricas'])
 
 function anchoCompleto(ruta: string): boolean {
   return SECCIONES_ANCHO_COMPLETO.has(segmentos(ruta)[0] ?? 'hoy')
+}
+
+/**
+ * Banner fijo cuando la semilla de criterios oficiales no valida. No se puede
+ * descartar a propósito: mientras la tabla esté a medias, los selectores de
+ * criterio ofrecen menos de los que hay y el informe de cobertura miente.
+ */
+function AvisoSemilla() {
+  const errorSemilla = useUI((s) => s.errorSemilla)
+  if (!errorSemilla) return null
+
+  return (
+    <div
+      role="alert"
+      className="mb-4 rounded-xl2 border-2 border-acento bg-acento/10 p-4 text-sm"
+    >
+      <p className="flex items-center gap-2 font-bold">
+        <TriangleAlert size={18} className="shrink-0 text-acento" aria-hidden />
+        Los criterios oficiales no se han cargado bien
+      </p>
+      <p className="mt-1 texto-suave">
+        La evaluación se apoya en ellos, así que puede faltar algún criterio en los selectores y en
+        el informe de cobertura. Revisa <code>seeds/criterios_primaria.json</code>.
+      </p>
+      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs texto-suave">
+        {errorSemilla}
+      </pre>
+    </div>
+  )
 }
 
 function Contenido({ ruta }: { ruta: string }) {
@@ -100,6 +130,7 @@ export default function App() {
   const hayPin = !!config.pin
   const { bloqueado, bloquear, desbloquear } = useBloqueo()
   const capasAbiertas = useUI((s) => s.capasAbiertas)
+  const fijarErrorSemilla = useUI((s) => s.fijarErrorSemilla)
 
   // Bloquea el scroll del fondo mientras haya una hoja/pantalla completa
   // abierta (§B7): un único punto de cambio sobre el contador que ya usa el
@@ -124,10 +155,21 @@ export default function App() {
 
   // Garantiza que existe un curso escolar activo desde el primer arranque, y
   // vuelca los criterios oficiales de los decretos (idempotente).
+  //
+  // Si la semilla no valida, el fallo se enseña y se deja enseñado: los
+  // criterios son la referencia legal de toda la evaluación, y seguir con la
+  // tabla a medias significaría selectores incompletos y una cobertura que
+  // miente. Nunca en silencio.
   useEffect(() => {
     void obtenerCursoActivo()
-    void sembrarCriterios()
-  }, [])
+    void sembrarCriterios().then(
+      () => fijarErrorSemilla(null),
+      (e: unknown) => {
+        console.error('No se han podido sembrar los criterios oficiales', e)
+        fijarErrorSemilla(e instanceof Error ? e.message : String(e))
+      },
+    )
+  }, [fijarErrorSemilla])
 
   // Sincronización automática. Sin identificador configurado no hace nada y ni
   // siquiera descarga el SDK de Firebase.
@@ -173,6 +215,7 @@ export default function App() {
           (anchoCompleto(ruta) ? 'lg:max-w-7xl' : 'lg:max-w-4xl')
         }
       >
+        <AvisoSemilla />
         {/* key: al cambiar de ruta se reintenta el render en vez de quedarse el error pegado. */}
         <LimiteError key={ruta}>
           <Contenido ruta={ruta} />
