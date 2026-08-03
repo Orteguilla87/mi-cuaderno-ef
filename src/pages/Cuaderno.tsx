@@ -242,54 +242,13 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
 
   return (
     <>
+      {/* Solo título + subtítulo en la cabecera (§ Bloque 5.1): con acciones
+          dentro, a 360–390px el título quedaba tapado por los botones
+          contiguos. Los botones bajan a su propia fila, bajo las pestañas de
+          trimestre — jerárquicamente son suyas, no del título. */}
       <Cabecera
         titulo="Cuaderno"
         subtitulo={grupo ? `${grupo.nombre} · ${trimestre}.º trimestre` : undefined}
-        acciones={
-          <div className="flex gap-2">
-            {idEfectivo && (
-              <button
-                className="btn-suave w-11 px-0"
-                onClick={() => navegar(`/asistencia/${idEfectivo}`)}
-                title="Pasar lista"
-                aria-label="Pasar lista"
-              >
-                <ClipboardCheck size={18} aria-hidden />
-              </button>
-            )}
-            {idEfectivo && (
-              <button
-                className="btn-suave w-11 px-0"
-                onClick={() => setSorteando(true)}
-                title="Alumno aleatorio"
-                aria-label="Alumno aleatorio"
-              >
-                <Shuffle size={18} aria-hidden />
-              </button>
-            )}
-            <button className="btn-suave" onClick={() => setConfigurando('nueva')}>
-              <Plus size={18} aria-hidden />
-              Columna
-            </button>
-            {idEfectivo && grupo && visibles.length > 0 && (
-              <button
-                className="btn-suave w-11 px-0"
-                onClick={() => {
-                  copiarColumnas({
-                    columnas: visibles,
-                    etapaOrigen: grupo.etapa,
-                    origenResumen: `${visibles.length} ${visibles.length === 1 ? 'columna' : 'columnas'} de ${grupo.nombre}`,
-                  })
-                  mostrarAviso(`Estructura de ${grupo.nombre} copiada`)
-                }}
-                title="Copiar estructura del grupo"
-                aria-label="Copiar estructura del grupo"
-              >
-                <Copy size={18} aria-hidden />
-              </button>
-            )}
-          </div>
-        }
       />
 
       {sorteando && idEfectivo && (
@@ -320,20 +279,66 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           ))}
         </div>
 
-        <div className="flex gap-2">
-          <div role="tablist" aria-label="Trimestre" className="pestanas flex-1">
-            {([1, 2, 3] as const).map((t) => (
-              <button
-                key={t}
-                role="tab"
-                onClick={() => setTrimestre(t)}
-                aria-selected={trimestre === t}
-                className="pestana"
-              >
-                {t}.º trimestre
-              </button>
-            ))}
-          </div>
+        <div role="tablist" aria-label="Trimestre" className="pestanas">
+          {([1, 2, 3] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              onClick={() => setTrimestre(t)}
+              aria-selected={trimestre === t}
+              className="pestana"
+            >
+              {t}.º trimestre
+            </button>
+          ))}
+        </div>
+
+        {/* Fila de acciones del trimestre (§ Bloque 5.1/5.2): pertenecen al
+            trimestre que se está viendo, no al título — el icono de Pesos
+            vive aquí y nunca dentro de la barra de pestañas, que a 360px se
+            comprimía hasta no caber. */}
+        <div className="flex flex-wrap gap-2">
+          {idEfectivo && (
+            <button
+              className="btn-suave w-11 shrink-0 px-0"
+              onClick={() => navegar(`/asistencia/${idEfectivo}`)}
+              title="Pasar lista"
+              aria-label="Pasar lista"
+            >
+              <ClipboardCheck size={18} aria-hidden />
+            </button>
+          )}
+          {idEfectivo && (
+            <button
+              className="btn-suave w-11 shrink-0 px-0"
+              onClick={() => setSorteando(true)}
+              title="Alumno aleatorio"
+              aria-label="Alumno aleatorio"
+            >
+              <Shuffle size={18} aria-hidden />
+            </button>
+          )}
+          <button className="btn-suave shrink-0" onClick={() => setConfigurando('nueva')}>
+            <Plus size={18} aria-hidden />
+            Columna
+          </button>
+          {idEfectivo && grupo && visibles.length > 0 && (
+            <button
+              className="btn-suave w-11 shrink-0 px-0"
+              onClick={() => {
+                copiarColumnas({
+                  columnas: visibles,
+                  etapaOrigen: grupo.etapa,
+                  origenResumen: `${visibles.length} ${visibles.length === 1 ? 'columna' : 'columnas'} de ${grupo.nombre}`,
+                })
+                mostrarAviso(`Estructura de ${grupo.nombre} copiada`)
+              }}
+              title="Copiar estructura del grupo"
+              aria-label="Copiar estructura del grupo"
+            >
+              <Copy size={18} aria-hidden />
+            </button>
+          )}
           {/* Solo Primaria: en Infantil no hay notas que repartir (§6). */}
           {grupo?.etapa === 'primaria' && (
             <button
