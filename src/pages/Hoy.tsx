@@ -121,17 +121,14 @@ export function Hoy() {
           </span>
         }
         acciones={
-          <div className="flex rounded-xl border border-white/35 p-0.5">
+          <div role="tablist" aria-label="Vista" className="flex gap-1">
             {(['dia', 'semana'] as const).map((v) => (
               <button
                 key={v}
+                role="tab"
                 onClick={() => setVista(v)}
-                aria-pressed={vista === v}
-                className={
-                  'rounded-xl px-3 py-1 text-sm font-semibold focus-visible:outline-none ' +
-                  'focus-visible:ring-4 focus-visible:ring-white/50 ' +
-                  (vista === v ? 'bg-white text-primario' : 'text-white/90')
-                }
+                aria-selected={vista === v}
+                className="pestana-clara"
               >
                 {v === 'dia' ? 'Día' : 'Semana'}
               </button>

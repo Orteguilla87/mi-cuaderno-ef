@@ -52,24 +52,20 @@ export function Planificador() {
       />
 
       <div className="space-y-4 p-4">
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            className={(vista === 'grupo' ? 'btn-primario' : 'btn-suave') + ' px-0 text-sm'}
-            onClick={() => setVista('grupo')}
-          >
+        <div role="tablist" aria-label="Vista del planificador" className="pestanas">
+          <button role="tab" onClick={() => setVista('grupo')} aria-selected={vista === 'grupo'} className="pestana">
             <Users size={18} aria-hidden />
             Grupo
           </button>
-          <button
-            className={(vista === 'semana' ? 'btn-primario' : 'btn-suave') + ' px-0 text-sm'}
-            onClick={() => setVista('semana')}
-          >
+          <button role="tab" onClick={() => setVista('semana')} aria-selected={vista === 'semana'} className="pestana">
             <CalendarRange size={18} aria-hidden />
             Semana
           </button>
           <button
-            className={(vista === 'unidades' ? 'btn-primario' : 'btn-suave') + ' px-0 text-sm'}
+            role="tab"
             onClick={() => setVista('unidades')}
+            aria-selected={vista === 'unidades'}
+            className="pestana"
           >
             <Layers size={18} aria-hidden />
             Unidades

@@ -321,12 +321,14 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
         </div>
 
         <div className="flex gap-2">
-          <div className="grid flex-1 grid-cols-3 gap-2">
+          <div role="tablist" aria-label="Trimestre" className="pestanas flex-1">
             {([1, 2, 3] as const).map((t) => (
               <button
                 key={t}
+                role="tab"
                 onClick={() => setTrimestre(t)}
-                className={(trimestre === t ? 'btn-primario' : 'btn-suave') + ' px-0'}
+                aria-selected={trimestre === t}
+                className="pestana"
               >
                 {t}.º trimestre
               </button>

@@ -420,28 +420,21 @@ function Seccion({
 }) {
   const [abierta, setAbierta] = useState(false)
   return (
-    <section className="tarjeta">
-      <button
-        onClick={() => setAbierta((v) => !v)}
-        className="flex w-full items-center gap-2 text-left"
-        aria-expanded={abierta}
-      >
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <h2 className="text-lg font-bold">{titulo}</h2>
-            {aviso && <span className="h-2 w-2 shrink-0 rounded-full bg-acento" aria-label="Requiere atención" />}
-          </span>
-          <div className="linea-pista mb-0 mt-1.5" aria-hidden />
+    <section>
+      <button className="desplegable w-full" onClick={() => setAbierta((v) => !v)} aria-expanded={abierta}>
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <h2 className="truncate text-base font-bold">{titulo}</h2>
+          {aviso && <span className="h-2 w-2 shrink-0 rounded-full bg-acento" aria-label="Requiere atención" />}
         </span>
         <ChevronDown
-          size={20}
-          className={'shrink-0 texto-suave transition-transform ' + (abierta ? 'rotate-180' : '')}
+          size={18}
+          className={'shrink-0 transition-transform ' + (abierta ? 'rotate-180' : '')}
           aria-hidden
         />
       </button>
 
       {abierta && (
-        <div className="mt-4 space-y-4">
+        <div className="tarjeta mt-2 space-y-4 py-4">
           {ayuda && <p className="text-sm texto-suave">{ayuda}</p>}
           {children}
         </div>

@@ -113,6 +113,64 @@
     @apply btn border border-acento/30 text-acento hover:bg-acento/10 dark:border-acento/40;
   }
 
+  /* ——— Pestaña de navegación (§ Bloque 4) ———
+     Tercer rol junto al botón (relleno sólido) y al desplegable (borde +
+     chevron): SIN relleno, con un indicador inferior en la activa. Nunca
+     confundirla con un botón de acción — cambia qué se ve, no hace nada. */
+  .pestanas {
+    @apply flex gap-1 border-b border-borde dark:border-noche-borde;
+  }
+  .pestana {
+    @apply relative flex min-h-tap flex-1 items-center justify-center gap-1.5 px-2 pb-2 text-sm
+           font-semibold text-tinta-suave transition
+           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 focus-visible:ring-inset
+           dark:text-noche-suave;
+  }
+  .pestana::after {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: -1px;
+    height: 3px;
+    border-radius: 2px 2px 0 0;
+    background: transparent;
+  }
+  .pestana[aria-pressed='true'],
+  .pestana[aria-selected='true'] {
+    @apply text-primario dark:text-agua;
+  }
+  .pestana[aria-pressed='true']::after,
+  .pestana[aria-selected='true']::after {
+    @apply bg-primario dark:bg-agua;
+  }
+
+  /* Variante sobre la cabecera de color (Hoy, Calendario): mismo indicador
+     inferior, en blanco, sin fondo de pastilla. */
+  .pestana-clara {
+    @apply relative flex min-h-tap items-center justify-center gap-1.5 px-3 pb-1.5 text-sm font-semibold
+           text-white/80 transition
+           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50;
+  }
+  .pestana-clara::after {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0;
+    height: 3px;
+    border-radius: 2px 2px 0 0;
+    background: transparent;
+  }
+  .pestana-clara[aria-pressed='true'],
+  .pestana-clara[aria-selected='true'] {
+    @apply text-white;
+  }
+  .pestana-clara[aria-pressed='true']::after,
+  .pestana-clara[aria-selected='true']::after {
+    @apply bg-white;
+  }
+
   /* ——— Superficies ——— */
   .tarjeta {
     @apply rounded-xl2 border border-borde bg-white p-4
