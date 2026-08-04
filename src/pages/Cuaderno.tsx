@@ -11,19 +11,20 @@ import {
   Scale,
   Settings2,
   Shuffle,
+  SlidersHorizontal,
   Table2,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
-import { Celda, EditorColumna, HojaAplicarGrupo, TablaRubrica } from '../components/Celda'
+import { Celda, EditorColumna, HojaAplicarGrupo } from '../components/Celda'
 import { EstadoVacio } from '../components/EstadoVacio'
-import { EvaluadorRubrica } from '../components/EvaluadorRubrica'
 import { Hoja } from '../components/Hoja'
 import { HojaColumna } from '../components/HojaColumna'
 import { HojaObservacion } from '../components/HojaObservacion'
 import { HojaPesosTrimestre } from '../components/HojaPesosTrimestre'
 import { SelectorGrupo } from '../components/SelectorGrupo'
 import { SorteoAlumno } from '../components/SorteoAlumno'
+import { TablaRubrica } from '../components/TablaRubrica'
 import {
   agruparPorUnidad,
   calcularColumna,
@@ -96,9 +97,6 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
   const [evaluando, setEvaluando] = useState<{ columna: Columna; indice: number } | null>(null)
-  const [evaluandoRubrica, setEvaluandoRubrica] = useState<{ columna: Columna; indice: number } | null>(
-    null,
-  )
   const [tablaRubrica, setTablaRubrica] = useState<Columna | null>(null)
   const [aplicando, setAplicando] = useState<Columna | null>(null)
   const [sorteando, setSorteando] = useState(false)
@@ -223,15 +221,16 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   const visibles = columnas ?? []
 
   /**
-   * Rúbrica → evaluador por alumno; número/texto → recorrido por alumno; el
-   * resto se edita al toque.
+   * Rúbrica → tabla alumnado × criterio (§ Bloque 7, única vista de
+   * calificación); número/texto → recorrido por alumno; el resto se edita
+   * al toque.
    *
-   * `indice` es la fila tocada: el recorrido arranca en ESE alumno, no en el
-   * primero de la clase. Empezar siempre por el 0 obligaba a avanzar a mano
-   * hasta la fila que se acababa de tocar.
+   * `indice` es la fila tocada: en el recorrido por alumno arranca en ESE
+   * alumno, no en el primero de la clase. Empezar siempre por el 0 obligaba
+   * a avanzar a mano hasta la fila que se acababa de tocar.
    */
   function abrirEditor(columna: Columna, indice: number) {
-    if (columna.tipo === 'rubrica') setEvaluandoRubrica({ columna, indice })
+    if (columna.tipo === 'rubrica') setTablaRubrica(columna)
     else setEvaluando({ columna, indice })
   }
 
@@ -311,9 +310,11 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
         </div>
 
         {/* Fila de acciones del trimestre (§ Bloque 5.1/5.2): pertenecen al
-            trimestre que se está viendo, no al título — el icono de Pesos
-            vive aquí y nunca dentro de la barra de pestañas, que a 360px se
-            comprimía hasta no caber. */}
+            trimestre que se está viendo, no al título. Pasar lista y Alumno
+            aleatorio son las de cada clase, así que quedan siempre a la
+            vista; el resto (crear columna, copiar estructura, pesos, vista
+            de la rejilla) son de configuración y se apilan en «Acciones»
+            para no saturar la fila. */}
         <div className="flex flex-wrap gap-2">
           {idEfectivo && (
             <button
@@ -335,46 +336,38 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
               <Shuffle size={18} aria-hidden />
             </button>
           )}
-          <button className="btn-suave shrink-0" onClick={() => setConfigurando('nueva')}>
-            <Plus size={18} aria-hidden />
-            Columna
-          </button>
-          {idEfectivo && grupo && visibles.length > 0 && (
-            <button
-              className="btn-suave w-11 shrink-0 px-0"
-              onClick={() => {
-                copiarColumnas({
-                  columnas: visibles,
-                  etapaOrigen: grupo.etapa,
-                  origenResumen: `${visibles.length} ${visibles.length === 1 ? 'columna' : 'columnas'} de ${grupo.nombre}`,
-                })
-                mostrarAviso(`Estructura de ${grupo.nombre} copiada`)
-              }}
-              title="Copiar estructura del grupo"
-              aria-label="Copiar estructura del grupo"
-            >
-              <Copy size={18} aria-hidden />
-            </button>
-          )}
-          {/* Solo Primaria: en Infantil no hay notas que repartir (§6). */}
-          {grupo?.etapa === 'primaria' && (
-            <button
-              className="btn-suave w-11 shrink-0 px-0"
-              onClick={() => setRepartiendo(true)}
-              title="Pesos de las unidades en el trimestre"
-              aria-label="Pesos de las unidades en el trimestre"
-            >
-              <Scale size={18} aria-hidden />
-            </button>
-          )}
-          <button
-            className="btn-suave w-11 shrink-0 px-0"
-            onClick={() => setVistaAbierta(true)}
-            title="Vista de la rejilla"
-            aria-label="Vista de la rejilla"
-          >
-            <Columns3 size={18} aria-hidden />
-          </button>
+          <MenuAcciones
+            acciones={[
+              { etiqueta: 'Nueva columna', Icono: Plus, onClick: () => setConfigurando('nueva') },
+              ...(idEfectivo && grupo && visibles.length > 0
+                ? [
+                    {
+                      etiqueta: 'Copiar estructura del grupo',
+                      Icono: Copy,
+                      onClick: () => {
+                        copiarColumnas({
+                          columnas: visibles,
+                          etapaOrigen: grupo.etapa,
+                          origenResumen: `${visibles.length} ${visibles.length === 1 ? 'columna' : 'columnas'} de ${grupo.nombre}`,
+                        })
+                        mostrarAviso(`Estructura de ${grupo.nombre} copiada`)
+                      },
+                    },
+                  ]
+                : []),
+              // Pesos: solo Primaria, en Infantil no hay notas que repartir (§6).
+              ...(grupo?.etapa === 'primaria'
+                ? [
+                    {
+                      etiqueta: 'Pesos de las unidades en el trimestre',
+                      Icono: Scale,
+                      onClick: () => setRepartiendo(true),
+                    },
+                  ]
+                : []),
+              { etiqueta: 'Vista de la rejilla', Icono: Columns3, onClick: () => setVistaAbierta(true) },
+            ]}
+          />
         </div>
 
         {copiadas && (
@@ -504,35 +497,13 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
         />
       )}
 
-      {evaluandoRubrica && (
-        <EvaluadorRubrica
-          columna={evaluandoRubrica.columna}
-          rubrica={
-            evaluandoRubrica.columna.rubricaId
-              ? mapaRubricas.get(evaluandoRubrica.columna.rubricaId)
-              : undefined
-          }
-          filas={filasRubrica?.get(evaluandoRubrica.columna.id) ?? []}
-          alumnos={alumnos ?? []}
-          indice={evaluandoRubrica.indice}
-          valores={mapaValores}
-          onCambiar={cambiar}
-          onIndice={(indice) => setEvaluandoRubrica({ ...evaluandoRubrica, indice })}
-          onCerrar={() => setEvaluandoRubrica(null)}
-          onVerTabla={() => {
-            const columna = evaluandoRubrica.columna
-            setEvaluandoRubrica(null)
-            setTablaRubrica(columna)
-          }}
-        />
-      )}
-
       {tablaRubrica && (
         <TablaRubrica
           columna={tablaRubrica}
           rubrica={
             tablaRubrica.rubricaId ? mapaRubricas.get(tablaRubrica.rubricaId) : undefined
           }
+          filas={filasRubrica?.get(tablaRubrica.id) ?? []}
           alumnos={alumnos ?? []}
           valores={mapaValores}
           onCambiar={cambiar}
@@ -549,6 +520,80 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
         />
       )}
     </>
+  )
+}
+
+/**
+ * Menú desplegable de acciones de configuración del Cuaderno (crear columna,
+ * copiar estructura, pesos, vista de la rejilla): apiladas aparte de Pasar
+ * lista y Alumno aleatorio, que son de cada clase y quedan siempre a la
+ * vista. Mismo patrón de desplegable anclado que `SelectorGrupo`.
+ */
+function MenuAcciones({
+  acciones,
+}: {
+  acciones: { etiqueta: string; Icono: typeof Plus; onClick: () => void }[]
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const contenedorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!abierto) return
+    const alPulsarFuera = (e: MouseEvent) => {
+      if (!contenedorRef.current?.contains(e.target as Node)) setAbierto(false)
+    }
+    const alPulsarTecla = (e: KeyboardEvent) => e.key === 'Escape' && setAbierto(false)
+    window.addEventListener('mousedown', alPulsarFuera)
+    window.addEventListener('keydown', alPulsarTecla)
+    return () => {
+      window.removeEventListener('mousedown', alPulsarFuera)
+      window.removeEventListener('keydown', alPulsarTecla)
+    }
+  }, [abierto])
+
+  return (
+    <div ref={contenedorRef} className="relative shrink-0">
+      <button
+        type="button"
+        className="btn-suave shrink-0"
+        onClick={() => setAbierto((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+      >
+        <SlidersHorizontal size={18} aria-hidden />
+        Acciones
+        <ChevronDown
+          size={16}
+          className={'transition-transform ' + (abierto ? 'rotate-180' : '')}
+          aria-hidden
+        />
+      </button>
+
+      {abierto && (
+        <ul
+          role="menu"
+          aria-label="Acciones del cuaderno"
+          className="absolute left-0 top-full z-hoja mt-1 w-64 space-y-0.5 rounded-xl2 border border-borde bg-superficie p-1.5 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+        >
+          {acciones.map(({ etiqueta, Icono, onClick }) => (
+            <li key={etiqueta} role="none">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setAbierto(false)
+                  onClick()
+                }}
+                className="flex min-h-tap w-full items-center gap-2 rounded-xl px-2.5 text-left text-sm font-semibold transition hover:bg-agua-claro dark:hover:bg-noche-elevada"
+              >
+                <Icono size={18} className="shrink-0 text-primario dark:text-agua" aria-hidden />
+                {etiqueta}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

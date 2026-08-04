@@ -2,7 +2,7 @@ import { Check, ChevronLeft, ChevronRight, Delete, Minus, Plus, X } from 'lucide
 import { useLayoutEffect, useEffect, useRef, useState } from 'react'
 import type { ResultadoCalculo } from '../db/cuaderno'
 import { aplicarAGrupo, contarDestinatarios, guardarValor } from '../db/cuaderno'
-import type { Alumno, Columna, Rubrica, ValorCelda } from '../db/types'
+import type { Alumno, Columna, ValorCelda } from '../db/types'
 import { useUI } from '../store/ui'
 import { Campo, CampoArea } from './Campo'
 import { Hoja } from './Hoja'
@@ -469,115 +469,6 @@ export function EditorColumna({
         )}
 
       </div>
-    </Hoja>
-  )
-}
-
-/**
- * Tabla de rúbrica: alumno × criterio, siempre así (nunca separada en
- * columnas de la rejilla). Cada celda muestra la NOTA del nivel (2, 4, 6…),
- * no solo su etiqueta, y se cicla tocando, igual que en la rejilla principal.
- */
-export function TablaRubrica({
-  columna,
-  rubrica,
-  alumnos,
-  valores,
-  onCambiar,
-  onCerrar,
-}: {
-  columna: Columna
-  rubrica?: Rubrica
-  alumnos: Alumno[]
-  valores: Map<string, ValorCelda>
-  onCambiar: (columna: Columna, alumnoId: string, cambios: Cambios) => Promise<() => Promise<void>>
-  onCerrar: () => void
-}) {
-  if (!rubrica) return null
-
-  function ciclar(alumnoId: string, criterioId: string) {
-    const valor = valores.get(`${columna.id}|${alumnoId}`)
-    const nivelId = valor?.rubrica?.[criterioId]
-    const indice = rubrica!.niveles.findIndex((n) => n.id === nivelId)
-    const siguiente = indice + 1
-    const nuevo = { ...(valor?.rubrica ?? {}) }
-    if (siguiente >= rubrica!.niveles.length) delete nuevo[criterioId]
-    else nuevo[criterioId] = rubrica!.niveles[siguiente].id
-    void onCambiar(columna, alumnoId, { rubrica: nuevo })
-  }
-
-  return (
-    <Hoja abierta titulo={columna.titulo} onCerrar={onCerrar}>
-      <div className="-mx-4 overflow-x-auto px-4">
-        <table className="w-max border-separate border-spacing-0">
-          <caption className="sr-only">Rúbrica: alumnos por criterio</caption>
-          <thead>
-            <tr>
-              <th
-                scope="col"
-                className="sticky left-0 z-10 min-w-[120px] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
-              >
-                Alumno
-              </th>
-              {rubrica.criterios.map((c) => (
-                <th
-                  key={c.id}
-                  scope="col"
-                  className="min-w-[72px] border-b-2 border-r border-borde bg-agua-claro px-1 py-2 text-xs font-bold leading-tight text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
-                  title={c.titulo}
-                >
-                  {c.titulo}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {alumnos.map((a, fila) => (
-              <tr key={a.id} className={fila % 2 ? 'bg-agua-claro/30 dark:bg-noche-elevada/30' : ''}>
-                <th
-                  scope="row"
-                  className={
-                    'sticky left-0 z-10 min-w-[120px] border-b border-r border-borde px-2 py-2 text-left text-sm font-semibold dark:border-noche-borde ' +
-                    (fila % 2
-                      ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
-                      : 'bg-superficie dark:bg-noche-superficie')
-                  }
-                >
-                  <span className="block max-w-[120px] truncate">
-                    {a.alias || a.nombre}
-                  </span>
-                </th>
-                {rubrica.criterios.map((c) => {
-                  const valor = valores.get(`${columna.id}|${a.id}`)
-                  const nivelId = valor?.rubrica?.[c.id]
-                  const nivel = rubrica.niveles.find((n) => n.id === nivelId)
-                  return (
-                    <td
-                      key={c.id}
-                      className="border-b border-r border-borde p-0 dark:border-noche-borde"
-                    >
-                      <button
-                        className="flex h-14 w-full items-center justify-center active:scale-95"
-                        onClick={() => ciclar(a.id, c.id)}
-                        aria-label={`${a.alias || a.nombre}, ${c.titulo}: ${nivel ? `${nivel.etiqueta} (${nivel.valor})` : 'sin valorar'}`}
-                      >
-                        {nivel ? (
-                          <span className="cifra flex h-9 w-9 items-center justify-center rounded-full bg-primario text-base font-bold text-white">
-                            {nivel.valor}
-                          </span>
-                        ) : (
-                          <span className="h-8 w-8 rounded-full border-2 border-dashed border-borde dark:border-noche-borde" />
-                        )}
-                      </button>
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-3 text-xs texto-suave">Toca una celda para pasar al siguiente nivel.</p>
     </Hoja>
   )
 }
