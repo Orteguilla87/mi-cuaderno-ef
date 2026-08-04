@@ -3,6 +3,7 @@ import { CircleAlert, Target } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { EstadoVacio } from '../components/EstadoVacio'
+import { LineaPlegable } from '../components/LineaPlegable'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { ciclosConGrupos, coberturaDelCiclo, type CoberturaCriterio } from '../db/cobertura'
 import { db } from '../db/db'
@@ -120,11 +121,7 @@ function FichaCriterio({ cobertura }: { cobertura: CoberturaCriterio }) {
         'tarjeta py-3 ' + (cubierto ? '' : 'border-2 border-acento bg-acento/5')
       }
     >
-      <button
-        className="flex w-full items-start gap-3 text-left"
-        onClick={() => setAbierto((v) => !v)}
-        aria-expanded={abierto}
-      >
+      <div className="flex items-start gap-3">
         <span
           className={
             'cifra flex h-9 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-bold ' +
@@ -136,11 +133,14 @@ function FichaCriterio({ cobertura }: { cobertura: CoberturaCriterio }) {
           {criterio.codigo}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">
-            {abierto || criterio.texto.length <= 110
-              ? criterio.texto
-              : `${criterio.texto.slice(0, 110)}…`}
-          </span>
+          <LineaPlegable
+            texto={criterio.texto}
+            abierto={abierto}
+            onCambio={setAbierto}
+            textoClassName="text-sm font-semibold"
+            etiquetaExpandir={`Ver texto completo del criterio ${criterio.codigo}`}
+            etiquetaContraer={`Contraer texto del criterio ${criterio.codigo}`}
+          />
           <span className="cifra mt-1 block text-xs texto-suave">
             {criterio.competenciaCodigo} ·{' '}
             {cubierto
@@ -148,7 +148,7 @@ function FichaCriterio({ cobertura }: { cobertura: CoberturaCriterio }) {
               : 'sin ningún instrumento'}
           </span>
         </span>
-      </button>
+      </div>
 
       {abierto && cubierto && (
         <table className="mt-3 w-full text-xs">
