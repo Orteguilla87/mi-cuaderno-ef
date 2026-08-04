@@ -32,12 +32,12 @@ export function BottomNav({ ruta }: { ruta: string }) {
               <button
                 onClick={() => navegar(r)}
                 aria-current={activa ? 'page' : undefined}
-                className="flex min-h-tap w-full flex-col items-center gap-1 py-1.5
+                className="flex min-h-tap w-full flex-col items-center gap-1 py-1.5 landscape:py-1
                            focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 focus-visible:ring-inset"
               >
                 <span
                   className={
-                    'flex h-8 w-14 items-center justify-center rounded-full transition ' +
+                    'flex h-8 w-14 items-center justify-center rounded-full transition landscape:h-7 landscape:w-12 ' +
                     (activa
                       ? 'bg-agua-claro text-primario dark:bg-primario dark:text-white'
                       : 'text-tinta-suave dark:text-noche-suave')
@@ -47,7 +47,7 @@ export function BottomNav({ ruta }: { ruta: string }) {
                 </span>
                 <span
                   className={
-                    'text-xs font-bold leading-tight ' +
+                    'text-xs font-bold leading-tight landscape:sr-only ' +
                     (activa ? 'text-primario dark:text-agua' : 'texto-suave')
                   }
                 >

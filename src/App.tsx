@@ -215,7 +215,7 @@ export default function App() {
         id="contenido"
         className={
           'carril-fab mx-auto max-w-lg md:max-w-3xl lg:px-6 ' +
-          (anchoCompleto(ruta) ? 'lg:max-w-7xl' : 'lg:max-w-4xl')
+          (anchoCompleto(ruta) ? 'lg:max-w-7xl max-lg:landscape:max-w-none' : 'lg:max-w-4xl')
         }
       >
         <AvisoSemilla />

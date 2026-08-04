@@ -41,6 +41,14 @@
       --alto-nav: 0px;
     }
   }
+  /* Móvil en horizontal (Bloque 6): la altura es lo escaso, así que
+     `BottomNav` se compacta (sin etiqueta de texto, icono más pequeño) y
+     reserva menos hueco fijo. Mismo punto único que las reglas de arriba. */
+  @media (max-width: 1023px) and (orientation: landscape) {
+    :root {
+      --alto-nav: 3rem;
+    }
+  }
 
   html.dark {
     color-scheme: dark;

@@ -179,7 +179,7 @@ function RejillaInfantil({
   }
 
   return (
-    <div className="carril-fab-derecha overflow-x-auto lg:max-h-[70vh] lg:overflow-y-auto">
+    <div className="carril-fab-derecha overflow-x-auto max-lg:landscape:max-h-[75dvh] max-lg:landscape:overflow-y-auto lg:max-h-[70vh] lg:overflow-y-auto">
       <table className="w-max border-separate border-spacing-0">
         <caption className="sr-only">
           Registro de criterios del Área I, momento {momento}
@@ -188,7 +188,7 @@ function RejillaInfantil({
           <tr>
             <th
               scope="col"
-              className="sticky left-0 z-20 min-w-[150px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua lg:top-0"
+              className="sticky left-0 z-20 min-w-[150px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua max-lg:landscape:top-0 lg:top-0"
             >
               Alumno
             </th>
@@ -196,7 +196,7 @@ function RejillaInfantil({
               <th
                 key={c.id}
                 scope="col"
-                className="min-w-[64px] border-b-2 border-r border-borde bg-agua-claro px-1 py-2 dark:border-noche-borde dark:bg-noche-elevada lg:sticky lg:top-0 lg:z-10"
+                className="min-w-[64px] border-b-2 border-r border-borde bg-agua-claro px-1 py-2 dark:border-noche-borde dark:bg-noche-elevada max-lg:landscape:sticky max-lg:landscape:top-0 max-lg:landscape:z-10 lg:sticky lg:top-0 lg:z-10"
                 title={c.texto}
               >
                 <span className="cifra block text-xs font-bold text-primario-oscuro dark:text-agua">
