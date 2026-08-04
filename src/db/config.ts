@@ -15,6 +15,8 @@ export const CONFIG_POR_DEFECTO: Config = {
   // Rojo (--accent), azul (--primary), amarillo (peto, único tono nuevo) y
   // verde (--positive): colores reales de petos de gimnasio.
   coloresPetos: ['#CE184B', '#006A80', '#B48C00', '#ABB200'],
+  formatoNombre: 'apellidos-nombre',
+  anchoColumnaAlumno: 'ancha',
 }
 
 export async function leerConfig(): Promise<Config> {

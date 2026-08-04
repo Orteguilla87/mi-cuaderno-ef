@@ -590,7 +590,14 @@ export interface Config {
   webdav?: ConfigWebdav
   /** Sincronización automática del mismo `.enc` vía Firestore. */
   sincro?: ConfigSincro
+  /** Cómo se muestra el nombre del alumnado en el Cuaderno. */
+  formatoNombre: FormatoNombre
+  /** Ancho de la columna de alumnado del Cuaderno, congelada en los tres. */
+  anchoColumnaAlumno: AnchoColumnaAlumno
 }
+
+export type FormatoNombre = 'apellidos-nombre' | 'nombre-apellidos' | 'solo-nombre'
+export type AnchoColumnaAlumno = 'estrecha' | 'media' | 'ancha'
 
 export type EstadoAccionAgente = 'aplicada' | 'deshecha'
 

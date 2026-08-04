@@ -4,6 +4,7 @@ import {
   Clipboard,
   ClipboardCheck,
   ClipboardX,
+  Columns3,
   Copy,
   Minus,
   Plus,
@@ -37,16 +38,18 @@ import {
   type ResultadoCalculo,
   type ResultadoValidacionPegado,
 } from '../db/cuaderno'
-import { useConfig } from '../db/config'
+import { guardarConfig, useConfig } from '../db/config'
 import { db } from '../db/db'
 import { calificarGrupo } from '../db/notas'
 import { filasPorColumna } from '../db/filas'
 import { notaInstrumento, notaOficial, type MotivoExclusion } from '../lib/notas'
 import type {
   Alumno,
+  AnchoColumnaAlumno,
   CalificacionOficial,
   Columna,
   FilaInstrumento,
+  FormatoNombre,
   Grupo,
   Rubrica,
   SignoObservacion,
@@ -54,11 +57,23 @@ import type {
   ValorCelda,
 } from '../db/types'
 import { contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
+import { formatearNombre } from '../lib/nombres'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { useUI } from '../store/ui'
+
+/**
+ * Ancho de la columna de alumnado congelada (§ Bloque 4), en px. Se aplica
+ * por estilo en línea, no por clase de Tailwind: es una preferencia en
+ * tiempo de ejecución, no un valor que el JIT pueda ver en el código fuente.
+ */
+const ANCHO_COLUMNA_ALUMNO_PX: Record<AnchoColumnaAlumno, number> = {
+  estrecha: 120,
+  media: 156,
+  ancha: 196,
+}
 
 /** `grupoId`: llegada directa desde otra pantalla (p. ej. el icono de grupo en Hoy). */
 export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {}) {
@@ -88,6 +103,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   const [sorteando, setSorteando] = useState(false)
   const [pegando, setPegando] = useState(false)
   const [repartiendo, setRepartiendo] = useState(false)
+  const [vistaAbierta, setVistaAbierta] = useState(false)
 
   const grupos = useLiveQuery(async () => {
     const lista = await db.grupos.toArray()
@@ -350,6 +366,14 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
               <Scale size={18} aria-hidden />
             </button>
           )}
+          <button
+            className="btn-suave w-11 shrink-0 px-0"
+            onClick={() => setVistaAbierta(true)}
+            title="Vista de la rejilla"
+            aria-label="Vista de la rejilla"
+          >
+            <Columns3 size={18} aria-hidden />
+          </button>
         </div>
 
         {copiadas && (
@@ -450,6 +474,8 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
         trimestre={trimestre}
         onCerrar={() => setRepartiendo(false)}
       />
+
+      <HojaVistaRejilla abierta={vistaAbierta} onCerrar={() => setVistaAbierta(false)} />
 
       <HojaColumna
         estado={configurando}
@@ -612,6 +638,8 @@ function Rejilla({
     alumno: Alumno
     signo: SignoObservacion
   } | null>(null)
+  const config = useConfig()
+  const anchoColumnaAlumno = ANCHO_COLUMNA_ALUMNO_PX[config.anchoColumnaAlumno]
 
   return (
     // En escritorio la rejilla acota su propia altura y hace scroll interno:
@@ -623,7 +651,8 @@ function Rejilla({
         <thead>
           <tr>
             <th
-              className="sticky left-0 z-20 min-w-[196px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua lg:top-0"
+              className="sticky left-0 z-20 border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua lg:top-0"
+              style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               scope="col"
             >
               Alumno
@@ -648,19 +677,20 @@ function Rejilla({
               <th
                 scope="row"
                 className={
-                  'sticky left-0 z-10 min-w-[196px] border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold dark:border-noche-borde ' +
+                  'sticky left-0 z-10 border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold dark:border-noche-borde ' +
                   (fila % 2
                     ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
                     : 'bg-superficie dark:bg-noche-superficie')
                 }
+                style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               >
                 <div className="flex items-center gap-1">
                   <button
                     className="min-w-0 flex-1 truncate text-left underline-offset-2 active:underline"
                     onClick={() => navegar(`/alumnos/${a.id}`)}
-                    aria-label={`Abrir ficha de ${a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}`}
+                    aria-label={`Abrir ficha de ${formatearNombre(a, config.formatoNombre)}`}
                   >
-                    {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
+                    {formatearNombre(a, config.formatoNombre)}
                   </button>
                   <button
                     onClick={() => setObservando({ alumno: a, signo: '+' })}
@@ -724,6 +754,64 @@ function Rejilla({
         onCerrar={() => setObservando(null)}
       />
     </div>
+  )
+}
+
+const OPCIONES_FORMATO_NOMBRE: { valor: FormatoNombre; etiqueta: string }[] = [
+  { valor: 'apellidos-nombre', etiqueta: 'Apellidos, Nombre' },
+  { valor: 'nombre-apellidos', etiqueta: 'Nombre Apellidos' },
+  { valor: 'solo-nombre', etiqueta: 'Solo Nombre' },
+]
+
+const OPCIONES_ANCHO_COLUMNA: { valor: AnchoColumnaAlumno; etiqueta: string }[] = [
+  { valor: 'estrecha', etiqueta: 'Estrecha' },
+  { valor: 'media', etiqueta: 'Media' },
+  { valor: 'ancha', etiqueta: 'Ancha' },
+]
+
+/** Preferencias de la rejilla (§ Bloque 4): formato del nombre y ancho de la columna congelada. */
+function HojaVistaRejilla({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => void }) {
+  const config = useConfig()
+
+  return (
+    <Hoja abierta={abierta} titulo="Vista de la rejilla" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <div>
+          <span className="etiqueta">Nombre del alumnado</span>
+          <div className="space-y-2">
+            {OPCIONES_FORMATO_NOMBRE.map((o) => (
+              <button
+                key={o.valor}
+                onClick={() => void guardarConfig({ formatoNombre: o.valor })}
+                className={
+                  'w-full rounded-xl border p-3 text-left ' +
+                  (config.formatoNombre === o.valor
+                    ? 'border-primario bg-primario/10'
+                    : 'border-borde dark:border-noche-borde')
+                }
+              >
+                {o.etiqueta}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <span className="etiqueta">Ancho de la columna de alumnado</span>
+          <div className="grid grid-cols-3 gap-2">
+            {OPCIONES_ANCHO_COLUMNA.map((o) => (
+              <button
+                key={o.valor}
+                onClick={() => void guardarConfig({ anchoColumnaAlumno: o.valor })}
+                className={(config.anchoColumnaAlumno === o.valor ? 'btn-primario' : 'btn-suave') + ' px-0'}
+              >
+                {o.etiqueta}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Hoja>
   )
 }
 
@@ -815,7 +903,7 @@ function NotaDelTrimestre({
                     aria-expanded={abiertoEste}
                   >
                     <span className="min-w-0 flex-1 truncate">
-                      {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
+                      {formatearNombre(a, config.formatoNombre)}
                     </span>
                     {/* Real → redondeada (oficial), siempre juntas: el decimal
                         real queda trazable para una reclamación (Orden 130,
@@ -962,6 +1050,7 @@ function MediasPorUnidad({
   unidades: import('../db/types').UnidadDidactica[]
 }) {
   const [abierto, setAbierto] = useState(false)
+  const config = useConfig()
   const grupos = useMemo(() => agruparPorUnidad(columnas), [columnas])
 
   const conUnidad = [...grupos.entries()].filter(([udId]) => udId !== null)
@@ -992,7 +1081,7 @@ function MediasPorUnidad({
                     return (
                       <li key={a.id} className="flex items-center gap-2 text-sm">
                         <span className="min-w-0 flex-1 truncate">
-                          {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
+                          {formatearNombre(a, config.formatoNombre)}
                         </span>
                         <span className="cifra font-bold">
                           {media == null ? '—' : media.toFixed(1)}

@@ -335,6 +335,15 @@ class CuadernoDB extends Dexie {
             }
           })
       })
+
+    /**
+     * v17 — Bloque 4. `Config` gana `formatoNombre` y `anchoColumnaAlumno`
+     * (columna de alumnado del Cuaderno). Igual que `webdav` en la v12 y
+     * `sincro` en la v14: viven en el singleton de config, sin índice, así
+     * que basta con declarar la versión — `leerConfig`/`useConfig` ya
+     * completan los valores por defecto en los registros existentes.
+     */
+    this.version(17).stores({})
   }
 }
 
@@ -343,7 +352,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 16
+export const ESQUEMA_ACTUAL = 17
 
 export const db = new CuadernoDB()
 
