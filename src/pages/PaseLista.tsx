@@ -9,7 +9,7 @@ import {
   Undo2,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AccionCabecera, Cabecera } from '../components/Cabecera'
 import { CampoArea } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
@@ -26,6 +26,7 @@ import type { Alumno, Asistencia, EstadoAsistencia } from '../db/types'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { aISO, etiquetaDia, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
+import { useFechaActiva } from '../store/fechaActiva'
 import { useUI } from '../store/ui'
 
 /** Aspecto de cada estado. Solo tokens: nada de hex sueltos (§3.1). */
@@ -59,9 +60,17 @@ const ESTADOS: Record<
   },
 }
 
-export function PaseLista({ grupoId, fecha }: { grupoId: string; fecha?: string }) {
+export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; fecha?: string }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
-  const dia = fecha ?? aISO()
+  const dia = useFechaActiva((s) => s.fecha)
+  const fijarFecha = useFechaActiva((s) => s.fijarFecha)
+  // Semilla de la ruta #/asistencia/:grupoId/:fecha (router.ts): solo se aplica
+  // una vez al montar, para que el enlace directo abra en esa fecha sin que
+  // luego pelee con el store compartido con «Hoy».
+  useEffect(() => {
+    if (fechaSemilla) fijarFecha(fechaSemilla)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Pila local de deshacer: un snackbar por cada toque sería insoportable con
   // 25 alumnos, así que el botón «Deshacer» de la cabecera va vaciando la pila.
@@ -133,7 +142,7 @@ export function PaseLista({ grupoId, fecha }: { grupoId: string; fecha?: string 
     })
   }
 
-  const irA = (delta: number) => navegar(`/asistencia/${grupoId}/${sumarDias(dia, delta)}`)
+  const irA = (delta: number) => fijarFecha(sumarDias(dia, delta))
 
   return (
     <>

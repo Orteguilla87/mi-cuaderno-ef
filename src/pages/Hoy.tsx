@@ -34,6 +34,7 @@ import {
 } from '../lib/fechas'
 import { generarPlanDelDia } from '../lib/informes'
 import { navegar } from '../lib/router'
+import { useFechaActiva } from '../store/fechaActiva'
 
 interface Clase {
   grupo: Grupo
@@ -47,9 +48,12 @@ interface Clase {
 export function Hoy() {
   const [vista, setVista] = useState<'dia' | 'semana'>('dia')
   const hoy = aISO()
-  // Fecha que se está consultando. Arranca en hoy y se mueve con las flechas o el
-  // selector; «en curso»/«siguiente» solo tienen sentido cuando coincide con hoy.
-  const [fecha, setFecha] = useState(hoy)
+  // Fecha que se está consultando: compartida con Pasar lista (§ Bloque 3),
+  // así que entrar a un grupo o a pasar lista y volver con «Atrás» la
+  // mantiene en vez de reiniciarla a hoy. «En curso»/«siguiente» solo tienen
+  // sentido cuando coincide con hoy.
+  const fecha = useFechaActiva((s) => s.fecha)
+  const fijarFecha = useFechaActiva((s) => s.fijarFecha)
   const esHoy = fecha === hoy
   // Se refresca solo cada minuto: «en curso» y «siguiente» dependen de la hora,
   // y el maestro deja la pantalla abierta durante la clase.
@@ -145,10 +149,10 @@ export function Hoy() {
           etiqueta={formatoLargo(fecha)}
           valor={fecha}
           esHoy={esHoy}
-          onAnterior={() => setFecha(sumarDias(fecha, -1))}
-          onSiguiente={() => setFecha(sumarDias(fecha, 1))}
-          onElegir={setFecha}
-          onHoy={() => setFecha(hoy)}
+          onAnterior={() => fijarFecha(sumarDias(fecha, -1))}
+          onSiguiente={() => fijarFecha(sumarDias(fecha, 1))}
+          onElegir={fijarFecha}
+          onHoy={() => fijarFecha(hoy)}
         />
 
         {!estado ? null : estado.tipo !== 'lectivo' ? (
