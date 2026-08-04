@@ -42,10 +42,11 @@ import { guardarConfig, useConfig } from '../db/config'
 import { db } from '../db/db'
 import { calificarGrupo } from '../db/notas'
 import { filasPorColumna } from '../db/filas'
-import { notaInstrumento, notaOficial, type MotivoExclusion } from '../lib/notas'
+import { notaInstrumento, notaOficial, type MotivoExclusion, type ResultadoTrimestre } from '../lib/notas'
 import type {
   Alumno,
   AnchoColumnaAlumno,
+  BandaSobre,
   CalificacionOficial,
   Columna,
   FilaInstrumento,
@@ -449,15 +450,12 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
       )}
 
       {grupo?.etapa === 'primaria' && idEfectivo && (
-        <>
-          <NotaDelTrimestre
-            grupoId={idEfectivo}
-            trimestre={trimestre}
-            alumnos={alumnos ?? []}
-            onRepartir={() => setRepartiendo(true)}
-          />
-          <ResumenDistribucion grupoId={idEfectivo} trimestre={trimestre} alumnos={alumnos ?? []} />
-        </>
+        <NotaDelTrimestre
+          grupoId={idEfectivo}
+          trimestre={trimestre}
+          alumnos={alumnos ?? []}
+          onRepartir={() => setRepartiendo(true)}
+        />
       )}
 
       <MediasPorUnidad
@@ -940,6 +938,13 @@ function NotaDelTrimestre({
             })}
           </ul>
 
+          <ResumenDistribucion
+            trimestre={trimestre}
+            alumnos={alumnos}
+            notas={notas}
+            bandaSobre={config.bandaSobre}
+          />
+
           <p className="mt-2 text-xs texto-suave">
             Orden 130/2023: cada instrumento pesa dentro de su unidad y cada unidad dentro del
             trimestre. Lo que no está evaluado se excluye y el resto se reajusta; toca un alumno
@@ -958,22 +963,16 @@ function NotaDelTrimestre({
  * evidencia todavía.
  */
 function ResumenDistribucion({
-  grupoId,
   trimestre,
   alumnos,
+  notas,
+  bandaSobre,
 }: {
-  grupoId: string
   trimestre: Trimestre
   alumnos: Alumno[]
+  notas: Map<string, ResultadoTrimestre>
+  bandaSobre: BandaSobre
 }) {
-  const config = useConfig()
-  const notas = useLiveQuery(async () => {
-    await Promise.all([db.columnas.count(), db.filas.count(), db.valores.count(), db.unidades.count()])
-    return calificarGrupo(grupoId, trimestre)
-  }, [grupoId, trimestre])
-
-  if (!notas || alumnos.length === 0) return null
-
   const recuento: Record<CalificacionOficial | 'SIN_DATOS', number> = {
     IN: 0,
     SU: 0,
@@ -985,7 +984,7 @@ function ResumenDistribucion({
   for (const a of alumnos) {
     const res = notas.get(a.id)
     if (res?.nota == null) recuento.SIN_DATOS++
-    else recuento[notaOficial(res.nota, config.bandaSobre).oficial]++
+    else recuento[notaOficial(res.nota, bandaSobre).oficial]++
   }
 
   const total = alumnos.length
@@ -1009,7 +1008,7 @@ function ResumenDistribucion({
   ]
 
   return (
-    <div className="px-4 pb-4">
+    <div className="mt-3">
       <p className="etiqueta mb-2">
         Distribución del {trimestre}.º trimestre
       </p>
