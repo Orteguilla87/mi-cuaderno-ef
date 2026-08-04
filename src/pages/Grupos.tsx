@@ -18,6 +18,7 @@ import { GripVertical, Users } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { Campo } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { db, nuevoId } from '../db/db'
@@ -236,11 +237,11 @@ function HojaNuevoGrupo({
           <label className="etiqueta" htmlFor="nombre-grupo">
             Nombre
           </label>
-          <input
+          <Campo
             id="nombre-grupo"
             className="campo"
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            valor={nombre}
+            onValor={setNombre}
             placeholder="3ºB"
             autoFocus
           />

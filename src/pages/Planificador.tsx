@@ -3,6 +3,7 @@ import { CalendarOff, CalendarRange, ChevronLeft, ChevronRight, Layers, Plus, Us
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { Campo } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
 import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
@@ -401,11 +402,11 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
           <label className="etiqueta" htmlFor="ud-titulo">
             Título
           </label>
-          <input
+          <Campo
             id="ud-titulo"
             className="campo"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
+            valor={titulo}
+            onValor={setTitulo}
             placeholder="Habilidades con móvil"
             autoFocus
           />
@@ -524,11 +525,11 @@ function HojaEditarUnidad({
           <label className="etiqueta" htmlFor="ud-editar-titulo">
             Título
           </label>
-          <input
+          <Campo
             id="ud-editar-titulo"
             className="campo"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
+            valor={titulo}
+            onValor={setTitulo}
             autoFocus
           />
         </div>

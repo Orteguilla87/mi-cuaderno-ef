@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ClipboardPaste, Copy, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
+import { Campo, CampoArea } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { crearRubrica, duplicarRubrica } from '../db/cuaderno'
@@ -63,10 +64,10 @@ export function Rubricas() {
 
       <div className="space-y-4 p-4">
         <div className="flex gap-2">
-          <input
+          <Campo
             className="campo flex-1"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
+            valor={titulo}
+            onValor={setTitulo}
             onKeyDown={(e) => e.key === 'Enter' && void crear()}
             placeholder="Nombre de la rúbrica"
             aria-label="Nombre de la nueva rúbrica"
@@ -202,11 +203,11 @@ function HojaImportarTabla({
           <label className="etiqueta" htmlFor="tabla-rubrica">
             Tabla
           </label>
-          <textarea
+          <CampoArea
             id="tabla-rubrica"
             className="campo h-40 resize-none py-2 font-mono text-xs"
-            value={texto}
-            onChange={(e) => analizar(e.target.value)}
+            valor={texto}
+            onValor={analizar}
             placeholder={'Criterio\tNo conseguido\tEn proceso\tConseguido\nEquilibrio\tSe cae\tDuda\tFirme'}
           />
           <p className="mt-1 text-xs texto-suave">
@@ -314,10 +315,10 @@ export function HojaEditarRubrica({
       <Hoja abierta={!!rubricaId} titulo="Editar rúbrica" onCerrar={onCerrar}>
         <div className="space-y-4">
           <div className="flex gap-2">
-            <input
+            <Campo
               className="campo flex-1"
-              value={rubrica.titulo}
-              onChange={(e) => actualizar({ titulo: e.target.value })}
+              valor={rubrica.titulo}
+              onValor={(v) => actualizar({ titulo: v })}
               aria-label="Título de la rúbrica"
             />
             <button
@@ -340,23 +341,23 @@ export function HojaEditarRubrica({
             <ul className="space-y-2">
               {rubrica.niveles.map((n, i) => (
                 <li key={n.id} className="flex items-center gap-2">
-                  <input
+                  <Campo
                     className="campo flex-1"
-                    value={n.etiqueta}
-                    onChange={(e) => {
+                    valor={n.etiqueta}
+                    onValor={(v) => {
                       const niveles = [...rubrica.niveles]
-                      niveles[i] = { ...n, etiqueta: e.target.value }
+                      niveles[i] = { ...n, etiqueta: v }
                       actualizar({ niveles })
                     }}
                     aria-label={`Etiqueta del nivel ${i + 1}`}
                   />
-                  <input
+                  <Campo
                     type="number"
                     className="campo cifra w-20 text-center font-bold"
-                    value={n.valor}
-                    onChange={(e) => {
+                    valor={String(n.valor)}
+                    onValor={(v) => {
                       const niveles = [...rubrica.niveles]
-                      niveles[i] = { ...n, valor: Number(e.target.value) }
+                      niveles[i] = { ...n, valor: Number(v) }
                       actualizar({ niveles })
                     }}
                     aria-label={`Valor (nota) del nivel ${i + 1}`}
@@ -389,12 +390,12 @@ export function HojaEditarRubrica({
               {rubrica.criterios.map((c, i) => (
                 <article key={c.id} className="tarjeta space-y-3 py-3">
                   <div className="flex items-center gap-2">
-                    <input
+                    <Campo
                       className="campo flex-1 font-semibold"
-                      value={c.titulo}
-                      onChange={(e) => {
+                      valor={c.titulo}
+                      onValor={(v) => {
                         const criterios = [...rubrica.criterios]
-                        criterios[i] = { ...c, titulo: e.target.value }
+                        criterios[i] = { ...c, titulo: v }
                         actualizar({ criterios })
                       }}
                       aria-label={`Título del criterio ${i + 1}`}
@@ -413,13 +414,13 @@ export function HojaEditarRubrica({
 
                   <label className="flex items-center gap-2">
                     <span className="text-sm texto-suave">Peso</span>
-                    <input
+                    <Campo
                       type="number"
                       className="campo cifra w-24 text-center"
-                      value={c.pesoPct}
-                      onChange={(e) => {
+                      valor={String(c.pesoPct)}
+                      onValor={(v) => {
                         const criterios = [...rubrica.criterios]
-                        criterios[i] = { ...c, pesoPct: Number(e.target.value) }
+                        criterios[i] = { ...c, pesoPct: Number(v) }
                         actualizar({ criterios })
                       }}
                       aria-label={`Peso del criterio ${i + 1} en porcentaje`}
@@ -438,15 +439,15 @@ export function HojaEditarRubrica({
                         >
                           {n.etiqueta} <span className="cifra texto-suave">({n.valor})</span>
                         </label>
-                        <textarea
+                        <CampoArea
                           id={`desc-${c.id}-${n.id}`}
                           className="campo h-16 resize-none py-2 text-sm"
-                          value={c.descripciones?.[n.id] ?? ''}
-                          onChange={(e) => {
+                          valor={c.descripciones?.[n.id] ?? ''}
+                          onValor={(v) => {
                             const criterios = [...rubrica.criterios]
                             criterios[i] = {
                               ...c,
-                              descripciones: { ...c.descripciones, [n.id]: e.target.value },
+                              descripciones: { ...c.descripciones, [n.id]: v },
                             }
                             actualizar({ criterios })
                           }}

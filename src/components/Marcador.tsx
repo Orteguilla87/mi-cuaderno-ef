@@ -1,5 +1,6 @@
 import { Minus, Plus, RotateCcw, X } from 'lucide-react'
 import { useState } from 'react'
+import { Campo } from './Campo'
 import { useConfig } from '../db/config'
 import { useCapaAbierta } from '../lib/capas'
 
@@ -113,9 +114,9 @@ export function Marcador({ onCerrar }: { onCerrar: () => void }) {
               className="flex min-h-0 flex-col rounded-xl2 border-4 p-2"
               style={{ borderColor: color, backgroundColor: `${color}1a` }}
             >
-              <input
-                value={equipo.nombre}
-                onChange={(e) => renombrar(i, e.target.value)}
+              <Campo
+                valor={equipo.nombre}
+                onValor={(v) => renombrar(i, v)}
                 aria-label={`Nombre del equipo ${i + 1}`}
                 className="w-full truncate rounded-xl bg-transparent text-center text-lg font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:text-xl"
                 style={{ color }}

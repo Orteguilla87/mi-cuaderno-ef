@@ -4,6 +4,7 @@ import { useConfig } from '../db/config'
 import { crearObservacion } from '../db/observaciones'
 import type { Alumno, SignoObservacion, TipoObservacion } from '../db/types'
 import { useUI } from '../store/ui'
+import { CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 
 const TIPOS: { valor: TipoObservacion; etiqueta: string }[] = [
@@ -153,11 +154,11 @@ export function HojaObservacion({
           <label className="etiqueta" htmlFor="obs-texto">
             Qué ha pasado
           </label>
-          <textarea
+          <CampoArea
             id="obs-texto"
             className="campo h-24 resize-none py-2"
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
+            valor={texto}
+            onValor={setTexto}
             placeholder="Usa el micrófono del teclado para dictarlo."
             autoFocus
           />

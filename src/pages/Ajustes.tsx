@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
+import { Campo } from '../components/Campo'
 import { CursoEscolarAjustes } from '../components/CursoEscolarAjustes'
 import { Hoja } from '../components/Hoja'
 import {
@@ -154,15 +155,15 @@ export function Ajustes() {
                 {config.pesosTrimestres.map((peso, i) => (
                   <label key={i} className="flex-1">
                     <span className="mb-1 block text-center text-xs texto-suave">{i + 1}.º</span>
-                    <input
+                    <Campo
                       type="number"
                       min={0}
                       max={100}
                       className="campo text-center"
-                      value={peso}
-                      onChange={(e) => {
+                      valor={String(peso)}
+                      onValor={(v) => {
                         const pesos = [...config.pesosTrimestres] as [number, number, number]
-                        pesos[i] = Number(e.target.value)
+                        pesos[i] = Number(v)
                         void guardarConfig({ pesosTrimestres: pesos })
                       }}
                     />
@@ -228,11 +229,11 @@ export function Ajustes() {
             <label className="etiqueta" htmlFor="modelo">
               Modelo
             </label>
-            <input
+            <Campo
               id="modelo"
               className="campo"
-              value={config.modeloAgente}
-              onChange={(e) => guardarConfig({ modeloAgente: e.target.value })}
+              valor={config.modeloAgente}
+              onValor={(v) => guardarConfig({ modeloAgente: v })}
             />
             <p className="mt-1 text-xs texto-suave">
               Los identificadores cambian con el tiempo; por eso es editable.
@@ -319,11 +320,11 @@ function EtiquetasObservacion({ etiquetas }: { etiquetas: string[] }) {
         <ul className="space-y-2">
           {etiquetas.map((t, i) => (
             <li key={i} className="flex items-center gap-2">
-              <input
+              <Campo
                 className="campo flex-1"
-                value={t}
-                onChange={(e) => cambiar(i, e.target.value)}
-                onBlur={() => alSalir(i)}
+                valor={t}
+                onValor={(v) => cambiar(i, v)}
+                alConfirmar={() => alSalir(i)}
                 aria-label={`Etiqueta ${i + 1}`}
               />
               <button
@@ -338,10 +339,10 @@ function EtiquetasObservacion({ etiquetas }: { etiquetas: string[] }) {
         </ul>
       )}
       <div className="flex items-center gap-2">
-        <input
+        <Campo
           className="campo flex-1"
-          value={nueva}
-          onChange={(e) => setNueva(e.target.value)}
+          valor={nueva}
+          onValor={setNueva}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -512,14 +513,14 @@ function EditorBandas({
         {claves.map((c) => (
           <label key={c} className="flex-1">
             <span className="mb-1 block text-center text-xs font-bold texto-suave">{c}</span>
-            <input
+            <Campo
               type="number"
               min={0}
               max={10}
               step={0.1}
               className="campo text-center"
-              value={bandas[c]}
-              onChange={(e) => onCambio({ ...bandas, [c]: Number(e.target.value) })}
+              valor={String(bandas[c])}
+              onValor={(v) => onCambio({ ...bandas, [c]: Number(v) })}
             />
           </label>
         ))}
@@ -539,12 +540,12 @@ function ClaveApi() {
         API key de Anthropic
       </label>
       <div className="flex gap-2">
-        <input
+        <Campo
           id="api-key"
           type={visible ? 'text' : 'password'}
           className="campo flex-1"
-          value={config.apiKey ?? ''}
-          onChange={(e) => guardarConfig({ apiKey: e.target.value })}
+          valor={config.apiKey ?? ''}
+          onValor={(v) => guardarConfig({ apiKey: v })}
           placeholder="sk-ant-..."
           autoComplete="off"
           spellCheck={false}
@@ -840,21 +841,21 @@ function HojaPassphrase<T = void>({
           <p className="text-sm texto-suave">{explicacion}</p>
           <label className="block">
             <span className="etiqueta">Contraseña</span>
-            <input
+            <Campo
               type="password"
               className="campo"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
+              valor={passphrase}
+              onValor={setPassphrase}
               autoComplete="new-password"
             />
           </label>
           <label className="block">
             <span className="etiqueta">Repite la contraseña</span>
-            <input
+            <Campo
               type="password"
               className="campo"
-              value={repetir}
-              onChange={(e) => setRepetir(e.target.value)}
+              valor={repetir}
+              onValor={setRepetir}
               autoComplete="new-password"
             />
           </label>
@@ -992,11 +993,11 @@ function HojaConfirmarImport({
 
         <label className="block">
           <span className="etiqueta">Contraseña de la copia</span>
-          <input
+          <Campo
             type="password"
             className="campo"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
+            valor={passphrase}
+            onValor={setPassphrase}
             autoComplete="off"
           />
         </label>
@@ -1164,11 +1165,11 @@ function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
 
       <label className="block">
         <span className="etiqueta">Identificador de sincronización</span>
-        <input
+        <Campo
           className="campo font-mono text-sm"
           type={verId ? 'text' : 'password'}
-          value={borrador.id}
-          onChange={(e) => setBorrador((b) => ({ ...b, id: e.target.value }))}
+          valor={borrador.id}
+          onValor={(v) => setBorrador((b) => ({ ...b, id: v }))}
           placeholder="Genera uno y cópialo en el otro dispositivo"
           autoComplete="off"
           spellCheck={false}
@@ -1197,11 +1198,11 @@ function SeccionSincro({ sincro }: { sincro: ConfigSincro | undefined }) {
 
       <label className="block">
         <span className="etiqueta">Contraseña de cifrado</span>
-        <input
+        <Campo
           type="password"
           className="campo"
-          value={borrador.passphrase}
-          onChange={(e) => setBorrador((b) => ({ ...b, passphrase: e.target.value }))}
+          valor={borrador.passphrase}
+          onValor={(v) => setBorrador((b) => ({ ...b, passphrase: v }))}
           autoComplete="new-password"
         />
         <p className="mt-1 text-xs texto-suave">
@@ -1277,10 +1278,10 @@ function SeccionWebdav({ webdav }: { webdav: ConfigWebdav | undefined }) {
     <div className="space-y-3">
       <label className="block">
         <span className="etiqueta">Dirección de la carpeta</span>
-        <input
+        <Campo
           className="campo"
-          value={borrador.url}
-          onChange={(e) => setBorrador({ ...borrador, url: e.target.value })}
+          valor={borrador.url}
+          onValor={(v) => setBorrador({ ...borrador, url: v })}
           placeholder="https://nube.example/remote.php/dav/files/usuario/cuaderno"
           autoComplete="off"
           spellCheck={false}
@@ -1290,21 +1291,21 @@ function SeccionWebdav({ webdav }: { webdav: ConfigWebdav | undefined }) {
       <div className="flex gap-2">
         <label className="block flex-1">
           <span className="etiqueta">Usuario</span>
-          <input
+          <Campo
             className="campo"
-            value={borrador.usuario}
-            onChange={(e) => setBorrador({ ...borrador, usuario: e.target.value })}
+            valor={borrador.usuario}
+            onValor={(v) => setBorrador({ ...borrador, usuario: v })}
             autoComplete="off"
             spellCheck={false}
           />
         </label>
         <label className="block flex-1">
           <span className="etiqueta">Contraseña</span>
-          <input
+          <Campo
             type="password"
             className="campo"
-            value={borrador.password}
-            onChange={(e) => setBorrador({ ...borrador, password: e.target.value })}
+            valor={borrador.password}
+            onValor={(v) => setBorrador({ ...borrador, password: v })}
             autoComplete="off"
           />
         </label>
@@ -1433,15 +1434,15 @@ function CampoPin({
   return (
     <label className="block">
       <span className="etiqueta">{etiqueta}</span>
-      <input
+      <Campo
         type="password"
         inputMode="numeric"
         pattern="[0-9]*"
         autoComplete="off"
         maxLength={LONGITUD_MAX_PIN}
         className="campo cifra text-center text-xl tracking-[0.5em]"
-        value={valor}
-        onChange={(e) => onCambio(e.target.value.replace(/[^0-9]/g, '').slice(0, LONGITUD_MAX_PIN))}
+        valor={valor}
+        onValor={(v) => onCambio(v.replace(/[^0-9]/g, '').slice(0, LONGITUD_MAX_PIN))}
       />
     </label>
   )

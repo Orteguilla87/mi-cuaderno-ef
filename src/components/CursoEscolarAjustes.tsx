@@ -12,6 +12,7 @@ import type { CursoEscolar, PeriodoNoLectivo, Trimestre } from '../db/types'
 import { parsearCalendario, type ResultadoCalendario } from '../lib/calendarioEscolar'
 import { formatoLargo } from '../lib/fechas'
 import { useUI } from '../store/ui'
+import { Campo, CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 
 const NUMEROS_TRIMESTRE: Trimestre[] = [1, 2, 3]
@@ -321,11 +322,11 @@ function HojaPegarCalendario({
           <label className="etiqueta" htmlFor="cal-texto">
             Fechas y periodos
           </label>
-          <textarea
+          <CampoArea
             id="cal-texto"
             className="campo h-36 resize-none py-2 text-sm"
-            value={texto}
-            onChange={(e) => analizar(e.target.value)}
+            valor={texto}
+            onValor={analizar}
             placeholder={'23/12/2026 - 07/01/2027\n29/03/2027 a 02/04/2027\n12/10/2026\n01/05'}
           />
           <p className="mt-1 text-xs texto-suave">
@@ -446,10 +447,10 @@ function PeriodosNoLectivosEditor({ curso }: { curso: CursoEscolar }) {
       )}
 
       <div className="space-y-2">
-        <input
+        <Campo
           className="campo"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
+          valor={nombre}
+          onValor={setNombre}
           placeholder="Vacaciones de Navidad"
           aria-label="Nombre del periodo"
         />

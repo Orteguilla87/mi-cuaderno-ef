@@ -3,6 +3,7 @@ import { ClipboardCheck, ClipboardList, MessageSquareText, Minus, Plus, Shuffle 
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { Campo } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { HojaConfirmar } from '../components/HojaConfirmar'
@@ -388,11 +389,11 @@ function HojaNuevoAlumno({
           <label className="etiqueta" htmlFor="alumno-nombre">
             Nombre
           </label>
-          <input
+          <Campo
             id="alumno-nombre"
             className="campo"
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            valor={nombre}
+            onValor={setNombre}
             autoFocus
           />
         </div>
@@ -400,11 +401,11 @@ function HojaNuevoAlumno({
           <label className="etiqueta" htmlFor="alumno-apellidos">
             Apellidos
           </label>
-          <input
+          <Campo
             id="alumno-apellidos"
             className="campo"
-            value={apellidos}
-            onChange={(e) => setApellidos(e.target.value)}
+            valor={apellidos}
+            onValor={setApellidos}
           />
         </div>
         <button className="btn-primario w-full" onClick={guardar} disabled={!nombre.trim()}>
@@ -452,11 +453,11 @@ function HojaEditarGrupo({
           <label className="etiqueta" htmlFor="editar-nombre">
             Nombre
           </label>
-          <input
+          <Campo
             id="editar-nombre"
             className="campo"
-            value={nombreActual}
-            onChange={(e) => setNombre(e.target.value)}
+            valor={nombreActual}
+            onValor={setNombre}
           />
         </div>
 

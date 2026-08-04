@@ -11,6 +11,7 @@ import {
 import type { Grupo, Trimestre, UnidadDidactica } from '../db/types'
 import { TIPOS_CALIFICABLES } from '../db/types'
 import { useUI } from '../store/ui'
+import { Campo } from './Campo'
 import { Hoja } from './Hoja'
 
 /**
@@ -170,14 +171,15 @@ function FilaPeso({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <input
+        <Campo
           type="number"
           min={0}
           max={100}
           className="campo cifra w-20 text-center"
-          value={peso}
+          valor={String(peso)}
           disabled={!calificable}
-          onChange={(e) => onCambio(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+          onValor={(v) => onCambio(Number(v) || 0)}
+          sanear={(v) => String(Math.max(0, Math.min(100, Number(v) || 0)))}
           aria-label={`Peso de ${unidad.titulo} en porcentaje del trimestre`}
         />
         <span className="text-sm texto-suave">%</span>

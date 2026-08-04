@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { Campo, CampoArea } from '../components/Campo'
 import { HojaConfirmar } from '../components/HojaConfirmar'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { resumirAsistencia } from '../db/asistencia'
@@ -169,33 +170,33 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
         <label className="etiqueta" htmlFor="f-nombre">
           Nombre
         </label>
-        <input
+        <Campo
           id="f-nombre"
           className="campo"
-          value={alumno.nombre}
-          onChange={(e) => actualizar({ nombre: e.target.value })}
+          valor={alumno.nombre}
+          onValor={(v) => actualizar({ nombre: v })}
         />
       </div>
       <div>
         <label className="etiqueta" htmlFor="f-apellidos">
           Apellidos
         </label>
-        <input
+        <Campo
           id="f-apellidos"
           className="campo"
-          value={alumno.apellidos}
-          onChange={(e) => actualizar({ apellidos: e.target.value })}
+          valor={alumno.apellidos}
+          onValor={(v) => actualizar({ apellidos: v })}
         />
       </div>
       <div>
         <label className="etiqueta" htmlFor="f-alias">
           Alias
         </label>
-        <input
+        <Campo
           id="f-alias"
           className="campo"
-          value={alumno.alias}
-          onChange={(e) => actualizar({ alias: e.target.value })}
+          valor={alumno.alias}
+          onValor={(v) => actualizar({ alias: v })}
         />
         <p className="mt-1 text-xs texto-suave">
           Cómo le llamas en clase. El agente de voz lo usará para reconocerle.
@@ -210,11 +211,11 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
           No escribas diagnósticos: solo pautas prácticas. Este campo nunca aparece en informes
           exportables; solo viaja en el backup cifrado.
         </div>
-        <textarea
+        <CampoArea
           id="f-apoyos"
           className="campo h-24 resize-none py-2"
-          value={alumno.apoyos ?? ''}
-          onChange={(e) => actualizar({ apoyos: e.target.value })}
+          valor={alumno.apoyos ?? ''}
+          onValor={(v) => actualizar({ apoyos: v })}
           placeholder="Se sitúa cerca de mí al explicar; necesita consigna corta."
         />
       </div>
@@ -223,11 +224,11 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
         <label className="etiqueta" htmlFor="f-notas">
           Notas privadas
         </label>
-        <textarea
+        <CampoArea
           id="f-notas"
           className="campo h-24 resize-none py-2"
-          value={alumno.notasPrivadas ?? ''}
-          onChange={(e) => actualizar({ notasPrivadas: e.target.value })}
+          valor={alumno.notasPrivadas ?? ''}
+          onValor={(v) => actualizar({ notasPrivadas: v })}
         />
       </div>
     </div>

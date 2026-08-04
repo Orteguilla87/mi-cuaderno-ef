@@ -16,6 +16,7 @@ import { resumirAsistencia } from '../db/asistencia'
 import { buscarAlumnoEnTexto, construirMapaTokens } from '../lib/pseudonimizacion'
 import { etiquetaDia } from '../lib/fechas'
 import { useUI } from '../store/ui'
+import { CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 
 /**
@@ -155,10 +156,10 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     <Hoja abierta={abierta} titulo="Agente de voz" onCerrar={cerrar}>
       {fase.paso === 'dictado' && (
         <div className="space-y-3">
-          <textarea
+          <CampoArea
             className="campo h-28 resize-none py-2"
-            value={fase.texto}
-            onChange={(e) => setFase({ paso: 'dictado', texto: e.target.value })}
+            valor={fase.texto}
+            onValor={(v) => setFase({ paso: 'dictado', texto: v })}
             placeholder="Ana ha ayudado a un compañero, Luis sin chándal…"
             aria-label="Dictado para el agente de voz"
             aria-invalid={!!fase.error}

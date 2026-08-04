@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Download, Plus, Search, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
+import { Campo, CampoArea } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
 import { db } from '../db/db'
 import {
@@ -78,10 +79,10 @@ export function Juegos({
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tinta-tenue"
                 aria-hidden
               />
-              <input
+              <Campo
                 className="campo pl-10"
-                value={consulta}
-                onChange={(e) => setConsulta(e.target.value)}
+                valor={consulta}
+                onValor={setConsulta}
                 placeholder="Buscar juego, material, etiqueta"
                 aria-label="Buscar juegos"
               />
@@ -271,11 +272,11 @@ function HojaImportarJuegos({ abierta, onCerrar }: { abierta: boolean; onCerrar:
           <label className="etiqueta" htmlFor="json-juegos">
             JSON del banco
           </label>
-          <textarea
+          <CampoArea
             id="json-juegos"
             className="campo h-40 resize-none py-2 font-mono text-xs"
-            value={json}
-            onChange={(e) => analizar(e.target.value)}
+            valor={json}
+            onValor={analizar}
             placeholder='[{"nombre": "Pilla-pilla", "material": ["petos"], "etiquetas": ["calentamiento"]}]'
           />
           <p className="mt-1 text-xs texto-suave">

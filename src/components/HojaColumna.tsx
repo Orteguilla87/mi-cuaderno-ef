@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, ChevronLeft, ChevronRight, Copy, Plus, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Campo } from './Campo'
 import { cicloDeCurso, criteriosDeGrupo } from '../db/criterios'
 import { ordinalCiclo } from '../lib/ciclos'
 import {
@@ -232,11 +233,11 @@ export function HojaColumna({
             <label className="etiqueta" htmlFor="col-titulo">
               Título
             </label>
-            <input
+            <Campo
               id="col-titulo"
               className="campo"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
+              valor={titulo}
+              onValor={setTitulo}
               placeholder="Voltereta adelante"
               autoFocus
             />
@@ -282,13 +283,13 @@ export function HojaColumna({
               <label className="etiqueta" htmlFor="col-max">
                 Nota máxima
               </label>
-              <input
+              <Campo
                 id="col-max"
                 type="number"
                 className="campo cifra"
-                value={max}
+                valor={String(max)}
                 min={1}
-                onChange={(e) => setMax(Number(e.target.value))}
+                onValor={(v) => setMax(Number(v))}
               />
             </div>
           )}
@@ -386,14 +387,15 @@ export function HojaColumna({
                 Peso dentro de la unidad
               </label>
               <div className="flex items-center gap-2">
-                <input
+                <Campo
                   id="col-peso-ud"
                   type="number"
                   min={0}
                   max={100}
                   className="campo cifra w-24 text-center"
-                  value={pesoUd}
-                  onChange={(e) => setPesoUd(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                  valor={String(pesoUd)}
+                  onValor={(v) => setPesoUd(Number(v) || 0)}
+                  sanear={(v) => String(Math.max(0, Math.min(100, Number(v) || 0)))}
                 />
                 <span className="text-sm texto-suave">%</span>
               </div>
@@ -721,11 +723,11 @@ function FilaEditable({
   return (
     <li className="tarjeta space-y-2 py-3">
       {editableElDescriptor ? (
-        <input
+        <Campo
           className="campo"
-          value={descriptor}
-          onChange={(e) => setDescriptor(e.target.value)}
-          onBlur={() => void fijarDescriptorFila(fila.id, descriptor)}
+          valor={descriptor}
+          onValor={setDescriptor}
+          alConfirmar={(v) => void fijarDescriptorFila(fila.id, v)}
           aria-label="Qué se evalúa en esta fila"
         />
       ) : (
@@ -744,16 +746,14 @@ function FilaEditable({
           <label className="text-xs texto-suave" htmlFor={`peso-${fila.id}`}>
             Peso
           </label>
-          <input
+          <Campo
             id={`peso-${fila.id}`}
             type="number"
             min={0}
             className="campo cifra w-20 py-1 text-center text-sm"
             placeholder="auto"
-            value={fila.pesoFila ?? ''}
-            onChange={(e) =>
-              void fijarPesoFila(fila.id, e.target.value === '' ? null : Number(e.target.value))
-            }
+            valor={fila.pesoFila == null ? '' : String(fila.pesoFila)}
+            onValor={(v) => void fijarPesoFila(fila.id, v === '' ? null : Number(v))}
           />
           <span className="text-xs texto-suave">
             {fila.pesoFila === null ? 'a partes iguales con las demás' : '%'}
@@ -833,12 +833,12 @@ function EditorCalculo({
                 </button>
                 {marcada(c.id) && (
                   <div className="flex items-center gap-1">
-                    <input
+                    <Campo
                       type="number"
                       min={0}
                       className="campo cifra w-20 text-center"
-                      value={pesoDe(c.id)}
-                      onChange={(e) => cambiarPeso(c.id, Number(e.target.value))}
+                      valor={String(pesoDe(c.id))}
+                      onValor={(v) => cambiarPeso(c.id, Number(v))}
                       aria-label={`Peso de ${c.titulo} en porcentaje`}
                     />
                     <span className="text-sm texto-suave">%</span>

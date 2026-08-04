@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Minus, Plus, Circle, Search, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
+import { Campo } from '../components/Campo'
 import { db } from '../db/db'
 import { buscarObservaciones } from '../db/observaciones'
 import type { SignoObservacion, TipoObservacion } from '../db/types'
@@ -72,10 +73,10 @@ export function Observaciones({ grupoId, alumnoId }: { grupoId?: string; alumnoI
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tinta-tenue"
               aria-hidden
             />
-            <input
+            <Campo
               className="campo pl-10"
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
+              valor={texto}
+              onValor={setTexto}
               placeholder="Buscar en texto y etiquetas"
               aria-label="Buscar observaciones"
             />

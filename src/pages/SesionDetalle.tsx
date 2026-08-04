@@ -3,6 +3,7 @@ import { Clipboard, Copy, Link2, Plus, Save, Shuffle, StickyNote, Trash2 } from 
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { Campo, CampoArea } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
@@ -118,11 +119,11 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
           <label className="etiqueta" htmlFor="s-titulo">
             Título
           </label>
-          <input
+          <Campo
             id="s-titulo"
             className="campo"
-            value={sesion.titulo}
-            onChange={(e) => actualizar({ titulo: e.target.value })}
+            valor={sesion.titulo}
+            onValor={(v) => actualizar({ titulo: v })}
             placeholder="Circuito de equilibrio"
           />
         </div>
@@ -151,11 +152,11 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
           <label className="etiqueta" htmlFor="s-notas">
             Descripción
           </label>
-          <textarea
+          <CampoArea
             id="s-notas"
             className="campo h-40 resize-none py-2"
-            value={sesion.notas}
-            onChange={(e) => actualizar({ notas: e.target.value })}
+            valor={sesion.notas}
+            onValor={(v) => actualizar({ notas: v })}
             placeholder="Organización, variantes, qué vigilar…"
           />
         </div>
@@ -164,11 +165,11 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
           <label className="etiqueta" htmlFor="s-recursos-necesarios">
             Recursos necesarios
           </label>
-          <textarea
+          <CampoArea
             id="s-recursos-necesarios"
             className="campo h-20 resize-none py-2"
-            value={sesion.recursosNecesarios ?? ''}
-            onChange={(e) => actualizar({ recursosNecesarios: e.target.value })}
+            valor={sesion.recursosNecesarios ?? ''}
+            onValor={(v) => actualizar({ recursosNecesarios: v })}
             placeholder="12 conos, silbato, petos de 2 colores…"
           />
         </div>
@@ -177,11 +178,11 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
           <label className="etiqueta" htmlFor="s-comentarios">
             Comentarios
           </label>
-          <textarea
+          <CampoArea
             id="s-comentarios"
             className="campo h-20 resize-none py-2"
-            value={sesion.comentarios ?? ''}
-            onChange={(e) => actualizar({ comentarios: e.target.value })}
+            valor={sesion.comentarios ?? ''}
+            onValor={(v) => actualizar({ comentarios: v })}
             placeholder="Cómo fue realmente, incidencias…"
           />
         </div>
@@ -362,10 +363,10 @@ function Recursos({
           <option value="enlace">Enlace</option>
           <option value="nota">Nota</option>
         </select>
-        <input
+        <Campo
           className="campo flex-1"
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
+          valor={valor}
+          onValor={setValor}
           onKeyDown={(e) => e.key === 'Enter' && anadir()}
           placeholder={tipo === 'enlace' ? 'https://…' : 'Recordar traer petos'}
           aria-label="Valor del recurso"

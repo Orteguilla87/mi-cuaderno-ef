@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Copy, Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
+import { CampoArea } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { db } from '../db/db'
@@ -245,12 +246,10 @@ function ComentariosGrupo({
               <p className="text-sm font-bold">
                 {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
               </p>
-              <textarea
+              <CampoArea
                 className="campo h-20 resize-none py-2 text-sm"
-                value={borradores.get(a.id) ?? ''}
-                onChange={(e) =>
-                  setBorradores((prev) => new Map(prev).set(a.id, e.target.value))
-                }
+                valor={borradores.get(a.id) ?? ''}
+                onValor={(v) => setBorradores((prev) => new Map(prev).set(a.id, v))}
                 aria-label={`Comentario para ${a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}`}
               />
               <button className="btn-suave w-full" onClick={() => void copiar(a.id)}>

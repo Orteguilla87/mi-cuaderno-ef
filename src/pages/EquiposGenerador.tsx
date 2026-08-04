@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { Campo } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { TituloSeccion } from '../components/TituloSeccion'
@@ -487,21 +488,23 @@ function ConfiguracionPaso(props: {
         </div>
 
         {props.porTamano === 'num' ? (
-          <input
+          <Campo
             type="number"
             className="campo cifra"
             min={1}
-            value={props.numEquipos}
-            onChange={(e) => props.onNumEquipos(Math.max(1, Number(e.target.value)))}
+            valor={String(props.numEquipos)}
+            onValor={(v) => props.onNumEquipos(Number(v) || 1)}
+            sanear={(v) => String(Math.max(1, Number(v) || 1))}
             aria-label="Número de equipos"
           />
         ) : (
-          <input
+          <Campo
             type="number"
             className="campo cifra"
             min={1}
-            value={props.tamanoEquipo}
-            onChange={(e) => props.onTamanoEquipo(Math.max(1, Number(e.target.value)))}
+            valor={String(props.tamanoEquipo)}
+            onValor={(v) => props.onTamanoEquipo(Number(v) || 1)}
+            sanear={(v) => String(Math.max(1, Number(v) || 1))}
             aria-label="Alumnos por equipo"
           />
         )}
@@ -686,10 +689,10 @@ function ResultadoPaso({
       <div className="grid grid-cols-2 gap-3">
         {equipos.map((e, i) => (
           <div key={i} className="tarjeta py-3" style={{ borderTopColor: e.color, borderTopWidth: 4 }}>
-            <input
+            <Campo
               className="campo mb-2 px-2 py-1 text-sm font-bold"
-              value={e.nombre}
-              onChange={(ev) => onRenombrar(i, ev.target.value)}
+              valor={e.nombre}
+              onValor={(v) => onRenombrar(i, v)}
               style={{ color: e.color }}
               aria-label={`Nombre del equipo ${i + 1}`}
             />
@@ -788,11 +791,11 @@ function HojaGuardar({
           <label className="etiqueta" htmlFor="eq-nombre">
             Nombre de la alineación
           </label>
-          <input
+          <Campo
             id="eq-nombre"
             className="campo"
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            valor={nombre}
+            onValor={setNombre}
             placeholder="Equipos deporte colectivo"
             autoFocus
           />

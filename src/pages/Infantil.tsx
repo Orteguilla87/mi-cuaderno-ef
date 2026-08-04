@@ -3,6 +3,7 @@ import { FileText, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { CampoArea } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
 import { criteriosDeGrupo } from '../db/criterios'
 import { db } from '../db/db'
@@ -390,11 +391,11 @@ function InformeAlumno({ alumno, criterios }: { alumno: Alumno; criterios: Crite
         <label className="etiqueta" htmlFor="inf-comentario">
           Comentario del informe
         </label>
-        <textarea
+        <CampoArea
           id="inf-comentario"
           className="campo h-40 resize-none py-2"
-          value={valor}
-          onChange={(e) => setComentario(e.target.value)}
+          valor={valor}
+          onValor={setComentario}
           placeholder={`${alumno.nombre} ha evolucionado a lo largo del curso en…`}
         />
         <p className="mt-1 text-xs texto-suave">

@@ -22,9 +22,18 @@ export async function leerConfig(): Promise<Config> {
   return guardada ? { ...CONFIG_POR_DEFECTO, ...guardada } : CONFIG_POR_DEFECTO
 }
 
-export async function guardarConfig(cambios: Partial<Config>): Promise<void> {
-  const actual = await leerConfig()
-  await db.config.put({ ...actual, ...cambios, id: 'config' })
+// Cola de escritura: sin ella, dos `guardarConfig` disparados en rápida
+// sucesión (p. ej. tecleando rápido) pueden leer el mismo `actual` antes de
+// que el primero termine de escribir, y el segundo `put` pisa los cambios
+// del primero — pérdida de caracteres.
+let colaEscritura: Promise<void> = Promise.resolve()
+
+export function guardarConfig(cambios: Partial<Config>): Promise<void> {
+  colaEscritura = colaEscritura.then(async () => {
+    const actual = await leerConfig()
+    await db.config.put({ ...actual, ...cambios, id: 'config' })
+  })
+  return colaEscritura
 }
 
 /** Config reactiva. Devuelve los valores por defecto mientras carga. */

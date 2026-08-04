@@ -4,6 +4,7 @@ import type { ResultadoCalculo } from '../db/cuaderno'
 import { aplicarAGrupo, contarDestinatarios, guardarValor } from '../db/cuaderno'
 import type { Alumno, Columna, Rubrica, ValorCelda } from '../db/types'
 import { useUI } from '../store/ui'
+import { Campo, CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 
 /**
@@ -441,10 +442,10 @@ export function EditorColumna({
 
         {columna.tipo === 'texto' && (
           <>
-            <textarea
+            <CampoArea
               className="campo h-32 resize-none py-2"
-              value={valor?.texto ?? ''}
-              onChange={(e) => guardar({ texto: e.target.value })}
+              valor={valor?.texto ?? ''}
+              onValor={(v) => guardar({ texto: v })}
               placeholder="Anotación para este alumno"
               aria-label={`${nombre}, ${columna.titulo}`}
               autoFocus
@@ -765,15 +766,15 @@ export function HojaAplicarGrupo({
             <label className="etiqueta" htmlFor="aplicar-numero">
               Nota para todos
             </label>
-            <input
+            <Campo
               id="aplicar-numero"
               type="number"
               inputMode="decimal"
               className="campo cifra text-center text-2xl"
-              value={numero}
+              valor={numero}
               min={escala!.min}
               max={escala!.max}
-              onChange={(e) => setNumero(e.target.value)}
+              onValor={setNumero}
               autoFocus
             />
             <p className="mt-1 text-xs texto-suave">

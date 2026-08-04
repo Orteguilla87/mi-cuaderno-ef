@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { AccionCabecera, Cabecera } from '../components/Cabecera'
+import { CampoArea } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import {
@@ -420,14 +421,14 @@ function HojaDetalle({
           <label className="etiqueta" htmlFor="obs-dia">
             Observación del día
           </label>
-          <textarea
+          <CampoArea
             id="obs-dia"
             className="campo h-20 resize-none py-2"
-            value={registro?.observacion ?? ''}
+            valor={registro?.observacion ?? ''}
             disabled={!registro}
             placeholder={registro ? 'Se encontró mal, avisa la familia…' : 'Marca antes un estado'}
-            onChange={(e) => {
-              if (registro) void db.asistencias.update(registro.id, { observacion: e.target.value })
+            onValor={(v) => {
+              if (registro) void db.asistencias.update(registro.id, { observacion: v })
             }}
           />
         </div>
