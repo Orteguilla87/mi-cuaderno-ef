@@ -41,12 +41,15 @@
       --alto-nav: 0px;
     }
   }
-  /* Móvil en horizontal (Bloque 6): la altura es lo escaso, así que
-     `BottomNav` se compacta (sin etiqueta de texto, icono más pequeño) y
-     reserva menos hueco fijo. Mismo punto único que las reglas de arriba. */
+  /* Móvil en horizontal: al girar, lo escaso es la altura y lo que sobra es
+     el ancho, así que TODO lo que reserva hueco fijo encoge. `BottomNav` se
+     compacta (sin etiqueta de texto, icono más pequeño) y el FAB pasa a su
+     tamaño compacto — que además estrecha `carril-fab-derecha`, o sea, más
+     ancho útil para la rejilla del Cuaderno. Mismo punto único que arriba. */
   @media (max-width: 1023px) and (orientation: landscape) {
     :root {
       --alto-nav: 3rem;
+      --alto-fab: var(--alto-fab-compacto);
     }
   }
 

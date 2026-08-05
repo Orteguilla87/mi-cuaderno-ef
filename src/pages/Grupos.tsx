@@ -115,7 +115,7 @@ export function Grupos() {
         {grupos && grupos.length > 0 && (
           <DndContext sensors={sensores} collisionDetection={closestCenter} onDragEnd={alSoltar}>
             <SortableContext items={grupos.map((g) => g.id)} strategy={rectSortingStrategy}>
-              <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                 {grupos.map((g) => (
                   <GrupoTarjeta key={g.id} grupo={g} alumnos={conteos?.[g.id] ?? 0} />
                 ))}

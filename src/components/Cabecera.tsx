@@ -20,7 +20,10 @@ export function Cabecera({
   acciones?: ReactNode
 }) {
   return (
-    <header className="sticky top-0 z-20 bg-primario px-4 pb-4 pt-3 text-white shadow-lg shadow-primario/20 dark:bg-primario-oscuro">
+    // En apaisado la cabecera se aprieta: es una barra fija sobre una pantalla
+    // de 390 px de alto, y cada píxel que no gasta aquí lo gana la rejilla o
+    // la lista de debajo.
+    <header className="sticky top-0 z-20 bg-primario px-4 pb-4 pt-3 text-white shadow-lg shadow-primario/20 dark:bg-primario-oscuro apaisado:pb-2 apaisado:pt-2">
       <div className="flex items-center gap-2">
         {atras && (
           <button
@@ -33,12 +36,12 @@ export function Cabecera({
           </button>
         )}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-bold tracking-tight">{titulo}</h1>
+          <h1 className="truncate text-2xl font-bold tracking-tight apaisado:text-xl">{titulo}</h1>
         </div>
         <IndicadorSincro />
         {acciones}
       </div>
-      {subtitulo && <div className="mt-1.5 text-sm text-agua">{subtitulo}</div>}
+      {subtitulo && <div className="mt-1.5 text-sm text-agua apaisado:mt-0.5">{subtitulo}</div>}
     </header>
   )
 }

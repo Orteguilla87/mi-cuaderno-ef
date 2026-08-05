@@ -345,7 +345,7 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
             {noLectivo ? (
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
-              <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
+              <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                 {delDia.map((h) => (
                   <li key={`${h.grupo.id}-${h.horaInicio}`}>
                     <TarjetaHueco hueco={h} />

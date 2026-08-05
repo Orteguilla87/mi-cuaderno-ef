@@ -66,7 +66,11 @@ export function Hoja({
   if (!abierta) return null
 
   return (
-    <div className="fixed inset-0 z-hoja flex items-end justify-center lg:items-center">
+    // Girado deja de ser hoja inferior y pasa a diálogo centrado, como en
+    // escritorio: pegada abajo solo le quedaban ~350 px de alto y 512 de
+    // ancho en una pantalla de 844, que es justo lo que ahogaba la tabla de
+    // rúbrica. Centrada usa el ancho, que es lo que sobra al girar.
+    <div className="fixed inset-0 z-hoja flex items-end justify-center apaisado:items-center lg:items-center">
       {/* Fondo: hermano del diálogo, no antecesor — así `aria-hidden` solo
           oculta el propio fondo y no se lleva por delante el diálogo. */}
       <div
@@ -76,7 +80,7 @@ export function Hoja({
       />
       <div
         ref={refPanel}
-        className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-xl2 bg-hueso p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo lg:rounded-xl2 lg:pb-4"
+        className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-xl2 bg-hueso p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo apaisado:max-w-3xl apaisado:rounded-xl2 apaisado:pb-4 lg:rounded-xl2 lg:pb-4"
         role="dialog"
         aria-modal="true"
         aria-labelledby={idTitulo}

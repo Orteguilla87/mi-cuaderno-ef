@@ -214,8 +214,13 @@ export default function App() {
       <main
         id="contenido"
         className={
-          'carril-fab mx-auto max-w-lg md:max-w-3xl lg:px-6 ' +
-          (anchoCompleto(ruta) ? 'lg:max-w-7xl max-lg:landscape:max-w-none' : 'lg:max-w-4xl')
+          // En apaisado NINGUNA sección se encajona en la medida de lectura de
+          // vertical: el ancho es justo lo que sobra al girar, y dejar 200 px
+          // de margen a cada lado es exactamente «estirar la vista vertical».
+          // Lo que evita la línea de texto kilométrica no es el margen, son
+          // las rejillas a dos columnas de cada pantalla.
+          'carril-fab mx-auto max-w-lg md:max-w-3xl apaisado:max-w-none lg:px-6 ' +
+          (anchoCompleto(ruta) ? 'lg:max-w-7xl' : 'lg:max-w-4xl')
         }
       >
         <AvisoSemilla />

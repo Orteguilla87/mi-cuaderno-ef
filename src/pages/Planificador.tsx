@@ -186,7 +186,7 @@ function VistaSemana({
               {noLectivo ? (
                 <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
               ) : (
-                <ul className="space-y-2">
+                <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2">
                   {delDia.map((h) => (
                     <li key={`${h.grupo.id}-${h.horaInicio}`}>
                       <button

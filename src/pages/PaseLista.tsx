@@ -196,7 +196,10 @@ export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; f
 
             {porAlumno.size > 0 && <Resumen resumen={resumen} sinRegistrar={sinRegistrar} />}
 
-            <ul className="grid grid-cols-2 gap-2">
+            {/* Girado caben cuatro tarjetas por fila: un grupo de 22 pasa de
+                11 filas a 6, o sea casi toda la clase sin desplazar en una
+                pantalla donde lo que falta es alto. */}
+            <ul className="grid grid-cols-2 gap-2 apaisado:grid-cols-4">
               {alumnos.map((a) => (
                 <TarjetaAlumno
                   key={a.id}

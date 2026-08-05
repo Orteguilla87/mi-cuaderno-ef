@@ -176,7 +176,7 @@ export function Hoy() {
 
             <section>
               <TituloSeccion>Jornada completa</TituloSeccion>
-              <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
+              <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                 {clases?.map((c) => (
                   <li key={`${c.grupo.id}-${c.horaInicio}`}>
                     <TarjetaClase
@@ -368,7 +368,7 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
             {noLectivo ? (
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
-              <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
+              <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                 {delDia.map((h) => {
                   const c = conteos?.get(`${h.grupo.id}|${h.fecha}`)
                   return (

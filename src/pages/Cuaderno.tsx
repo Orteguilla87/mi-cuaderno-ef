@@ -617,10 +617,13 @@ function CabeceraColumna({
   return (
     <th
       scope="col"
-      className="min-w-[76px] border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada max-lg:landscape:sticky max-lg:landscape:top-0 max-lg:landscape:z-10 lg:sticky lg:top-0 lg:z-10"
+      // En apaisado la columna baja a 64 px y el relleno se aprieta: son ~15 px
+      // por columna, que en una pantalla girada es una columna entera más
+      // visible sin tener que arrastrar la rejilla de lado.
+      className="min-w-[76px] border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada apaisado:sticky apaisado:top-0 apaisado:z-10 apaisado:min-w-[64px] lg:sticky lg:top-0 lg:z-10"
     >
       <button
-        className="flex h-full w-full flex-col items-center gap-0.5 px-2 py-2"
+        className="flex h-full w-full flex-col items-center gap-0.5 px-2 py-2 apaisado:px-1 apaisado:py-1"
         {...(aplicable ? larga.props : {})}
         onClick={() => {
           // Tras la pulsación larga, el click también dispara: se ignora para no
@@ -688,13 +691,13 @@ function Rejilla({
     // En escritorio la rejilla acota su propia altura y hace scroll interno:
     // así la cabecera de columnas puede quedarse fija (`lg:sticky lg:top-0`)
     // sin tener que coordinar su posición con la altura variable de Cabecera.
-    <div className="carril-fab-derecha overflow-x-auto max-lg:landscape:max-h-[75dvh] max-lg:landscape:overflow-y-auto lg:max-h-[70vh] lg:overflow-y-auto">
+    <div className="carril-fab-derecha overflow-x-auto apaisado:max-h-[75dvh] apaisado:overflow-y-auto lg:max-h-[70vh] lg:overflow-y-auto">
       <table className="w-max border-separate border-spacing-0">
         <caption className="sr-only">Cuaderno de notas: alumnos por columnas de evaluación</caption>
         <thead>
           <tr>
             <th
-              className="sticky left-0 z-20 border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua max-lg:landscape:top-0 lg:top-0"
+              className="sticky left-0 z-20 border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:top-0 lg:top-0"
               style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               scope="col"
             >

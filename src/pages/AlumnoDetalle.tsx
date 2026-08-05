@@ -74,7 +74,7 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
         }
       />
 
-      <div className="space-y-4 p-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="space-y-4 p-4 apaisado:grid apaisado:grid-cols-2 apaisado:items-start apaisado:gap-4 apaisado:space-y-0 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
         <div className="space-y-4">
           {editando && <FormularioAlumno alumnoId={alumnoId} />}
 

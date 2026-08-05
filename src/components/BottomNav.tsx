@@ -24,7 +24,10 @@ export function BottomNav({ ruta }: { ruta: string }) {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-nav border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] dark:border-noche-borde dark:bg-noche-superficie lg:hidden">
-      <ul className="mx-auto flex max-w-lg px-1">
+      {/* Girado la barra se estira a todo el ancho en vez de quedarse en una
+          isla de 512 px centrada: los cinco destinos caen bajo los pulgares,
+          que en apaisado están en los extremos, no en el centro. */}
+      <ul className="mx-auto flex max-w-lg px-1 apaisado:max-w-none">
         {[...PESTANAS, PESTANA_MAS].map(({ ruta: r, etiqueta, Icono, incluye }) => {
           const activa = r === `/${raiz}` || !!incluye?.includes(raiz)
           return (
@@ -32,12 +35,12 @@ export function BottomNav({ ruta }: { ruta: string }) {
               <button
                 onClick={() => navegar(r)}
                 aria-current={activa ? 'page' : undefined}
-                className="flex min-h-tap w-full flex-col items-center gap-1 py-1.5 landscape:py-1
+                className="flex min-h-tap w-full flex-col items-center gap-1 py-1.5 apaisado:py-1
                            focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 focus-visible:ring-inset"
               >
                 <span
                   className={
-                    'flex h-8 w-14 items-center justify-center rounded-full transition landscape:h-7 landscape:w-12 ' +
+                    'flex h-8 w-14 items-center justify-center rounded-full transition apaisado:h-7 apaisado:w-12 ' +
                     (activa
                       ? 'bg-agua-claro text-primario dark:bg-primario dark:text-white'
                       : 'text-tinta-suave dark:text-noche-suave')
@@ -47,7 +50,7 @@ export function BottomNav({ ruta }: { ruta: string }) {
                 </span>
                 <span
                   className={
-                    'text-xs font-bold leading-tight landscape:sr-only ' +
+                    'text-xs font-bold leading-tight apaisado:sr-only ' +
                     (activa ? 'text-primario dark:text-agua' : 'texto-suave')
                   }
                 >

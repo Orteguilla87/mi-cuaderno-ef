@@ -14,6 +14,14 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      // Móvil o tablet girado (§ Bloque 4 de orientación). Es un `screen`
+      // propio y no `max-lg:landscape:` repetido en cada clase por dos
+      // razones: se lee de un vistazo qué reglas son de apaisado, y al ir en
+      // `extend` sus reglas se emiten DESPUÉS de `md:`/`lg:`, así que ganan
+      // sin depender del orden en que estén escritas las clases.
+      screens: {
+        apaisado: { raw: '(max-width: 1023px) and (orientation: landscape)' },
+      },
       colors: {
         primario: {
           DEFAULT: token('primary'),
