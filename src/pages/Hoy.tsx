@@ -366,6 +366,37 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
     [lunes],
   )
 
+  /**
+   * Asistencia de toda la semana de una vez, indexada por grupo+fecha: las
+   * tarjetas necesitan el mismo `registrados/total` que la vista de día para
+   * enseñar «Hecho» o «3/22», y una consulta por tarjeta serían decenas.
+   */
+  const conteos = useLiveQuery(async () => {
+    const [alumnos, asistencias] = await Promise.all([
+      db.alumnos.toArray(),
+      db.asistencias.where('fecha').between(lunes, sumarDias(lunes, 4), true, true).toArray(),
+    ])
+    const mapa = new Map<string, { registrados: number; totalAlumnos: number }>()
+    const porFecha = new Map<string, Set<string>>()
+    for (const a of asistencias) {
+      if (!porFecha.has(a.fecha)) porFecha.set(a.fecha, new Set())
+      porFecha.get(a.fecha)!.add(a.alumnoId)
+    }
+    for (let d = 0; d < 5; d++) {
+      const f = sumarDias(lunes, d)
+      const puestos = porFecha.get(f) ?? new Set<string>()
+      for (const al of alumnos) {
+        if (!al.activo) continue
+        const k = `${al.grupoId}|${f}`
+        const actual = mapa.get(k) ?? { registrados: 0, totalAlumnos: 0 }
+        actual.totalAlumnos += 1
+        if (puestos.has(al.id)) actual.registrados += 1
+        mapa.set(k, actual)
+      }
+    }
+    return mapa
+  }, [lunes])
+
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
 
   const lunesHoy = lunesDe(hoy)
@@ -415,11 +446,18 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
               <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-                {delDia.map((h) => (
-                  <li key={`${h.grupo.id}-${h.horaInicio}`}>
-                    <TarjetaSesionSemana hueco={h} />
-                  </li>
-                ))}
+                {delDia.map((h) => {
+                  const c = conteos?.get(`${h.grupo.id}|${h.fecha}`)
+                  return (
+                    <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                      <TarjetaSesionSemana
+                        hueco={h}
+                        registrados={c?.registrados ?? 0}
+                        totalAlumnos={c?.totalAlumnos ?? 0}
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </section>
@@ -429,7 +467,67 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
   )
 }
 
-function TarjetaSesionSemana({ hueco }: { hueco: HuecoCalendario }) {
+/**
+ * Los dos accesos directos de cada tarjeta de clase: al Cuaderno del grupo y a
+ * pasar lista. Vive en un único sitio para que la vista de día y la de semana
+ * enseñen exactamente los mismos iconos, el mismo texto y la misma alineación
+ * (antes la semana no los tenía).
+ */
+function AccionesClase({
+  grupo,
+  registrados,
+  totalAlumnos,
+}: {
+  grupo: Grupo
+  registrados: number
+  totalAlumnos: number
+}) {
+  const completo = totalAlumnos > 0 && registrados >= totalAlumnos
+
+  return (
+    <>
+      <button
+        onClick={() => navegar(`/cuaderno/${grupo.id}`)}
+        className="flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold text-primario dark:text-agua"
+        aria-label={`Grupo ${grupo.nombre} en el Cuaderno`}
+      >
+        <Table2 size={22} aria-hidden />
+        Grupo
+      </button>
+
+      <button
+        onClick={() => navegar(`/asistencia/${grupo.id}`)}
+        className={
+          'flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold ' +
+          (completo ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
+        }
+        aria-label={completo ? `Asistencia completa · ${grupo.nombre}` : `Pasar lista · ${grupo.nombre}`}
+      >
+        {completo ? (
+          <>
+            <Check size={22} aria-hidden />
+            Hecho
+          </>
+        ) : (
+          <>
+            <ClipboardCheck size={22} aria-hidden />
+            {registrados > 0 ? `${registrados}/${totalAlumnos}` : 'Pasar lista'}
+          </>
+        )}
+      </button>
+    </>
+  )
+}
+
+function TarjetaSesionSemana({
+  hueco,
+  registrados,
+  totalAlumnos,
+}: {
+  hueco: HuecoCalendario
+  registrados: number
+  totalAlumnos: number
+}) {
   const [abierta, setAbierta] = useState(false)
   const { grupo, fecha, horaInicio, horaFin, sesion } = hueco
 
@@ -458,34 +556,38 @@ function TarjetaSesionSemana({ hueco }: { hueco: HuecoCalendario }) {
 
   return (
     <div className="tarjeta">
-      <button
-        onClick={() => setAbierta((v) => !v)}
-        className="flex w-full items-center gap-3 text-left"
-        aria-expanded={abierta}
-      >
-        <span
-          className="h-10 w-2 shrink-0 rounded-full"
-          style={{ backgroundColor: grupo.color }}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-bold">{grupo.nombre}</span>
-            <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
+      <div className="flex w-full items-center gap-2">
+        <button
+          onClick={() => setAbierta((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-expanded={abierta}
+        >
+          <span
+            className="h-10 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: grupo.color }}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="truncate font-bold">{grupo.nombre}</span>
+              <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
+            </span>
+            <span className="cifra mt-0.5 block truncate text-sm texto-suave">
+              {horaInicio && horaFin ? `${horaInicio}–${horaFin}` : 'Sin hora fija'}
+              {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
+            </span>
           </span>
-          <span className="cifra mt-0.5 block truncate text-sm texto-suave">
-            {horaInicio && horaFin ? `${horaInicio}–${horaFin}` : 'Sin hora fija'}
-            {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
-          </span>
-        </span>
-        <ChevronDown
-          size={20}
-          className={
-            'shrink-0 texto-suave ' + (abierta ? 'rotate-180 transition-transform' : 'transition-transform')
-          }
-          aria-hidden
-        />
-      </button>
+          <ChevronDown
+            size={20}
+            className={
+              'shrink-0 texto-suave ' + (abierta ? 'rotate-180 transition-transform' : 'transition-transform')
+            }
+            aria-hidden
+          />
+        </button>
+
+        <AccionesClase grupo={grupo} registrados={registrados} totalAlumnos={totalAlumnos} />
+      </div>
 
       {abierta && (
         <div className="mt-3 space-y-3 border-t border-borde pt-3 dark:border-noche-borde">
@@ -531,7 +633,6 @@ function TarjetaClase({
 }) {
   const [abierta, setAbierta] = useState(false)
   const { grupo, horaInicio, horaFin, registrados, totalAlumnos, sesion } = clase
-  const completo = totalAlumnos > 0 && registrados >= totalAlumnos
   const hayDescripcion = !!(
     sesion &&
     (sesion.notas || sesion.recursosNecesarios || sesion.comentarios || sesion.juegos.length > 0)
@@ -594,35 +695,7 @@ function TarjetaClase({
           />
         </button>
 
-        <button
-          onClick={() => navegar(`/cuaderno/${grupo.id}`)}
-          className="flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold text-primario dark:text-agua"
-          aria-label={`Grupo ${grupo.nombre} en el Cuaderno`}
-        >
-          <Table2 size={22} aria-hidden />
-          Grupo
-        </button>
-
-        <button
-          onClick={() => navegar(`/asistencia/${grupo.id}`)}
-          className={
-            'flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold ' +
-            (completo ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
-          }
-          aria-label={completo ? `Asistencia completa · ${grupo.nombre}` : `Pasar lista · ${grupo.nombre}`}
-        >
-          {completo ? (
-            <>
-              <Check size={22} aria-hidden />
-              Hecho
-            </>
-          ) : (
-            <>
-              <ClipboardCheck size={22} aria-hidden />
-              {registrados > 0 ? `${registrados}/${totalAlumnos}` : 'Pasar lista'}
-            </>
-          )}
-        </button>
+        <AccionesClase grupo={grupo} registrados={registrados} totalAlumnos={totalAlumnos} />
       </div>
 
       {abierta && (
