@@ -1,21 +1,23 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarOff, CalendarRange, ChevronLeft, ChevronRight, Layers, Plus, Users } from 'lucide-react'
+import { CalendarOff, CalendarRange, Layers, Plus, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Campo } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
+import { NavegadorFecha } from '../components/NavegadorFecha'
 import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
-import { crearSesion, crearUnidad, duplicarUnidad, lunesDe, semanaActual } from '../db/planificador'
+import { crearSesion, crearUnidad, duplicarUnidad, lunesDe } from '../db/planificador'
 import { huecosDe, type HuecoCalendario } from '../db/sesiones'
 import type { UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
+import { useVistaPlanificador, type VistaPlanificador } from '../store/vistaPlanificador'
 import { PlanGrupo } from './PlanGrupo'
 
 /** Etiqueta corta del motivo por el que un día no es lectivo (misma lógica que Hoy/Calendario). */
@@ -36,19 +38,20 @@ function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): str
   }
 }
 
-type Vista = 'grupo' | 'semana' | 'unidades'
-
-const SUBTITULOS: Record<Vista, string> = {
+const SUBTITULOS: Record<VistaPlanificador, string> = {
   grupo: 'Programación por grupo',
   semana: '',
   unidades: 'Unidades didácticas',
 }
 
 export function Planificador() {
-  // Se entra por grupo: lo habitual es programar el curso de un grupo entero,
-  // y solo después bajar a la semana a retocar un día concreto.
-  const [vista, setVista] = useState<Vista>('grupo')
-  const [lunes, setLunes] = useState(semanaActual)
+  // Pestaña y semana viven en un store, no aquí: editar una sesión desmonta
+  // esta pantalla y con estado local «Atrás» volvía siempre a Grupo y a la
+  // semana en curso.
+  const vista = useVistaPlanificador((s) => s.vista)
+  const setVista = useVistaPlanificador((s) => s.fijarVista)
+  const lunes = useVistaPlanificador((s) => s.lunes)
+  const setLunes = useVistaPlanificador((s) => s.fijarLunes)
 
   return (
     <>
@@ -132,25 +135,18 @@ function VistaSemana({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <button
-          className="btn-suave px-3"
-          onClick={() => onCambiarSemana(sumarDias(lunes, -7))}
-          aria-label="Semana anterior"
-        >
-          <ChevronLeft size={20} aria-hidden />
-        </button>
-        <button className="btn-fantasma flex-1" onClick={() => onCambiarSemana(lunesDe(hoy))}>
-          Semana actual
-        </button>
-        <button
-          className="btn-suave px-3"
-          onClick={() => onCambiarSemana(sumarDias(lunes, 7))}
-          aria-label="Semana siguiente"
-        >
-          <ChevronRight size={20} aria-hidden />
-        </button>
-      </div>
+      <NavegadorFecha
+        etiqueta={`${formatoCorto(lunes)} – ${formatoCorto(sumarDias(lunes, 4))}`}
+        valor={lunes}
+        esHoy={lunes === lunesDe(hoy)}
+        etiquetaHoy="Volver a esta semana"
+        onAnterior={() => onCambiarSemana(sumarDias(lunes, -7))}
+        onSiguiente={() => onCambiarSemana(sumarDias(lunes, 7))}
+        onElegir={(iso) => onCambiarSemana(lunesDe(iso))}
+        onHoy={() => onCambiarSemana(lunesDe(hoy))}
+        ariaAnterior="Semana anterior"
+        ariaSiguiente="Semana siguiente"
+      />
 
       {fueraDePeriodo ? (
         <div className="tarjeta text-center">
