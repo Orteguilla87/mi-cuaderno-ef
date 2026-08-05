@@ -35,7 +35,13 @@ function useBorrador(valorExterno: string, sanear: ((v: string) => string) | und
 
   function escribir(v: string) {
     setBorrador(v)
-    if (!componiendo.current) onValor(v)
+    // El padre se entera de TODAS las teclas, también en medio de una
+    // composición: Gboard mantiene la composición abierta toda la palabra (o
+    // la frase entera si no hay espacio final), así que callar aquí dejaba el
+    // estado del padre vacío con el campo lleno — de ahí un «Interpretar»
+    // muerto en el agente de voz. Lo que no debe volver es el eco: de eso ya
+    // se encarga el guard de `componiendo` en el efecto de resincronización.
+    onValor(v)
   }
 
   function terminarComposicion(v: string) {
