@@ -29,6 +29,7 @@ import { Herramientas } from './pages/Herramientas'
 import { Hoy } from './pages/Hoy'
 import { Infantil } from './pages/Infantil'
 import { Informes } from './pages/Informes'
+import { Inventario } from './pages/Inventario'
 import { Juegos } from './pages/Juegos'
 import { Mas } from './pages/Mas'
 import { Observaciones } from './pages/Observaciones'
@@ -98,6 +99,13 @@ function Contenido({ ruta }: { ruta: string }) {
       return param ? <SesionDetalle sesionId={param} /> : <Planificador />
     case 'juegos':
       return <Juegos />
+    // /inventario[/etiquetas | /importar]
+    case 'inventario':
+      if (param === 'etiquetas')
+        return <EnConstruccion titulo="Etiquetas del material" fase="el bloque 3" atras />
+      if (param === 'importar')
+        return <EnConstruccion titulo="Importar inventario" fase="el bloque 4" atras />
+      return <Inventario />
     // /observaciones[/:grupoId[/:alumnoId]]
     case 'observaciones':
       return <Observaciones grupoId={param} alumnoId={param2} />
