@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowDownUp, Package, Plus, Search, Tags, Trash2, Upload, X } from 'lucide-react'
+import { ArrowDownUp, Download, Package, Plus, Search, Tags, Trash2, Upload, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
@@ -25,6 +25,8 @@ import {
   ETIQUETA_ESTADO,
   ETIQUETA_GRUPO,
   ETIQUETA_ORDEN,
+  exportarInventarioCSV,
+  exportarInventarioXLSX,
   FILTRO_VACIO,
   filtrar,
   GRUPOS_ETIQUETA,
@@ -155,6 +157,27 @@ export function Inventario() {
                 Importar desde archivo
               </button>
             </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                className="btn-suave"
+                onClick={() => exportarInventarioXLSX(visibles, etiquetas ?? [])}
+              >
+                <Download size={18} aria-hidden />
+                Exportar a XLSX
+              </button>
+              <button
+                className="btn-suave"
+                onClick={() => exportarInventarioCSV(visibles, etiquetas ?? [])}
+              >
+                <Download size={18} aria-hidden />
+                Exportar a CSV
+              </button>
+            </div>
+            <p className="text-xs texto-suave">
+              Se exporta lo que se ve ahora: {visibles.length} de {total} materiales, con el orden
+              y los filtros de arriba.
+            </p>
           </>
         )}
       </div>

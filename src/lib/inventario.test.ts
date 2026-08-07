@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   aCantidad,
   avisosMaterial,
+  filasExportables,
   filtrar,
   limpiarOpcionales,
   normalizarNombre,
   ordenarMateriales,
   textoCantidad,
 } from './inventario'
-import type { Material } from '../db/types'
+import type { EtiquetaMaterial, Material } from '../db/types'
 
 function material(parcial: Partial<Material>): Material {
   return {
@@ -134,6 +135,41 @@ describe('filtrar', () => {
   it('filtrar por estado deja fuera lo que no tiene estado', () => {
     const r = filtrar([pequeno, ambos, sinEstado], { etiquetaIds: [], estados: ['bueno', 'malo'] })
     expect(r.map((m) => m.nombre)).toEqual(['Aros', 'Conos'])
+  })
+})
+
+describe('filasExportables — respeta el orden recibido y no inventa ceros', () => {
+  const etiqueta: EtiquetaMaterial = {
+    id: 'e1',
+    nombre: 'Blandos',
+    nombreNormalizado: 'blandos',
+    creadoEn: 0,
+  }
+
+  it('un material sin datos exporta celdas vacías, no 0 ni "undefined"', () => {
+    const filas = filasExportables([material({ nombre: 'Picas' })], [])
+    expect(filas[0]).toEqual({
+      Nombre: 'Picas',
+      Cantidad: '',
+      Inservibles: '',
+      Estado: '',
+      Ubicación: '',
+      Etiquetas: '',
+      Notas: '',
+    })
+  })
+
+  it('el cero real se exporta como 0, no como vacío', () => {
+    const filas = filasExportables([material({ nombre: 'Conos', cantidad: 0 })], [])
+    expect(filas[0].Cantidad).toBe(0)
+  })
+
+  it('resuelve los ids de etiqueta a nombre, y respeta el orden de la lista recibida', () => {
+    const conos = material({ nombre: 'Conos', etiquetaIds: ['e1'] })
+    const aros = material({ nombre: 'Aros' })
+    const filas = filasExportables([aros, conos], [etiqueta])
+    expect(filas.map((f) => f.Nombre)).toEqual(['Aros', 'Conos'])
+    expect(filas[1].Etiquetas).toBe('Blandos')
   })
 })
 

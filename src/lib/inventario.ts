@@ -7,6 +7,7 @@
  * la base).
  */
 
+import * as XLSX from 'xlsx'
 import type {
   ColorEtiqueta,
   EstadoMaterial,
@@ -14,6 +15,7 @@ import type {
   GrupoEtiqueta,
   Material,
 } from '../db/types'
+import { descargarArchivo } from './descargar'
 
 export { normalizarTexto as normalizarNombre } from './texto'
 
@@ -195,6 +197,52 @@ export function filtrar(materiales: Material[], filtro: FiltroInventario): Mater
  * texto que aparece al lado del campo, no un candado. El único campo de verdad
  * obligatorio es el nombre, y eso lo comprueba la propia pantalla.
  */
+// ——————————————————————— exportación ———————————————————————
+
+function nombreFicheroInventario(ext: string): string {
+  const fecha = new Date().toISOString().slice(0, 10)
+  return `inventario_${fecha}.${ext}`
+}
+
+/**
+ * Filas planas para exportar: recibe la lista YA filtrada y ordenada de la
+ * pantalla, así que el fichero sale con exactamente lo que se ve — respeta
+ * los filtros y el orden activos, no vuelca la tabla entera por su cuenta.
+ *
+ * Un campo ausente sale como cadena vacía, nunca como 0: rellenar aquí sería
+ * mentir en el fichero que después se abre en Excel, que es justo lo que la
+ * ausencia real del dato quiere evitar.
+ */
+export function filasExportables(
+  materiales: Material[],
+  etiquetas: EtiquetaMaterial[],
+): Record<string, string | number>[] {
+  const nombrePorId = new Map(etiquetas.map((e) => [e.id, e.nombre]))
+  return materiales.map((m) => ({
+    Nombre: m.nombre,
+    Cantidad: m.cantidad ?? '',
+    Inservibles: m.cantidadInservible ?? '',
+    Estado: m.estado ? ETIQUETA_ESTADO[m.estado] : '',
+    Ubicación: m.ubicacion ?? '',
+    Etiquetas: m.etiquetaIds.map((id) => nombrePorId.get(id)).filter(Boolean).join(', '),
+    Notas: m.notas ?? '',
+  }))
+}
+
+export function exportarInventarioXLSX(materiales: Material[], etiquetas: EtiquetaMaterial[]): void {
+  const hoja = XLSX.utils.json_to_sheet(filasExportables(materiales, etiquetas))
+  const libro = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(libro, hoja, 'Inventario')
+  XLSX.writeFile(libro, nombreFicheroInventario('xlsx'))
+}
+
+export function exportarInventarioCSV(materiales: Material[], etiquetas: EtiquetaMaterial[]): void {
+  const hoja = XLSX.utils.json_to_sheet(filasExportables(materiales, etiquetas))
+  const csv = XLSX.utils.sheet_to_csv(hoja)
+  // BOM: sin él, Excel en Windows abre las tildes rotas.
+  descargarArchivo('﻿' + csv, nombreFicheroInventario('csv'), 'text/csv;charset=utf-8')
+}
+
 export function avisosMaterial(borrador: {
   cantidad?: number
   cantidadInservible?: number
