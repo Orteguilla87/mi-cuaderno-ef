@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db, ESQUEMA_ACTUAL } from './db'
 import { exportarBackup, restaurarBackup } from './backup'
 import {
+  aplicarImportacion,
   borrarEtiqueta,
   borrarMaterial,
   buscarPorNombre,
@@ -13,6 +14,7 @@ import {
   ETIQUETA_APTO_INFANTIL,
   fusionarEtiquetas,
   listarMateriales,
+  marcadorEtiquetaNueva,
   sembrarInventario,
 } from './inventario'
 
@@ -156,6 +158,83 @@ describe('etiquetas', () => {
     await crearMaterial({ nombre: 'Dos', etiquetaIds: [a.id, b.id] })
 
     expect(contarPorEtiqueta(await listarMateriales())).toEqual({ [a.id]: 2, [b.id]: 1 })
+  })
+})
+
+describe('aplicarImportacion', () => {
+  it('crea las etiquetas nuevas y resuelve sus marcadores dentro de la misma transacción', async () => {
+    const resumen = await aplicarImportacion({
+      etiquetas: [{ nombre: 'Blandos', grupo: 'familia' }],
+      crear: [
+        {
+          nombre: 'Balones',
+          cantidad: 12,
+          etiquetaIds: [marcadorEtiquetaNueva('Blandos')],
+        },
+      ],
+      fusionar: [],
+    })
+
+    expect(resumen).toMatchObject({ creados: 1, fusionados: 0, etiquetasCreadas: 1 })
+    const balones = (await db.materiales.toArray())[0]
+    const blandos = (await db.etiquetasMaterial.toArray())[0]
+    expect(balones.etiquetaIds).toEqual([blandos.id])
+    expect(blandos.grupo).toBe('familia')
+  })
+
+  it('fusionar rellena huecos y no pisa lo escrito a mano', async () => {
+    const conos = await crearMaterial({
+      nombre: 'Conos',
+      cantidad: 30,
+      etiquetaIds: [],
+    })
+
+    await aplicarImportacion({
+      etiquetas: [],
+      crear: [],
+      fusionar: [
+        {
+          id: conos.id,
+          // Lo que saldría de `fusionarCampos`: cantidad la de antes, estado el nuevo.
+          campos: { cantidad: 30, estado: 'malo', ubicacion: 'Porche', etiquetaIds: [] },
+        },
+      ],
+    })
+
+    const tras = await db.materiales.get(conos.id)
+    expect(tras?.cantidad).toBe(30)
+    expect(tras?.estado).toBe('malo')
+    expect(tras?.ubicacion).toBe('Porche')
+    expect(tras?.actualizadoEn).toBeGreaterThanOrEqual(conos.actualizadoEn)
+  })
+
+  it('el deshacer revierte el lote entero: borra lo creado y repone lo fusionado', async () => {
+    const conos = await crearMaterial({ nombre: 'Conos', etiquetaIds: [] })
+
+    const resumen = await aplicarImportacion({
+      etiquetas: [{ nombre: 'Blandos' }],
+      crear: [{ nombre: 'Picas', cantidad: 8, etiquetaIds: [marcadorEtiquetaNueva('Blandos')] }],
+      fusionar: [{ id: conos.id, campos: { cantidad: 30, etiquetaIds: [] } }],
+    })
+    expect(await db.materiales.count()).toBe(2)
+    expect((await db.materiales.get(conos.id))?.cantidad).toBe(30)
+
+    await resumen.deshacer()
+
+    expect(await db.materiales.count()).toBe(1)
+    expect(await db.etiquetasMaterial.count()).toBe(0)
+    expect(await db.materiales.get(conos.id)).toEqual(conos)
+    expect('cantidad' in (await db.materiales.get(conos.id))!).toBe(false)
+  })
+
+  it('un id de fusión que ya no existe se salta sin tumbar el resto del lote', async () => {
+    const resumen = await aplicarImportacion({
+      etiquetas: [],
+      crear: [{ nombre: 'Picas', etiquetaIds: [] }],
+      fusionar: [{ id: 'id-que-no-existe', campos: { cantidad: 5, etiquetaIds: [] } }],
+    })
+    expect(resumen.creados).toBe(1)
+    expect((await db.materiales.toArray()).map((m) => m.nombre)).toEqual(['Picas'])
   })
 })
 

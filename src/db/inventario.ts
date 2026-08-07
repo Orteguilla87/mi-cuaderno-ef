@@ -236,6 +236,125 @@ export function contarPorEtiqueta(materiales: Material[]): Record<string, number
   return conteo
 }
 
+// ——————————————————————— importación ———————————————————————
+
+/**
+ * Marcador para una etiqueta que todavía no existe cuando se arma el plan.
+ *
+ * El plan se construye fuera de la transacción, así que no puede conocer el id
+ * de una etiqueta que se va a crear dentro de ella. En vez de escribir primero
+ * y arreglar después —que dejaría material apuntando a ids fantasma si algo
+ * falla a mitad—, se referencian por nombre normalizado y `aplicarImportacion`
+ * los sustituye por el id real ya dentro de la transacción.
+ */
+export const PREFIJO_ETIQUETA_NUEVA = 'nueva:'
+
+export function marcadorEtiquetaNueva(nombre: string): string {
+  return PREFIJO_ETIQUETA_NUEVA + normalizarNombre(nombre)
+}
+
+export interface PlanImportacion {
+  /** Materiales nuevos. Sus `etiquetaIds` pueden llevar marcadores. */
+  crear: DatosMaterial[]
+  /** Materiales existentes a completar: solo los campos que estaban vacíos. */
+  fusionar: { id: string; campos: Partial<DatosMaterial> }[]
+  /** Nombres de etiqueta a crear antes de nada, con su grupo. */
+  etiquetas: { nombre: string; grupo?: EtiquetaMaterial['grupo'] }[]
+}
+
+export interface ResumenImportacion {
+  creados: number
+  fusionados: number
+  etiquetasCreadas: number
+  /** Nombre de etiqueta → id, para que la pantalla sepa qué se creó. */
+  idsPorNombre: Record<string, string>
+  deshacer: Deshacer
+}
+
+/**
+ * Escribe el plan entero en UNA transacción: o entra todo o no entra nada.
+ * Una importación a medias sobre un inventario ya empezado sería peor que no
+ * importar, porque no habría forma de saber por dónde se quedó.
+ *
+ * El deshacer guarda el estado previo de lo que toca (no una marca de lote en
+ * el registro): es el mismo deshacer del snackbar que usa el resto de la app.
+ */
+export async function aplicarImportacion(
+  plan: PlanImportacion,
+  ahora = Date.now(),
+): Promise<ResumenImportacion> {
+  const previos = await db.materiales.bulkGet(plan.fusionar.map((f) => f.id))
+  const idsPorNombre: Record<string, string> = {}
+  const idsEtiquetasCreadas: string[] = []
+  const idsMaterialesCreados: string[] = []
+
+  await db.transaction('rw', db.materiales, db.etiquetasMaterial, async () => {
+    for (const { nombre, grupo } of plan.etiquetas) {
+      const etiqueta = limpiarOpcionales({
+        id: nuevoId(),
+        nombre: nombre.trim(),
+        nombreNormalizado: normalizarNombre(nombre),
+        grupo,
+        creadoEn: ahora,
+      }) as EtiquetaMaterial
+      await db.etiquetasMaterial.add(etiqueta)
+      idsPorNombre[normalizarNombre(nombre)] = etiqueta.id
+      idsEtiquetasCreadas.push(etiqueta.id)
+    }
+
+    /** Marcadores → id real; lo que no se resuelve se cae, no se escribe roto. */
+    const resolver = (ids: string[] | undefined): string[] =>
+      (ids ?? [])
+        .map((id) =>
+          id.startsWith(PREFIJO_ETIQUETA_NUEVA)
+            ? idsPorNombre[id.slice(PREFIJO_ETIQUETA_NUEVA.length)]
+            : id,
+        )
+        .filter((id): id is string => !!id)
+
+    for (const datos of plan.crear) {
+      const material = limpiarOpcionales({
+        ...datos,
+        id: nuevoId(),
+        nombre: datos.nombre.trim(),
+        nombreNormalizado: normalizarNombre(datos.nombre),
+        etiquetaIds: resolver(datos.etiquetaIds),
+        creadoEn: ahora,
+        actualizadoEn: ahora,
+      }) as Material
+      await db.materiales.add(material)
+      idsMaterialesCreados.push(material.id)
+    }
+
+    for (const { id, campos } of plan.fusionar) {
+      const previo = await db.materiales.get(id)
+      if (!previo) continue
+      const material = limpiarOpcionales({
+        ...previo,
+        ...campos,
+        etiquetaIds: resolver(campos.etiquetaIds ?? previo.etiquetaIds),
+        actualizadoEn: ahora,
+      }) as Material
+      await db.materiales.put(material)
+    }
+  })
+
+  return {
+    creados: idsMaterialesCreados.length,
+    fusionados: plan.fusionar.length,
+    etiquetasCreadas: idsEtiquetasCreadas.length,
+    idsPorNombre,
+    deshacer: async () => {
+      await db.transaction('rw', db.materiales, db.etiquetasMaterial, async () => {
+        await db.materiales.bulkDelete(idsMaterialesCreados)
+        await db.etiquetasMaterial.bulkDelete(idsEtiquetasCreadas)
+        const restaurar = previos.filter((m): m is Material => !!m)
+        if (restaurar.length) await db.materiales.bulkPut(restaurar)
+      })
+    },
+  }
+}
+
 // ——————————————————————— semilla ———————————————————————
 
 /**

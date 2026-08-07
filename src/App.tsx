@@ -31,6 +31,7 @@ import { Hoy } from './pages/Hoy'
 import { Infantil } from './pages/Infantil'
 import { Informes } from './pages/Informes'
 import { Inventario } from './pages/Inventario'
+import { ImportarInventario } from './pages/ImportarInventario'
 import { Juegos } from './pages/Juegos'
 import { Mas } from './pages/Mas'
 import { Observaciones } from './pages/Observaciones'
@@ -103,8 +104,7 @@ function Contenido({ ruta }: { ruta: string }) {
     // /inventario[/etiquetas | /importar]
     case 'inventario':
       if (param === 'etiquetas') return <EtiquetasMaterial />
-      if (param === 'importar')
-        return <EnConstruccion titulo="Importar inventario" fase="el bloque 4" atras />
+      if (param === 'importar') return <ImportarInventario />
       return <Inventario />
     // /observaciones[/:grupoId[/:alumnoId]]
     case 'observaciones':
