@@ -23,6 +23,7 @@ import { Cuaderno } from './pages/Cuaderno'
 import { EdicionMasivaAlumnos } from './pages/EdicionMasivaAlumnos'
 import { EnConstruccion } from './pages/EnConstruccion'
 import { EquiposGenerador } from './pages/EquiposGenerador'
+import { EtiquetasMaterial } from './pages/EtiquetasMaterial'
 import { GrupoDetalle } from './pages/GrupoDetalle'
 import { Grupos } from './pages/Grupos'
 import { Herramientas } from './pages/Herramientas'
@@ -101,8 +102,7 @@ function Contenido({ ruta }: { ruta: string }) {
       return <Juegos />
     // /inventario[/etiquetas | /importar]
     case 'inventario':
-      if (param === 'etiquetas')
-        return <EnConstruccion titulo="Etiquetas del material" fase="el bloque 3" atras />
+      if (param === 'etiquetas') return <EtiquetasMaterial />
       if (param === 'importar')
         return <EnConstruccion titulo="Importar inventario" fase="el bloque 4" atras />
       return <Inventario />
