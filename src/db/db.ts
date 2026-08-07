@@ -14,6 +14,7 @@ import type {
   Config,
   CursoEscolar,
   Equipo,
+  EtiquetaMaterial,
   EvalFinal,
   EvalTrimestral,
   FilaInstrumento,
@@ -21,6 +22,7 @@ import type {
   InformeInfantil,
   InstrumentoEval,
   Juego,
+  Material,
   Observacion,
   Plantilla,
   RegistroInfantil,
@@ -60,6 +62,8 @@ class CuadernoDB extends Dexie {
   vinculos!: EntityTable<Vinculo, 'id'>
   equipos!: EntityTable<Equipo, 'id'>
   ciclosAleatorios!: EntityTable<CicloAleatorio, 'id'>
+  materiales!: EntityTable<Material, 'id'>
+  etiquetasMaterial!: EntityTable<EtiquetaMaterial, 'id'>
   config!: EntityTable<Config, 'id'>
   accionesAgente!: EntityTable<AccionAgente, 'id'>
 
@@ -344,6 +348,25 @@ class CuadernoDB extends Dexie {
      * completan los valores por defecto en los registros existentes.
      */
     this.version(17).stores({})
+
+    /**
+     * v18 — Inventario de material. Dos tablas nuevas y nada más: no toca
+     * ninguna tabla existente, así que la migración es puramente aditiva y no
+     * necesita `upgrade()`.
+     *
+     * Tampoco necesita espejo en `MIGRACIONES` de `db/backup.ts`: aquello solo
+     * hace falta cuando cambian los DATOS, y una copia anterior a la v18
+     * simplemente no trae estas tablas — se restauran vacías, que es lo
+     * correcto. `volcarTablas`/`restaurarBackup` recorren `db.tables`, así que
+     * ambas entran solas en el `.enc` y en el ciclo de sincronización.
+     *
+     * `*etiquetaIds` es multiEntry: filtrar por etiqueta es la consulta
+     * principal de la pantalla y sin él sería un recorrido completo.
+     */
+    this.version(18).stores({
+      materiales: 'id, nombreNormalizado, estado, *etiquetaIds',
+      etiquetasMaterial: 'id, nombreNormalizado, grupo',
+    })
   }
 }
 
@@ -352,7 +375,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 17
+export const ESQUEMA_ACTUAL = 18
 
 export const db = new CuadernoDB()
 

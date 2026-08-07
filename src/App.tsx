@@ -9,6 +9,7 @@ import { Snackbar } from './components/Snackbar'
 import { useConfig } from './db/config'
 import { sembrarCriterios } from './db/criterios'
 import { obtenerCursoActivo } from './db/curso'
+import { sembrarInventario } from './db/inventario'
 import { arrancar as arrancarSincro } from './db/sincro'
 import { MS_INACTIVIDAD } from './lib/pin'
 import { segmentos, useRuta } from './lib/router'
@@ -165,6 +166,14 @@ export default function App() {
   // miente. Nunca en silencio.
   useEffect(() => {
     void obtenerCursoActivo()
+    // Cuatro etiquetas de partida para el inventario, solo si nunca se ha
+    // tocado. El catálogo de material lo pone el centro, no la app: aquí no se
+    // inventa ni un cono. Un fallo aquí no puede tumbar el arranque —el
+    // inventario es un módulo más, no la referencia legal que sí son los
+    // criterios—, así que se registra y se sigue.
+    void sembrarInventario().catch((e: unknown) =>
+      console.error('No se ha podido sembrar el inventario', e),
+    )
     void sembrarCriterios().then(
       () => fijarErrorSemilla(null),
       (e: unknown) => {

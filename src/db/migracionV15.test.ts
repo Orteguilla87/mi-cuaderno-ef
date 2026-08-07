@@ -81,7 +81,7 @@ describe('migración v14 → v15 sobre una base con datos', () => {
     // primer uso, y abrirlo antes se saltaría el escenario que se quiere probar.
     const { db, ESQUEMA_ACTUAL } = await import('./db')
     await db.open()
-    expect(ESQUEMA_ACTUAL).toBe(17)
+    expect(ESQUEMA_ACTUAL).toBe(18)
 
     // — unidades: valores por defecto y criterios con su ciclo dentro —
     const u5 = await db.unidades.get('u5')
