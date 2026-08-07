@@ -1,5 +1,6 @@
 import Fuse from 'fuse.js'
 import { db, nuevoId } from './db'
+import { normalizarTexto as normalizar } from '../lib/texto'
 import type { Juego } from './types'
 
 /**
@@ -36,16 +37,6 @@ const CAMPOS = {
 const INDICE_ALIAS = new Map<string, keyof typeof CAMPOS>()
 for (const [campo, alias] of Object.entries(ALIAS)) {
   for (const a of alias) INDICE_ALIAS.set(normalizar(a), campo as keyof typeof CAMPOS)
-}
-
-function normalizar(s: string): string {
-  // \p{Diacritic} evita escribir el rango de combinantes a mano: mismo efecto,
-  // sin caracteres invisibles en el fuente.
-  return s
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
 }
 
 /** Cualquier escalar a texto; los arrays se aplanan a lista de textos. */

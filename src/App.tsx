@@ -9,6 +9,7 @@ import { Snackbar } from './components/Snackbar'
 import { useConfig } from './db/config'
 import { sembrarCriterios } from './db/criterios'
 import { obtenerCursoActivo } from './db/curso'
+import { sembrarInventario } from './db/inventario'
 import { arrancar as arrancarSincro } from './db/sincro'
 import { MS_INACTIVIDAD } from './lib/pin'
 import { segmentos, useRuta } from './lib/router'
@@ -22,12 +23,15 @@ import { Cuaderno } from './pages/Cuaderno'
 import { EdicionMasivaAlumnos } from './pages/EdicionMasivaAlumnos'
 import { EnConstruccion } from './pages/EnConstruccion'
 import { EquiposGenerador } from './pages/EquiposGenerador'
+import { EtiquetasMaterial } from './pages/EtiquetasMaterial'
 import { GrupoDetalle } from './pages/GrupoDetalle'
 import { Grupos } from './pages/Grupos'
 import { Herramientas } from './pages/Herramientas'
 import { Hoy } from './pages/Hoy'
 import { Infantil } from './pages/Infantil'
 import { Informes } from './pages/Informes'
+import { Inventario } from './pages/Inventario'
+import { ImportarInventario } from './pages/ImportarInventario'
 import { Juegos } from './pages/Juegos'
 import { Mas } from './pages/Mas'
 import { Observaciones } from './pages/Observaciones'
@@ -97,6 +101,11 @@ function Contenido({ ruta }: { ruta: string }) {
       return param ? <SesionDetalle sesionId={param} /> : <Planificador />
     case 'juegos':
       return <Juegos />
+    // /inventario[/etiquetas | /importar]
+    case 'inventario':
+      if (param === 'etiquetas') return <EtiquetasMaterial />
+      if (param === 'importar') return <ImportarInventario />
+      return <Inventario />
     // /observaciones[/:grupoId[/:alumnoId]]
     case 'observaciones':
       return <Observaciones grupoId={param} alumnoId={param2} />
@@ -165,6 +174,14 @@ export default function App() {
   // miente. Nunca en silencio.
   useEffect(() => {
     void obtenerCursoActivo()
+    // Cuatro etiquetas de partida para el inventario, solo si nunca se ha
+    // tocado. El catálogo de material lo pone el centro, no la app: aquí no se
+    // inventa ni un cono. Un fallo aquí no puede tumbar el arranque —el
+    // inventario es un módulo más, no la referencia legal que sí son los
+    // criterios—, así que se registra y se sigue.
+    void sembrarInventario().catch((e: unknown) =>
+      console.error('No se ha podido sembrar el inventario', e),
+    )
     void sembrarCriterios().then(
       () => fijarErrorSemilla(null),
       (e: unknown) => {

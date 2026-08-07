@@ -6,6 +6,7 @@ import {
   FileText,
   ListChecks,
   MessageSquareText,
+  Package,
   Settings,
   Table2,
   Target,
@@ -96,6 +97,13 @@ export const ENTRADAS_MAS: EntradaMas[] = [
     titulo: 'Informes',
     descripcion: 'PDF, XLSX y CSV para pasar a Raíces',
     Icono: FileText,
+    disponible: true,
+  },
+  {
+    ruta: '/inventario',
+    titulo: 'Inventario',
+    descripcion: 'Qué material hay en el centro, cuánto y en qué estado',
+    Icono: Package,
     disponible: true,
   },
   {

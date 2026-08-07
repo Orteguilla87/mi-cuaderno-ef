@@ -609,3 +609,55 @@ export interface AccionAgente {
   payload: unknown
   estado: EstadoAccionAgente
 }
+
+// ——————————————————————— Inventario de material ———————————————————————
+//
+// Catálogo del centro, TRANSVERSAL a las etapas: no lleva `etapa` a propósito.
+// Un aro es el mismo aro en Psicomotricidad y en 6º; lo que cambia es si es
+// apto para 3-5 años, y eso se dice con una etiqueta (`apto-infantil`), no
+// partiendo el catálogo en dos.
+//
+// Regla que atraviesa todo el módulo: `cantidad` y `estado` admiten AUSENCIA
+// REAL. Un inventario de centro llega medio hecho, y «no lo he contado» no es
+// lo mismo que «hay cero». La clave sencillamente no existe en el registro:
+// nunca se rellena con 0, con '' ni con un valor por defecto.
+
+export type EstadoMaterial = 'bueno' | 'regular' | 'malo' | 'fuera_de_uso'
+
+export interface Material {
+  id: Id
+  nombre: string
+  /** Minúsculas, sin tildes y sin dobles espacios: dedupe y búsqueda. */
+  nombreNormalizado: string
+  /** Entero ≥ 0. Ausente = no contado, NO cero. */
+  cantidad?: number
+  /** De las `cantidad` unidades, cuántas no sirven. Ausente = no consta. */
+  cantidadInservible?: number
+  estado?: EstadoMaterial
+  etiquetaIds: Id[]
+  /** Texto libre: almacén, porche, caseta… */
+  ubicacion?: string
+  notas?: string
+  creadoEn: number
+  actualizadoEn: number
+}
+
+/** Solo agrupa visualmente en la pantalla de etiquetas. */
+export type GrupoEtiqueta = 'tamano' | 'familia' | 'ubicacion' | 'otro'
+
+/**
+ * Nombre de token de §3.1, nunca un hex. El mapa a clases de Tailwind vive en
+ * `lib/inventario.ts`, que es el único sitio que traduce token → clase.
+ */
+export type ColorEtiqueta = 'primario' | 'acento' | 'lima' | 'aviso' | 'agua'
+
+export interface EtiquetaMaterial {
+  id: Id
+  nombre: string
+  nombreNormalizado: string
+  grupo?: GrupoEtiqueta
+  color?: ColorEtiqueta
+  /** Etiquetas del sistema: no se borran ni se renombran. */
+  reservada?: boolean
+  creadoEn: number
+}
