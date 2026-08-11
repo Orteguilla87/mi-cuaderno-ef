@@ -296,6 +296,10 @@ export interface ResultadoTrimestre {
  * NUNCA entran: instrumentos sin unidad, de tipo que no califica o de cálculo
  * (los descarta `notaUd`), ni unidades que no computan, sin trimestre o sin un
  * solo instrumento calificable.
+ *
+ * Y nunca, jamás, una unidad de Infantil: ahí no hay nota que calcular (§6, la
+ * escala es cualitativa). Si llega una es que una consulta ha cruzado etapas, y
+ * eso se grita en vez de devolver un número inventado.
  */
 export function notaTrimestre(
   evaluables: Evaluable[],
@@ -309,6 +313,11 @@ export function notaTrimestre(
 
   for (const evaluable of evaluables) {
     const { unidad, instrumentos } = evaluable
+
+    if (unidad.etapa === 'infantil')
+      throw new Error(
+        `La unidad «${unidad.titulo}» es de Infantil y no puede entrar en el cálculo de notas.`,
+      )
 
     if (!unidad.computa) {
       log.push({ nivel: 'unidad', motivo: 'unidad_no_computa', referencia: unidad.titulo })

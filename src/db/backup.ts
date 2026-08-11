@@ -135,6 +135,16 @@ export const MIGRACIONES: Migracion[] = [
       for (const c of filas(t, 'cursos')) c.periodosNoLectivos ??= []
     },
   },
+  {
+    // Espejo de db.ts v19: `etapa` en la unidad. Toda unidad de una copia
+    // anterior es de Primaria por construcción —hasta la v19 no se podían crear
+    // desde Infantil—, y sin este espejo se restaurarían sin etapa: quedarían
+    // fuera de `[etapa+nivel]` y desaparecerían de todas las consultas.
+    hasta: 19,
+    aplicar: (t) => {
+      for (const u of filas(t, 'unidades')) u.etapa ??= 'primaria'
+    },
+  },
 ]
 
 /** Aplica en orden las migraciones pendientes entre `desde` y ESQUEMA_ACTUAL. */

@@ -5,7 +5,7 @@ import type {
   FilaInstrumento,
   Rubrica,
   TipoColumna,
-  UnidadDidactica,
+  UnidadPrimaria,
   ValorCelda,
 } from '../db/types'
 import {
@@ -35,9 +35,10 @@ function columna(datos: Partial<Columna> & { titulo: string; tipo: TipoColumna }
   }
 }
 
-function unidad(datos: Partial<UnidadDidactica> & { titulo: string }): UnidadDidactica {
+function unidad(datos: Partial<UnidadPrimaria> & { titulo: string }): UnidadPrimaria {
   return {
     id: id(),
+    etapa: 'primaria',
     nivel: 3,
     trimestre: 1,
     criterios: [],
@@ -392,5 +393,25 @@ describe('notaTrimestre', () => {
     expect(res.nota).toBeNull()
     expect(res.oficial).toBeNull()
     expect(res.porUnidad).toEqual([])
+  })
+
+  it('se niega a calcular si le llega una unidad de Infantil', () => {
+    // En Infantil la evaluación es cualitativa (§6): no hay número que sacar.
+    // Si una unidad de Infantil llega hasta aquí es que una consulta ha cruzado
+    // las etapas, y eso debe romper en vez de devolver una nota inventada.
+    //
+    // El tipo ya lo impide en compilación; el `as` es justo lo que haría un
+    // dato mal leído de Dexie en tiempo de ejecución.
+    const infantil = {
+      id: 'ud-inf',
+      etapa: 'infantil',
+      nivel: 0,
+      trimestre: 1,
+      titulo: 'El bosque de los sentidos',
+      criterios: [],
+    } as unknown as UnidadPrimaria
+
+    const evaluable: Evaluable = { unidad: infantil, instrumentos: [simple('Prueba', 100)] }
+    expect(() => notaTrimestre([evaluable], 1, buscar([]), valorNormalizado)).toThrow(/Infantil/)
   })
 })

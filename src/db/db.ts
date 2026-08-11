@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
 import { CALENDARIO_CAM_2026_27 } from '../lib/calendarioEscolar'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/migracion15'
@@ -44,7 +44,14 @@ class CuadernoDB extends Dexie {
   asistencias!: EntityTable<Asistencia, 'id'>
   sesiones!: EntityTable<Sesion, 'id'>
   observaciones!: EntityTable<Observacion, 'id'>
-  unidades!: EntityTable<UnidadDidactica, 'id'>
+  /**
+   * `Table` y no `EntityTable` como el resto: `UnidadDidactica` es una unión
+   * discriminada por `etapa`, y el `InsertType` de `EntityTable` la aplasta
+   * (`Omit` sobre una unión deja solo las claves comunes), con lo que escribir
+   * `pesoTrimestre` en una unidad de Primaria dejaría de compilar. `Table.put`
+   * recibe el tipo tal cual, así que la unión se comprueba entera.
+   */
+  unidades!: Table<UnidadDidactica, string>
   instrumentos!: EntityTable<InstrumentoEval, 'id'>
   calificaciones!: EntityTable<Calificacion, 'id'>
   evalTrimestrales!: EntityTable<EvalTrimestral, 'id'>
@@ -367,6 +374,31 @@ class CuadernoDB extends Dexie {
       materiales: 'id, nombreNormalizado, estado, *etiquetaIds',
       etiquetasMaterial: 'id, nombreNormalizado, grupo',
     })
+
+    /**
+     * v19 — la unidad gana `etapa`, y con ella los índices compuestos que hacen
+     * falta para no cruzar etapas.
+     *
+     * Sin `etapa`, `nivel` es ambiguo: los grupos de Infantil lo usan como edad
+     * (3–5) y los de Primaria como curso (1–6), así que `where('nivel')` metería
+     * las unidades de Primaria 3.º en un grupo de 3 años. Toda consulta de
+     * unidades pasa a ir por `[etapa+nivel]` o `[etapa+trimestre]`.
+     *
+     * Las unidades existentes son de Primaria por construcción: hasta ahora no
+     * había forma de crear una desde Infantil.
+     */
+    this.version(19)
+      .stores({
+        unidades: 'id, nivel, trimestre, [nivel+trimestre], etapa, [etapa+nivel], [etapa+trimestre]',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('unidades')
+          .toCollection()
+          .modify((u) => {
+            u.etapa ??= 'primaria'
+          })
+      })
   }
 }
 
@@ -375,7 +407,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 18
+export const ESQUEMA_ACTUAL = 19
 
 export const db = new CuadernoDB()
 

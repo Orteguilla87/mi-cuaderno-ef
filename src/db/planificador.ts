@@ -2,14 +2,16 @@ import { cicloDeCurso } from '../lib/ciclos'
 import { estadoDia, type CursoFechas } from '../lib/calendarioEscolar'
 import { aISO, deISO, sumarDias } from '../lib/fechas'
 import { db, nuevoId } from './db'
-import type {
-  Grupo,
-  JuegoEnSesion,
-  Plantilla,
-  Recurso,
-  Sesion,
-  Trimestre,
-  UnidadDidactica,
+import {
+  NIVEL_CICLO_INFANTIL,
+  type Grupo,
+  type JuegoEnSesion,
+  type Plantilla,
+  type Recurso,
+  type Sesion,
+  type Trimestre,
+  type UnidadDidactica,
+  type UnidadPrimaria,
 } from './types'
 
 /** Lunes de la semana a la que pertenece una fecha. */
@@ -208,35 +210,60 @@ export async function aplicarPlantillaSesion(
  * Crea una unidad. Solo el título es obligatorio: una UD sin trimestre, o que
  * no compute, es válida —no entra en la nota, pero sí en la cobertura de
  * criterios (Orden 130/2023, art. 6)—.
+ *
+ * La etapa se fija aquí y no se vuelve a tocar: cambiarla después dejaría los
+ * criterios ya elegidos apuntando a otro decreto.
  */
-export async function crearUnidad(datos: {
-  titulo: string
-  nivel: number
-  trimestre: 1 | 2 | 3 | null
-  criterios?: string[]
-  computa?: boolean
-  pesoTrimestre?: number
-  plantillaId?: string
-}): Promise<string> {
-  const ud: UnidadDidactica = {
+export async function crearUnidad(
+  datos: {
+    titulo: string
+    trimestre: 1 | 2 | 3 | null
+    criterios?: string[]
+    plantillaId?: string
+  } & (
+    | { etapa: 'primaria'; nivel: number; computa?: boolean; pesoTrimestre?: number }
+    | { etapa: 'infantil' }
+  ),
+): Promise<string> {
+  const comun = {
     id: nuevoId(),
     titulo: datos.titulo.trim(),
-    nivel: datos.nivel,
     trimestre: datos.trimestre,
     criterios: datos.criterios ?? [],
-    computa: datos.computa ?? true,
-    pesoTrimestre: datos.pesoTrimestre ?? 0,
     plantillaId: datos.plantillaId,
   }
+
+  // En Infantil no se escriben `computa` ni `pesoTrimestre`, ni siquiera a 0:
+  // no es que valgan cero, es que ahí no hay ponderación que valga.
+  const ud: UnidadDidactica =
+    datos.etapa === 'infantil'
+      ? { ...comun, etapa: 'infantil', nivel: NIVEL_CICLO_INFANTIL }
+      : {
+          ...comun,
+          etapa: 'primaria',
+          nivel: datos.nivel,
+          computa: datos.computa ?? true,
+          pesoTrimestre: datos.pesoTrimestre ?? 0,
+        }
+
   await db.unidades.add(ud)
   return ud.id
 }
 
-/** Duplica una UD a otro nivel, que es como se reutiliza entre cursos. */
+/**
+ * Duplica una UD de Primaria a otro nivel, que es como se reutiliza entre
+ * cursos. En Infantil no aplica: las unidades son del 2.º ciclo entero, así que
+ * no hay otro nivel al que llevarlas.
+ */
 export async function duplicarUnidad(udId: string, nivel: number): Promise<string> {
   const origen = await db.unidades.get(udId)
   if (!origen) throw new Error('La unidad de origen ya no existe')
+  if (origen.etapa === 'infantil')
+    throw new Error(
+      'Las unidades de Infantil son del ciclo completo: no hay otro nivel al que duplicarlas.',
+    )
   return crearUnidad({
+    etapa: 'primaria',
     titulo: origen.titulo,
     nivel,
     trimestre: origen.trimestre,
@@ -250,26 +277,32 @@ export async function duplicarUnidad(udId: string, nivel: number): Promise<strin
 }
 
 /**
- * Unidades de un curso en un trimestre, ordenadas. Es la base de la pantalla de
- * reparto de pesos: la UD pertenece al CURSO, no al grupo, así que 3ºA y 3ºB
- * comparten unidades y comparten reparto.
+ * Unidades de un curso de PRIMARIA en un trimestre, ordenadas. Es la base de la
+ * pantalla de reparto de pesos: la UD pertenece al CURSO, no al grupo, así que
+ * 3ºA y 3ºB comparten unidades y comparten reparto.
+ *
+ * Solo Primaria, y por eso la consulta va por `[etapa+nivel]`: en Infantil no
+ * hay reparto ninguno, y `nivel` a secas es ambiguo (3 es tanto 3.º de Primaria
+ * como los 3 años).
  *
  * Las unidades sueltas (`trimestre: null`) no salen nunca por aquí, y no por un
- * filtro: IndexedDB no indexa los nulos, así que quedan fuera del índice
- * `[nivel+trimestre]` por construcción. Es justo lo que se quiere —no tienen
- * trimestre en el que repartirse—, pero conviene saberlo antes de añadir otra
- * consulta por ese índice y preguntarse dónde han ido.
+ * filtro: IndexedDB no indexa los nulos, así que quedan fuera del índice por
+ * construcción. Es justo lo que se quiere —no tienen trimestre en el que
+ * repartirse—, pero conviene saberlo antes de añadir otra consulta por ese
+ * índice y preguntarse dónde han ido.
  */
-export async function unidadesDe(nivel: number, trimestre: Trimestre): Promise<UnidadDidactica[]> {
-  const lista = await db.unidades.where('[nivel+trimestre]').equals([nivel, trimestre]).toArray()
-  return lista.sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'))
+export async function unidadesDe(nivel: number, trimestre: Trimestre): Promise<UnidadPrimaria[]> {
+  const lista = await db.unidades.where('[etapa+nivel]').equals(['primaria', nivel]).toArray()
+  return lista
+    .filter((u): u is UnidadPrimaria => u.etapa === 'primaria' && u.trimestre === trimestre)
+    .sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'))
 }
 
-/** Unidades del curso que no computan, para el listado informativo aparte. */
-export async function unidadesQueNoComputan(nivel: number): Promise<UnidadDidactica[]> {
-  const lista = await db.unidades.where('nivel').equals(nivel).toArray()
+/** Unidades del curso de Primaria que no computan, para el listado informativo aparte. */
+export async function unidadesQueNoComputan(nivel: number): Promise<UnidadPrimaria[]> {
+  const lista = await db.unidades.where('[etapa+nivel]').equals(['primaria', nivel]).toArray()
   return lista
-    .filter((u) => !u.computa)
+    .filter((u): u is UnidadPrimaria => u.etapa === 'primaria' && !u.computa)
     .sort((a, b) => (a.trimestre ?? 9) - (b.trimestre ?? 9) || a.titulo.localeCompare(b.titulo, 'es'))
 }
 
@@ -277,26 +310,32 @@ export async function unidadesQueNoComputan(nivel: number): Promise<UnidadDidact
  * Escribe el reparto de pesos de un trimestre de una vez. Devuelve la función
  * de deshacer: repartir es fácil de hacer sin querer y el usuario debe poder
  * volver al reparto anterior de un toque, como en el resto del cuaderno.
+ *
+ * Se lee y se reescribe la unidad entera en vez de actualizar solo el campo
+ * porque `pesoTrimestre` no existe en las unidades de Infantil: así el propio
+ * tipo descarta las que no ponderan, en lugar de confiar en que quien llame
+ * haya filtrado bien.
  */
 export async function guardarPesosTrimestre(
   pesos: { udId: string; pesoTrimestre: number }[],
 ): Promise<() => Promise<void>> {
-  const ids = pesos.map((p) => p.udId)
-  const antes = await db.unidades.bulkGet(ids)
-  const previos = antes
-    .filter((u): u is UnidadDidactica => !!u)
-    .map((u) => ({ udId: u.id, pesoTrimestre: u.pesoTrimestre }))
+  const previos: { udId: string; pesoTrimestre: number }[] = []
 
   await db.transaction('rw', db.unidades, async () => {
     for (const { udId, pesoTrimestre } of pesos) {
-      await db.unidades.update(udId, { pesoTrimestre })
+      const unidad = await db.unidades.get(udId)
+      if (!unidad || unidad.etapa !== 'primaria') continue
+      previos.push({ udId, pesoTrimestre: unidad.pesoTrimestre })
+      await db.unidades.put({ ...unidad, pesoTrimestre })
     }
   })
 
   return async () => {
     await db.transaction('rw', db.unidades, async () => {
       for (const { udId, pesoTrimestre } of previos) {
-        await db.unidades.update(udId, { pesoTrimestre })
+        const unidad = await db.unidades.get(udId)
+        if (!unidad || unidad.etapa !== 'primaria') continue
+        await db.unidades.put({ ...unidad, pesoTrimestre })
       }
     })
   }

@@ -91,9 +91,18 @@ export function criteriosPrimaria(): Criterio[] {
 /** Lo que el JSON de Primaria tiene que cumplir para poder fiarse de él. */
 export const CRITERIOS_PRIMARIA_ESPERADOS = 46
 
+/** Ídem para Infantil: 2.º ciclo del Decreto 36/2022, tres áreas. */
+export const CRITERIOS_INFANTIL_ESPERADOS = 56
+export const AREAS_INFANTIL_ESPERADAS = 3
+
 export class ErrorSemillaCriterios extends Error {
-  constructor(public readonly problemas: string[]) {
-    super(`La semilla de criterios de Primaria no cuadra:\n· ${problemas.join('\n· ')}`)
+  constructor(
+    public readonly etapa: Etapa,
+    public readonly problemas: string[],
+  ) {
+    super(
+      `La semilla de criterios de ${etapa === 'infantil' ? 'Infantil' : 'Primaria'} no cuadra:\n· ${problemas.join('\n· ')}`,
+    )
     this.name = 'ErrorSemillaCriterios'
   }
 }
@@ -131,18 +140,55 @@ export function validarCriteriosPrimaria(lista: Criterio[]): string[] {
 }
 
 /**
+ * Lo mismo para Infantil. El motivo es idéntico —los criterios son la referencia
+ * legal, y una semilla a medias haría que el selector ofreciera criterios que no
+ * existen y que la cobertura mintiera— pero las comprobaciones no: aquí no hay
+ * ciclos (los 56 son del 2.º ciclo entero) y sí áreas, con una sola marcada como
+ * principal, que es la que se ofrece por defecto desde Psicomotricidad.
+ */
+export function validarCriteriosInfantil(lista: Criterio[]): string[] {
+  const problemas: string[] = []
+
+  if (lista.length !== CRITERIOS_INFANTIL_ESPERADOS)
+    problemas.push(`hay ${lista.length} criterios y deberían ser ${CRITERIOS_INFANTIL_ESPERADOS}`)
+
+  const areas = new Set(lista.map((c) => c.areaCodigo))
+  if (areas.size !== AREAS_INFANTIL_ESPERADAS)
+    problemas.push(`hay ${areas.size} áreas y deberían ser ${AREAS_INFANTIL_ESPERADAS}`)
+
+  const principales = new Set(lista.filter((c) => c.principal).map((c) => c.areaCodigo))
+  if (principales.size !== 1)
+    problemas.push(`hay ${principales.size} áreas marcadas como principal y debería haber 1`)
+
+  for (const c of lista) {
+    if (!c.competenciaTexto)
+      problemas.push(`${c.id} apunta a la competencia ${c.competenciaCodigo}, que no tiene texto`)
+    if (!c.areaNombre) problemas.push(`${c.id} está en un área sin nombre`)
+  }
+
+  const ids = new Set(lista.map((c) => c.id))
+  if (ids.size !== lista.length) problemas.push('hay ids de criterio repetidos')
+
+  return problemas
+}
+
+/**
  * Vuelca los criterios en la base. `bulkPut` actualiza los textos si cambian y
  * respeta los ids, así que es seguro llamarlo en cada arranque.
  *
- * Lanza `ErrorSemillaCriterios` si la semilla de Primaria no valida: quien
+ * Lanza `ErrorSemillaCriterios` si alguna de las dos semillas no valida: quien
  * llama decide cómo enseñarlo, pero nunca en silencio.
  */
 export async function sembrarCriterios(): Promise<void> {
+  const infantil = criteriosInfantil()
+  const problemasInfantil = validarCriteriosInfantil(infantil)
+  if (problemasInfantil.length > 0) throw new ErrorSemillaCriterios('infantil', problemasInfantil)
+
   const primaria = criteriosPrimaria()
   const problemas = validarCriteriosPrimaria(primaria)
-  if (problemas.length > 0) throw new ErrorSemillaCriterios(problemas)
+  if (problemas.length > 0) throw new ErrorSemillaCriterios('primaria', problemas)
 
-  await db.criterios.bulkPut([...criteriosInfantil(), ...primaria])
+  await db.criterios.bulkPut([...infantil, ...primaria])
 
   // Los ids de Primaria cambiaron de 'PRI:2:1.1' al del propio decreto
   // ('EF.2C.1.1'). `bulkPut` no toca los antiguos, así que se barren aquí: si

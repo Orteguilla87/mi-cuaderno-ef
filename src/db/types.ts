@@ -230,33 +230,71 @@ export interface Observacion {
   tags: string[]
 }
 
-// ——— PRIMARIA ———
+// ——— UNIDADES ———
 
 /**
- * Unidad didáctica. Es la unidad de calificación de la Orden 130/2023 (art. 6):
- * el peso vive en la UD dentro del trimestre, y en el instrumento dentro de la
- * UD. Los criterios NO reciben nota: son referente y trazabilidad de cobertura.
+ * `nivel` de una unidad de Infantil. Los criterios del Decreto 36/2022 se fijan
+ * por ciclo completo —3, 4 y 5 años comparten los 56—, así que la unidad es del
+ * ciclo y no de una edad: hay una sola bolsa de unidades para toda la etapa.
+ *
+ * Se guarda un 0 en vez de dejar el campo fuera porque `nivel` está indexado y
+ * IndexedDB no indexa los nulos: con `null` las unidades de Infantil quedarían
+ * fuera de `[etapa+nivel]` y no se podrían consultar por índice.
+ */
+export const NIVEL_CICLO_INFANTIL = 0
+
+interface UnidadBase {
+  id: Id
+  /** `null` = unidad suelta, fuera de todo cálculo. */
+  trimestre: Trimestre | null
+  titulo: string
+  /**
+   * Ids de `Criterio` ('EF.2C.1.1' en Primaria, 'INF:I.1.1' en Infantil), no
+   * códigos: el código se repite entre ciclos.
+   *
+   * Es un vínculo desnudo: no lleva peso, ni porcentaje, ni instrumento. En
+   * Infantil, además, el ORDEN NO SIGNIFICA NADA —se renderiza siempre ordenado
+   * por código—; son referencia curricular y nada más.
+   */
+  criterios: string[]
+  /** Plantilla de la que salió, si se creó a partir de una. */
+  plantillaId?: Id
+}
+
+/**
+ * Unidad didáctica de Primaria. Es la unidad de calificación de la Orden
+ * 130/2023 (art. 6): el peso vive en la UD dentro del trimestre, y en el
+ * instrumento dentro de la UD. Los criterios NO reciben nota: son referente y
+ * trazabilidad de cobertura.
  *
  * Nada aquí es obligatorio salvo lo que afecta al cálculo: una UD sin trimestre
  * o con `computa` en falso es perfectamente válida, simplemente no entra en la
  * nota. Se avisa, no se bloquea.
  */
-export interface UnidadDidactica {
-  id: Id
+export interface UnidadPrimaria extends UnidadBase {
+  etapa: 'primaria'
   /** El curso, 1–6. Mismo significado que `Grupo.nivel`. */
   nivel: number
-  /** `null` = unidad suelta, fuera de todo cálculo. */
-  trimestre: Trimestre | null
-  titulo: string
-  /** Ids de `Criterio` ('EF.2C.1.1'), no códigos: el código se repite entre ciclos. */
-  criterios: string[]
   /** Si es falso, la unidad no entra en la nota, pero sí en el informe de cobertura. */
   computa: boolean
   /** Peso de la unidad dentro de su trimestre, 0–100. Se ignora si `computa` es falso. */
   pesoTrimestre: number
-  /** Plantilla de la que salió, si se creó a partir de una. */
-  plantillaId?: Id
 }
+
+/**
+ * Unidad de programación de Infantil (situación de aprendizaje). NO tiene
+ * ponderación en el trimestre, ni instrumentos ponderados, ni rúbrica
+ * calificable, ni ningún campo numérico de evaluación: esos campos no existen
+ * en el tipo, así que no se muestran, no se persisten y el compilador impide
+ * que lleguen al motor de notas.
+ */
+export interface UnidadInfantil extends UnidadBase {
+  etapa: 'infantil'
+  /** Siempre `NIVEL_CICLO_INFANTIL`: la unidad es del 2.º ciclo entero. */
+  nivel: typeof NIVEL_CICLO_INFANTIL
+}
+
+export type UnidadDidactica = UnidadPrimaria | UnidadInfantil
 
 // ——— CUADERNO: columnas flexibles de evaluación ———
 

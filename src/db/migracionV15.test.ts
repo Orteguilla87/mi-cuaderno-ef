@@ -81,11 +81,11 @@ describe('migración v14 → v15 sobre una base con datos', () => {
     // primer uso, y abrirlo antes se saltaría el escenario que se quiere probar.
     const { db, ESQUEMA_ACTUAL } = await import('./db')
     await db.open()
-    expect(ESQUEMA_ACTUAL).toBe(18)
+    expect(ESQUEMA_ACTUAL).toBe(19)
 
     // — unidades: valores por defecto y criterios con su ciclo dentro —
     const u5 = await db.unidades.get('u5')
-    expect(u5).toMatchObject({ computa: true, pesoTrimestre: 0, trimestre: 2 })
+    expect(u5).toMatchObject({ etapa: 'primaria', computa: true, pesoTrimestre: 0, trimestre: 2 })
     // El mismo «2.2» de 5º y de 1º eran indistinguibles antes; ahora no.
     expect(u5!.criterios).toEqual(['EF.3C.2.2', 'EF.3C.3.2'])
     expect((await db.unidades.get('u1'))!.criterios).toEqual(['EF.1C.2.2'])

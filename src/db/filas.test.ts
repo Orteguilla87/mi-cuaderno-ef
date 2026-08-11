@@ -22,6 +22,7 @@ beforeEach(async () => {
   await db.rubricas.put(RUBRICA)
   await db.unidades.put({
     id: 'ud1',
+    etapa: 'primaria',
     nivel: 3,
     trimestre: 1,
     titulo: 'Expresión corporal',

@@ -95,7 +95,7 @@ export async function coberturaDelCiclo(ciclo: 1 | 2 | 3): Promise<CoberturaCrit
       grupo: grupo.nombre,
       curso: grupo.nivel,
       unidad: unidad?.titulo ?? null,
-      calificable: califica(columna) && !!unidad?.computa,
+      calificable: califica(columna) && unidad?.etapa === 'primaria' && unidad.computa,
       notas: (valoresPorColumna.get(columna.id) ?? [])
         .map((v) => notaFila(instrumento, fila, v, valorNormalizado))
         .filter((n): n is number => n !== null),

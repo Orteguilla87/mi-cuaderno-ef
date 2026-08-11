@@ -40,7 +40,14 @@ export async function datosCalificacion(
   const rubricas = new Map((await db.rubricas.toArray()).map((r) => [r.id, r]))
 
   // Las unidades son del curso, no del grupo: 3ºA y 3ºB comparten programación.
-  const unidades = await db.unidades.where('nivel').equals(grupo.nivel).toArray()
+  //
+  // Por `[etapa+nivel]` y no por `nivel` a secas: el 3 de un grupo de Infantil
+  // son los 3 años y el de un grupo de Primaria es 3.º, así que el índice
+  // simple mezclaría las unidades de las dos etapas. Aquí, además, solo entra
+  // Primaria: en Infantil no hay nota que calcular (§6).
+  const unidades = (
+    await db.unidades.where('[etapa+nivel]').equals([grupo.etapa, grupo.nivel]).toArray()
+  ).filter((u) => u.etapa === 'primaria')
 
   const evaluables: Evaluable[] = unidades.map((unidad) => ({
     unidad,

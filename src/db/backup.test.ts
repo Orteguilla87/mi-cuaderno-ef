@@ -239,6 +239,29 @@ describe('import de un esquema anterior', () => {
       ['Expresividad', 30],
     ])
   })
+
+  it('marca de Primaria las unidades de una copia anterior a la v19', async () => {
+    // Hasta la v19 no existía Infantil como etapa de unidad: toda unidad de una
+    // copia anterior es de Primaria por construcción. Sin este espejo se
+    // restaurarían sin `etapa`, y quedarían fuera de `[etapa+nivel]` — es decir,
+    // invisibles para el resto de la app.
+    const tablasV18: Tablas = {
+      cursos: [{ id: ID_CURSO, nombre: '2025-2026', activo: true, inicio: '2025-09-01', fin: '2026-06-30', trimestres: [], festivos: [] }],
+      grupos: [
+        { id: ID_GRUPO, cursoEscolarId: ID_CURSO, nombre: '3ºB', etapa: 'primaria', nivel: 3, color: '#006A80', orden: 1, horario: [] },
+      ],
+      unidades: [
+        { id: 'ud-1', nivel: 3, trimestre: 1, titulo: 'Habilidades', criterios: [], computa: true, pesoTrimestre: 100 },
+      ],
+    }
+
+    const { fichero } = await empaquetar(tablasV18, CLAVE, { esquema: 18, ...RAPIDO })
+    const resultado = await restaurarBackup(fichero, CLAVE)
+    expect(resultado.migrado).toBe(true)
+
+    const unidad = await db.unidades.get('ud-1')
+    expect(unidad).toMatchObject({ etapa: 'primaria', nivel: 3, computa: true, pesoTrimestre: 100 })
+  })
 })
 
 describe('esquema posterior al de la app', () => {

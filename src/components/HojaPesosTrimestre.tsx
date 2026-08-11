@@ -8,7 +8,7 @@ import {
   unidadesDe,
   unidadesQueNoComputan,
 } from '../db/planificador'
-import type { Grupo, Trimestre, UnidadDidactica } from '../db/types'
+import type { Grupo, Trimestre, UnidadPrimaria } from '../db/types'
 import { TIPOS_CALIFICABLES } from '../db/types'
 import { useUI } from '../store/ui'
 import { Campo } from './Campo'
@@ -150,7 +150,7 @@ function FilaPeso({
   calificable,
   onCambio,
 }: {
-  unidad: UnidadDidactica
+  unidad: UnidadPrimaria
   peso: number
   calificable: boolean
   onCambio: (peso: number) => void
@@ -224,7 +224,7 @@ function Total({
 }
 
 /** Las unidades que no computan: no entran en la nota, pero sí en la cobertura. */
-function NoComputan({ unidades }: { unidades: UnidadDidactica[] }) {
+function NoComputan({ unidades }: { unidades: UnidadPrimaria[] }) {
   const [abierto, setAbierto] = useState(false)
   if (unidades.length === 0) return null
 

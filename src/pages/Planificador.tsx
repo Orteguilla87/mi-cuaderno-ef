@@ -281,7 +281,7 @@ function VistaUnidades() {
             >
               <div className="flex items-center gap-2">
                 <p className="truncate text-base font-bold">{u.titulo}</p>
-                {!u.computa && (
+                {u.etapa === 'primaria' && !u.computa && (
                   <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
                     No cuenta
                   </span>
@@ -383,7 +383,7 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
 
   async function guardar() {
     if (!titulo.trim()) return
-    const id = await crearUnidad({ titulo, nivel, trimestre, computa, criterios })
+    const id = await crearUnidad({ etapa: 'primaria', titulo, nivel, trimestre, computa, criterios })
     setTitulo('')
     onCerrar()
     mostrarAviso(`Unidad «${titulo.trim()}» creada`, async () => {
@@ -497,7 +497,7 @@ function HojaEditarUnidad({
     if (!unidad) return
     setTitulo(unidad.titulo)
     setTrimestre(unidad.trimestre)
-    setComputa(unidad.computa)
+    setComputa(unidad.etapa === 'primaria' ? unidad.computa : true)
     setCriterios(unidad.criterios)
   }, [unidad])
 
@@ -505,12 +505,11 @@ function HojaEditarUnidad({
 
   async function guardar() {
     if (!unidad || !titulo.trim()) return
-    await db.unidades.update(unidad.id, {
-      titulo: titulo.trim(),
-      trimestre,
-      computa,
-      criterios,
-    })
+    await db.unidades.put(
+      unidad.etapa === 'infantil'
+        ? { ...unidad, titulo: titulo.trim(), trimestre, criterios }
+        : { ...unidad, titulo: titulo.trim(), trimestre, computa, criterios },
+    )
     onCerrar()
   }
 
