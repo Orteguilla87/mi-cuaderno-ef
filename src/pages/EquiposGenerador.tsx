@@ -32,8 +32,9 @@ import {
   type ComoRepartirSobra,
   type ModoGeneracion,
 } from '../lib/generadorEquipos'
-import type { Alumno, ConfigGeneracionEquipos, EquipoGenerado } from '../db/types'
+import type { Alumno, ConfigGeneracionEquipos, EquipoGenerado, Etapa } from '../db/types'
 import { aISO } from '../lib/fechas'
+import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 import { Pizarra } from '../components/Pizarra'
@@ -109,7 +110,13 @@ export function EquiposGenerador({ grupoId, sesionId }: { grupoId: string; sesio
   // Sin colapsar a [] antes del check de abajo: así «Alineaciones guardadas»
   // no aparece y desaparece durante el primer render mientras Dexie responde.
   const guardadas = useLiveQuery(() => equiposGuardados(grupoId), [grupoId])
-  const unidades = useLiveQuery(() => db.unidades.toArray(), []) ?? []
+  // De la etapa del grupo: a un grupo de Infantil no se le ofrecen unidades de
+  // Primaria, aunque el número de nivel coincida.
+  const unidades =
+    useLiveQuery(
+      async () => (grupo ? db.unidades.where('etapa').equals(grupo.etapa).toArray() : []),
+      [grupo?.etapa],
+    ) ?? []
 
   const incluidos = useMemo(() => {
     if (!alumnosGrupo) return []
@@ -351,6 +358,7 @@ export function EquiposGenerador({ grupoId, sesionId }: { grupoId: string; sesio
       <HojaGuardar
         abierta={guardando}
         sesionId={sesionId}
+        etapa={grupo?.etapa ?? 'primaria'}
         unidades={unidades}
         onCerrar={() => setGuardando(false)}
         onGuardar={guardar}
@@ -762,12 +770,14 @@ function ResultadoPaso({
 function HojaGuardar({
   abierta,
   sesionId,
+  etapa,
   unidades,
   onCerrar,
   onGuardar,
 }: {
   abierta: boolean
   sesionId?: string
+  etapa: Etapa
   unidades: import('../db/types').UnidadDidactica[]
   onCerrar: () => void
   onGuardar: (nombre: string, udId?: string, vincularSesion?: boolean) => void
@@ -803,7 +813,7 @@ function HojaGuardar({
 
         <div>
           <label className="etiqueta" htmlFor="eq-ud">
-            Unidad didáctica (opcional)
+            {terminologia(etapa).unidad} (opcional)
           </label>
           <select
             id="eq-ud"
@@ -814,7 +824,7 @@ function HojaGuardar({
             <option value="">Sin unidad</option>
             {unidades.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.titulo} ({u.nivel}º ·{' '}
+                {u.titulo} ({ambitoUnidad(u.etapa, u.nivel)} ·{' '}
                 {u.trimestre === null ? 'sin trimestre' : `T${u.trimestre}`})
               </option>
             ))}

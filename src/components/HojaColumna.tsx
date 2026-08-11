@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Campo } from './Campo'
 import { cicloDeCurso, criteriosDeGrupo } from '../db/criterios'
 import { ordinalCiclo } from '../lib/ciclos'
+import { ambitoUnidad, terminologia } from '../lib/literales'
 import {
   crearColumna,
   crearRubrica,
@@ -131,11 +132,17 @@ export function HojaColumna({
   // Solo las unidades del curso del grupo: ofrecer las de 5º al configurar una
   // columna de 3ºA sería ofrecer criterios de otro ciclo.
   //
+  // La etapa manda antes que el nivel: el 3 de un grupo de Infantil son los 3
+  // años, no 3.º de Primaria. Y en Infantil las unidades son del ciclo entero,
+  // así que ahí el nivel no filtra nada.
+  //
   // La que ya tenga puesta se cuela igual aunque sea de otro curso. Si no, el
   // desplegable enseñaría «Sin unidad» y guardar la borraría sin que nadie
   // hubiera pedido tal cosa.
   const unidadesDelCurso = (unidades ?? []).filter(
-    (u) => u.nivel === grupo.nivel || u.id === udId,
+    (u) =>
+      u.id === udId ||
+      (u.etapa === grupo.etapa && (grupo.etapa === 'infantil' || u.nivel === grupo.nivel)),
   )
   const deLaUnidadNueva = (unidadesDelCurso.find((u) => u.id === udId)?.criterios ?? [])
     .map((id) => (delCiclo ?? []).find((c) => c.id === id))
@@ -358,7 +365,7 @@ export function HojaColumna({
 
           <div>
             <label className="etiqueta" htmlFor="col-ud">
-              Unidad didáctica
+              {terminologia(grupo.etapa).unidad}
             </label>
             <select
               id="col-ud"
@@ -369,7 +376,7 @@ export function HojaColumna({
               <option value="">Sin unidad</option>
               {unidadesDelCurso.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.titulo} ({u.nivel}º ·{' '}
+                  {u.titulo} ({ambitoUnidad(u.etapa, u.nivel)} ·{' '}
                   {u.trimestre === null ? 'sin trimestre' : `T${u.trimestre}`})
                 </option>
               ))}

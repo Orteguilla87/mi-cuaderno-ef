@@ -15,8 +15,9 @@ import {
   pegarEnSesion,
   sesionAPlantilla,
 } from '../db/planificador'
-import type { Recurso, Sesion } from '../db/types'
+import type { Recurso, Sesion, UnidadDidactica } from '../db/types'
 import { diaLectivo, formatoDiaCorto } from '../lib/fechas'
+import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
@@ -32,7 +33,13 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
     async () => (sesion ? db.grupos.get(sesion.grupoId) : undefined),
     [sesion?.grupoId],
   )
-  const unidades = useLiveQuery(() => db.unidades.toArray(), [])
+  // Solo las de la etapa del grupo: mezclarlas ofrecería a un grupo de 4 años
+  // las unidades de 4.º de Primaria, que apuntan a otro decreto.
+  const unidades = useLiveQuery(
+    async () =>
+      grupo ? db.unidades.where('etapa').equals(grupo.etapa).toArray() : ([] as UnidadDidactica[]),
+    [grupo?.etapa],
+  )
 
   if (sesion === undefined) return null
   if (sesion === null) {
@@ -130,7 +137,7 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
 
         <div>
           <label className="etiqueta" htmlFor="s-ud">
-            Unidad didáctica
+            {terminologia(grupo?.etapa ?? 'primaria').unidad}
           </label>
           <select
             id="s-ud"
@@ -141,7 +148,7 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
             <option value="">Sin unidad</option>
             {unidades?.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.titulo} ({u.nivel}º ·{' '}
+                {u.titulo} ({ambitoUnidad(u.etapa, u.nivel)} ·{' '}
                 {u.trimestre === null ? 'sin trimestre' : `T${u.trimestre}`})
               </option>
             ))}

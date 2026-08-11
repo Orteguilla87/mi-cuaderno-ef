@@ -145,7 +145,11 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
     return new Map(lista.map((r) => [r.id, r]))
   }, [])
 
-  const unidades = useLiveQuery(() => db.unidades.toArray(), [])
+  // De la etapa del grupo: `nivel` solo no distingue los 3 años de 3.º.
+  const unidades = useLiveQuery(
+    async () => (grupo ? db.unidades.where('etapa').equals(grupo.etapa).toArray() : []),
+    [grupo?.etapa],
+  )
 
   const contadoresObs = useLiveQuery(
     async () => (idEfectivo ? contadoresPorAlumno(idEfectivo) : new Map<string, ContadorSigno>()),
@@ -863,7 +867,7 @@ function HojaVistaRejilla({ abierta, onCerrar }: { abierta: boolean; onCerrar: (
 
 /** Motivos del log del motor, en español y en una línea. */
 const EXPLICACION: Record<MotivoExclusion, string> = {
-  sin_unidad: 'sin unidad didáctica',
+  sin_unidad: 'sin unidad asignada',
   tipo_no_califica: 'no da nota',
   es_calculo: 'es una columna de cálculo',
   unidad_no_computa: 'la unidad no cuenta para la nota',

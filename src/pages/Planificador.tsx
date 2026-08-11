@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarOff, CalendarRange, Layers, Plus, Users } from 'lucide-react'
+import { CalendarOff, CalendarRange, ChevronDown, Layers, Plus, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -8,13 +8,15 @@ import { Hoja } from '../components/Hoja'
 import { NavegadorFecha } from '../components/NavegadorFecha'
 import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
+import { coberturaInfantil } from '../db/coberturaInfantil'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import { crearSesion, crearUnidad, duplicarUnidad, lunesDe } from '../db/planificador'
 import { huecosDe, type HuecoCalendario } from '../db/sesiones'
-import type { UnidadDidactica } from '../db/types'
+import type { Etapa, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
+import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 import { useVistaPlanificador, type VistaPlanificador } from '../store/vistaPlanificador'
@@ -41,7 +43,9 @@ function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): str
 const SUBTITULOS: Record<VistaPlanificador, string> = {
   grupo: 'Programación por grupo',
   semana: '',
-  unidades: 'Unidades didácticas',
+  // Sin etapa que consultar en la cabecera —el listado las mezcla—, se usa el
+  // término neutro; el rótulo por etapa aparece dentro de cada elemento.
+  unidades: 'Unidades y situaciones de aprendizaje',
 }
 
 export function Planificador() {
@@ -229,16 +233,27 @@ function VistaSemana({
   )
 }
 
+/** Filtro del listado. `todas` es el estado de partida: no esconde nada. */
+type FiltroEtapa = 'todas' | Etapa
+
+const FILTROS: { valor: FiltroEtapa; etiqueta: string }[] = [
+  { valor: 'todas', etiqueta: 'Todas' },
+  { valor: 'primaria', etiqueta: 'Primaria' },
+  { valor: 'infantil', etiqueta: 'Infantil' },
+]
+
 function VistaUnidades() {
   const [creando, setCreando] = useState(false)
   const [editando, setEditando] = useState<UnidadDidactica | null>(null)
   const [duplicando, setDuplicando] = useState<{ id: string; titulo: string; nivel: number } | null>(
     null,
   )
+  const [filtro, setFiltro] = useState<FiltroEtapa>('todas')
 
   const unidades = useLiveQuery(async () => {
     const lista = await db.unidades.toArray()
     // Las unidades sin trimestre van al final de su nivel: son las sueltas.
+    // Infantil va primero porque su nivel es 0 (el ciclo entero).
     const orden = (t: number | null) => t ?? 9
     return lista.sort(
       (a, b) =>
@@ -255,6 +270,11 @@ function VistaUnidades() {
     return mapa
   }, [])
 
+  const visibles = (unidades ?? []).filter((u) => filtro === 'todas' || u.etapa === filtro)
+  // El rótulo del estado vacío y del botón de alta siguen al filtro: con
+  // «Infantil» activo, «Nueva unidad didáctica» sería el nombre equivocado.
+  const vocabulario = terminologia(filtro === 'infantil' ? 'infantil' : 'primaria')
+
   return (
     <>
       <button className="btn-primario w-full" onClick={() => setCreando(true)}>
@@ -262,22 +282,39 @@ function VistaUnidades() {
         Nueva unidad
       </button>
 
-      {unidades?.length === 0 && (
+      <div role="group" aria-label="Filtrar por etapa" className="flex gap-2">
+        {FILTROS.map((f) => (
+          <button
+            key={f.valor}
+            onClick={() => setFiltro(f.valor)}
+            aria-pressed={filtro === f.valor}
+            className={(filtro === f.valor ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0 text-sm'}
+          >
+            {f.etiqueta}
+          </button>
+        ))}
+      </div>
+
+      {filtro === 'infantil' && <AvisoCoberturaInfantil unidades={visibles} />}
+
+      {visibles.length === 0 && (
         <div className="tarjeta text-center">
-          <p className="text-base font-semibold">Sin unidades didácticas</p>
+          <p className="text-base font-semibold">Sin {vocabulario.unidadPluralEnFrase}</p>
           <p className="mt-1 text-sm texto-suave">
-            Agrupa las sesiones en unidades para reutilizarlas entre niveles.
+            {filtro === 'infantil'
+              ? 'Agrupa las sesiones de Psicomotricidad para vincularlas a los criterios del Decreto 36/2022.'
+              : 'Agrupa las sesiones en unidades para reutilizarlas entre niveles.'}
           </p>
         </div>
       )}
 
       <ul className="space-y-2">
-        {unidades?.map((u) => (
+        {visibles.map((u) => (
           <li key={u.id} className="tarjeta flex items-start gap-2 py-3">
             <button
               className="min-w-0 flex-1 text-left"
               onClick={() => setEditando(u)}
-              aria-label={`Editar unidad ${u.titulo}`}
+              aria-label={`Editar ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
             >
               <div className="flex items-center gap-2">
                 <p className="truncate text-base font-bold">{u.titulo}</p>
@@ -286,20 +323,29 @@ function VistaUnidades() {
                     No cuenta
                   </span>
                 )}
+                {u.etapa === 'infantil' && (
+                  <span className="pildora shrink-0 bg-agua-claro px-2 py-0.5 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+                    Infantil
+                  </span>
+                )}
               </div>
               <p className="cifra mt-0.5 text-sm texto-suave">
-                {u.nivel}º ·{' '}
+                {ambitoUnidad(u.etapa, u.nivel)} ·{' '}
                 {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
                 {conteos?.[u.id] ?? 0} sesiones ·{' '}
                 {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
               </p>
             </button>
-            <button
-              className="btn-suave shrink-0 px-3 text-xs"
-              onClick={() => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
-            >
-              Duplicar
-            </button>
+            {/* Duplicar es «llevar esto a otro curso». En Infantil no hay otro
+                curso al que llevarlo: la unidad ya es del ciclo entero. */}
+            {u.etapa === 'primaria' && (
+              <button
+                className="btn-suave shrink-0 px-3 text-xs"
+                onClick={() => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
+              >
+                Duplicar
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -370,29 +416,36 @@ function HojaDuplicarUnidad({
 function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => void }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [titulo, setTitulo] = useState('')
+  const [etapa, setEtapa] = useState<Etapa>('primaria')
   const [nivel, setNivel] = useState(1)
   const [trimestre, setTrimestre] = useState<1 | 2 | 3 | null>(1)
   const [computa, setComputa] = useState(true)
   const [criterios, setCriterios] = useState<string[]>([])
 
-  // Los criterios ofrecidos dependen del ciclo del nivel: al cambiarlo, los ya
-  // elegidos de otro ciclo dejarían de tener sentido.
+  // Los criterios ofrecidos dependen de la etapa y, en Primaria, del ciclo del
+  // nivel: al cambiar cualquiera de los dos, los ya elegidos apuntarían a otro
+  // decreto o a otro ciclo.
   useEffect(() => {
     if (abierta) setCriterios([])
-  }, [abierta, nivel])
+  }, [abierta, etapa, nivel])
+
+  const vocabulario = terminologia(etapa)
 
   async function guardar() {
     if (!titulo.trim()) return
-    const id = await crearUnidad({ etapa: 'primaria', titulo, nivel, trimestre, computa, criterios })
+    const id =
+      etapa === 'infantil'
+        ? await crearUnidad({ etapa: 'infantil', titulo, trimestre, criterios })
+        : await crearUnidad({ etapa: 'primaria', titulo, nivel, trimestre, computa, criterios })
     setTitulo('')
     onCerrar()
-    mostrarAviso(`Unidad «${titulo.trim()}» creada`, async () => {
+    mostrarAviso(`${vocabulario.unidad} «${titulo.trim()}» creada`, async () => {
       await db.unidades.delete(id)
     })
   }
 
   return (
-    <Hoja abierta={abierta} titulo="Nueva unidad" onCerrar={onCerrar}>
+    <Hoja abierta={abierta} titulo={vocabulario.nuevaUnidad} onCerrar={onCerrar}>
       <div className="space-y-4">
         <div>
           <label className="etiqueta" htmlFor="ud-titulo">
@@ -403,25 +456,51 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
             className="campo"
             valor={titulo}
             onValor={setTitulo}
-            placeholder="Habilidades con móvil"
+            placeholder={etapa === 'infantil' ? 'El bosque de los sentidos' : 'Habilidades con móvil'}
             autoFocus
           />
         </div>
 
         <div>
-          <span className="etiqueta">Nivel</span>
-          <div className="flex flex-wrap gap-2">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
+          <span className="etiqueta">Etapa</span>
+          <div className="flex gap-2">
+            {(['primaria', 'infantil'] as const).map((e) => (
               <button
-                key={n}
-                onClick={() => setNivel(n)}
-                className={(nivel === n ? 'btn-primario' : 'btn-suave') + ' min-w-tap flex-1 px-0'}
+                key={e}
+                onClick={() => setEtapa(e)}
+                aria-pressed={etapa === e}
+                className={(etapa === e ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
               >
-                {n}º
+                {e === 'primaria' ? 'Primaria' : 'Infantil'}
               </button>
             ))}
           </div>
+          <p className="mt-1 text-xs texto-suave">
+            No se puede cambiar después: los criterios son de un decreto distinto en cada etapa.
+          </p>
         </div>
+
+        {etapa === 'primaria' ? (
+          <div>
+            <span className="etiqueta">Nivel</span>
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setNivel(n)}
+                  className={(nivel === n ? 'btn-primario' : 'btn-suave') + ' min-w-tap flex-1 px-0'}
+                >
+                  {n}º
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="panel-agua text-sm">
+            2.º ciclo de Infantil (3, 4 y 5 años). Los criterios del Decreto 36/2022 son los mismos
+            para las tres edades, así que la situación de aprendizaje vale para todo el ciclo.
+          </div>
+        )}
 
         <div>
           <span className="etiqueta">Trimestre</span>
@@ -442,7 +521,7 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
               Ninguno
             </button>
           </div>
-          {trimestre === null && (
+          {trimestre === null && etapa === 'primaria' && (
             <p className="mt-1 text-xs texto-suave">
               Una unidad suelta: no entra en la nota de ningún trimestre, pero sí cuenta en la
               cobertura de criterios.
@@ -450,26 +529,35 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
           )}
         </div>
 
-        <label className="tarjeta flex cursor-pointer items-center gap-3 py-3">
-          <input
-            type="checkbox"
-            className="h-6 w-6 shrink-0 accent-primario"
-            checked={computa}
-            onChange={(e) => setComputa(e.target.checked)}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block font-bold">Cuenta para la nota</span>
-            <span className="mt-0.5 block text-xs texto-suave">
-              Si lo desmarcas, la unidad se sigue programando y evaluando, pero no entra en el
-              reparto de pesos del trimestre.
+        {/* Ponderación: solo Primaria. En Infantil la evaluación es cualitativa
+            (§6), así que no hay peso, ni nota, ni nada que repartir. */}
+        {etapa === 'primaria' && (
+          <label className="tarjeta flex cursor-pointer items-center gap-3 py-3">
+            <input
+              type="checkbox"
+              className="h-6 w-6 shrink-0 accent-primario"
+              checked={computa}
+              onChange={(e) => setComputa(e.target.checked)}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block font-bold">Cuenta para la nota</span>
+              <span className="mt-0.5 block text-xs texto-suave">
+                Si lo desmarcas, la unidad se sigue programando y evaluando, pero no entra en el
+                reparto de pesos del trimestre.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
 
-        <SelectorCriterios nivel={nivel} seleccionados={criterios} onCambio={setCriterios} />
+        <SelectorCriterios
+          etapa={etapa}
+          nivel={nivel}
+          seleccionados={criterios}
+          onCambio={setCriterios}
+        />
 
         <button className="btn-primario w-full" onClick={() => void guardar()} disabled={!titulo.trim()}>
-          Crear unidad
+          Crear
         </button>
       </div>
     </Hoja>
@@ -479,7 +567,8 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
 /**
  * Edición de una unidad ya creada: no existía antes (§ Bloque 1). El nivel se
  * enseña de solo lectura porque cambiarlo cambiaría el ciclo de sus criterios
- * ya asignados; para eso está «Duplicar a otro nivel».
+ * ya asignados; para eso está «Duplicar a otro nivel». La etapa, por lo mismo,
+ * tampoco es editable: cambiarla los dejaría apuntando a otro decreto.
  */
 function HojaEditarUnidad({
   unidad,
@@ -503,8 +592,12 @@ function HojaEditarUnidad({
 
   if (!unidad) return null
 
+  const vocabulario = terminologia(unidad.etapa)
+
   async function guardar() {
     if (!unidad || !titulo.trim()) return
+    // Se reescribe la unidad entera en vez de actualizar campos sueltos: así el
+    // tipo garantiza que no se cuela `computa` en una unidad de Infantil.
     await db.unidades.put(
       unidad.etapa === 'infantil'
         ? { ...unidad, titulo: titulo.trim(), trimestre, criterios }
@@ -514,7 +607,7 @@ function HojaEditarUnidad({
   }
 
   return (
-    <Hoja abierta={!!unidad} titulo="Editar unidad" onCerrar={onCerrar}>
+    <Hoja abierta={!!unidad} titulo={`Editar ${vocabulario.unidadEnFrase}`} onCerrar={onCerrar}>
       <div className="space-y-4">
         <div>
           <label className="etiqueta" htmlFor="ud-editar-titulo">
@@ -530,8 +623,17 @@ function HojaEditarUnidad({
         </div>
 
         <div className="panel-agua text-sm">
-          Nivel: <strong>{unidad.nivel}º</strong>. Para cambiarlo, duplica la unidad al nivel
-          destino desde la lista.
+          {unidad.etapa === 'infantil' ? (
+            <>
+              2.º ciclo de Infantil (3, 4 y 5 años). Los criterios del Decreto 36/2022 son los
+              mismos para las tres edades.
+            </>
+          ) : (
+            <>
+              Nivel: <strong>{unidad.nivel}º</strong>. Para cambiarlo, duplica la unidad al nivel
+              destino desde la lista.
+            </>
+          )}
         </div>
 
         <div>
@@ -555,23 +657,30 @@ function HojaEditarUnidad({
           </div>
         </div>
 
-        <label className="tarjeta flex cursor-pointer items-center gap-3 py-3">
-          <input
-            type="checkbox"
-            className="h-6 w-6 shrink-0 accent-primario"
-            checked={computa}
-            onChange={(e) => setComputa(e.target.checked)}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block font-bold">Cuenta para la nota</span>
-            <span className="mt-0.5 block text-xs texto-suave">
-              Si lo desmarcas, la unidad se sigue programando y evaluando, pero no entra en el
-              reparto de pesos del trimestre.
+        {unidad.etapa === 'primaria' && (
+          <label className="tarjeta flex cursor-pointer items-center gap-3 py-3">
+            <input
+              type="checkbox"
+              className="h-6 w-6 shrink-0 accent-primario"
+              checked={computa}
+              onChange={(e) => setComputa(e.target.checked)}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block font-bold">Cuenta para la nota</span>
+              <span className="mt-0.5 block text-xs texto-suave">
+                Si lo desmarcas, la unidad se sigue programando y evaluando, pero no entra en el
+                reparto de pesos del trimestre.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
 
-        <SelectorCriterios nivel={unidad.nivel} seleccionados={criterios} onCambio={setCriterios} />
+        <SelectorCriterios
+          etapa={unidad.etapa}
+          nivel={unidad.nivel}
+          seleccionados={criterios}
+          onCambio={setCriterios}
+        />
 
         <button
           className="btn-primario w-full"
@@ -582,5 +691,58 @@ function HojaEditarUnidad({
         </button>
       </div>
     </Hoja>
+  )
+}
+
+/**
+ * Aviso de criterios de Infantil sin programar. Informa, nunca bloquea: en
+ * octubre lo normal es tener casi todo el Área I sin tocar, y eso no es un
+ * error que corregir sino un mapa de lo que queda.
+ */
+function AvisoCoberturaInfantil({ unidades }: { unidades: UnidadDidactica[] }) {
+  const [abierto, setAbierto] = useState(false)
+  // `unidades` no se usa para calcular —eso lo hace `coberturaInfantil` contra
+  // la base—, sino como disparador: al cambiar los vínculos, se recalcula.
+  const cobertura = useLiveQuery(() => coberturaInfantil(), [unidades.length])
+
+  if (!cobertura || cobertura.length === 0) return null
+
+  const sinVincular = cobertura.filter((c) => c.unidades.length === 0)
+  if (sinVincular.length === 0)
+    return (
+      <div className="panel-agua text-sm">
+        Los {cobertura.length} criterios del Área I están vinculados a alguna situación de
+        aprendizaje.
+      </div>
+    )
+
+  return (
+    <div className="rounded-xl2 border-2 border-aviso bg-aviso/10 p-3">
+      <button
+        className="flex w-full items-center gap-2 text-left"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+      >
+        <span className="flex-1 text-sm font-semibold text-aviso-oscuro">
+          {sinVincular.length} de {cobertura.length} criterios del Área I sin vincular
+        </span>
+        <ChevronDown
+          size={18}
+          className={'shrink-0 text-aviso-oscuro transition-transform ' + (abierto ? 'rotate-180' : '')}
+          aria-hidden
+        />
+      </button>
+
+      {abierto && (
+        <ul className="mt-2 space-y-1">
+          {sinVincular.map((c) => (
+            <li key={c.criterio.id} className="text-sm">
+              <span className="cifra font-bold">{c.criterio.codigo}</span>{' '}
+              <span className="texto-suave">{c.criterio.texto}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
