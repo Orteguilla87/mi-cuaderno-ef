@@ -1,7 +1,9 @@
 import infantilJson from '../../seeds/criterios_infantil.json'
 import primariaJson from '../../seeds/criterios_primaria.json'
 import { cicloDeCurso } from '../lib/ciclos'
+import { guardarConfig, leerConfig } from './config'
 import { db } from './db'
+import { sinMarcar } from './supresion'
 import type { Criterio, Etapa } from './types'
 
 export { cicloDeCurso, idCriterioPrimaria } from '../lib/ciclos'
@@ -173,11 +175,26 @@ export function validarCriteriosInfantil(lista: Criterio[]): string[] {
 }
 
 /**
- * Vuelca los criterios en la base. `bulkPut` actualiza los textos si cambian y
- * respeta los ids, así que es seguro llamarlo en cada arranque.
+ * Versión de la semilla de criterios. **Subirla es la única forma de forzar que
+ * se vuelva a volcar**: cambiar `seeds/criterios_*.json` sin tocar este número
+ * deja las bases ya sembradas con los textos antiguos.
  *
- * Lanza `ErrorSemillaCriterios` si alguna de las dos semillas no valida: quien
- * llama decide cómo enseñarlo, pero nunca en silencio.
+ * Existe porque volcar en cada arranque no era gratis: `bulkPut` dispara los
+ * hooks `updating` de Dexie fila a fila aunque el contenido sea idéntico, y la
+ * sincronización (§11) los lee como «el maestro ha cambiado algo». Resultado:
+ * cada apertura de la app marcaba trabajo local sin subir y el segundo
+ * dispositivo se encontraba un conflicto que nadie había provocado.
+ */
+export const VERSION_SEMILLA_CRITERIOS = 1
+
+/**
+ * Vuelca los criterios en la base, **solo si hace falta**: si la tabla ya está
+ * sembrada con esta misma versión de semilla, no se escribe ni una fila.
+ *
+ * La validación sí corre siempre: es sobre los JSON del bundle, no toca la
+ * base, y es la red que impide que una semilla degradada pase inadvertida.
+ * Lanza `ErrorSemillaCriterios` si alguna de las dos no valida: quien llama
+ * decide cómo enseñarlo, pero nunca en silencio.
  */
 export async function sembrarCriterios(): Promise<void> {
   const infantil = criteriosInfantil()
@@ -188,16 +205,33 @@ export async function sembrarCriterios(): Promise<void> {
   const problemas = validarCriteriosPrimaria(primaria)
   if (problemas.length > 0) throw new ErrorSemillaCriterios('primaria', problemas)
 
-  await db.criterios.bulkPut([...infantil, ...primaria])
+  // El recuento va aparte de la versión a propósito: una base restaurada de una
+  // copia sin criterios, o vaciada a mano, trae la marca puesta y la tabla
+  // vacía. Sin esta comprobación se quedaría sin criterios para siempre.
+  const yaSembrada =
+    (await leerConfig()).semillaCriterios === VERSION_SEMILLA_CRITERIOS &&
+    (await db.criterios.count()) > 0
+  if (yaSembrada) return
 
-  // Los ids de Primaria cambiaron de 'PRI:2:1.1' al del propio decreto
-  // ('EF.2C.1.1'). `bulkPut` no toca los antiguos, así que se barren aquí: si
-  // no, los selectores enseñarían cada criterio dos veces.
-  const vigentes = new Set(primaria.map((c) => c.id))
-  const sobrantes = (await db.criterios.where('etapa').equals('primaria').toArray())
-    .filter((c) => !vigentes.has(c.id))
-    .map((c) => c.id)
-  if (sobrantes.length > 0) await db.criterios.bulkDelete(sobrantes)
+  // Nada de lo que se escribe aquí es trabajo del maestro: sale del bundle y es
+  // idéntico en los dos dispositivos, así que no debe marcarse como cambio
+  // pendiente de subir.
+  await sinMarcar(async () => {
+    await db.criterios.bulkPut([...infantil, ...primaria])
+
+    // Los ids de Primaria cambiaron de 'PRI:2:1.1' al del propio decreto
+    // ('EF.2C.1.1'). `bulkPut` no toca los antiguos, así que se barren aquí: si
+    // no, los selectores enseñarían cada criterio dos veces.
+    const vigentes = new Set(primaria.map((c) => c.id))
+    const sobrantes = (await db.criterios.where('etapa').equals('primaria').toArray())
+      .filter((c) => !vigentes.has(c.id))
+      .map((c) => c.id)
+    if (sobrantes.length > 0) await db.criterios.bulkDelete(sobrantes)
+
+    // La marca, en la base y no en `localStorage`: así viaja dentro del backup
+    // y una copia restaurada llega ya sembrada, en vez de resembrarse encima.
+    await guardarConfig({ semillaCriterios: VERSION_SEMILLA_CRITERIOS })
+  })
 }
 
 /** Criterios que aplican a un grupo, según su etapa y su nivel. */

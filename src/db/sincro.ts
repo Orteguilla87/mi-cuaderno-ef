@@ -34,6 +34,7 @@ import {
   olvidarEstado,
   type EstadoSincro,
 } from '../lib/sincroEstado'
+import { marcadoSuprimido, sinMarcar } from './supresion'
 import { useSincro, type EstadoUI } from '../store/sincro'
 
 /** Margen tras la última escritura antes de subir: evita subir tecla a tecla. */
@@ -52,12 +53,7 @@ export async function guardarConfigSincro(sincro: ConfigSincro | undefined): Pro
   // Cambiar de carpeta invalida todo lo que este dispositivo creía saber de la
   // anterior: si no se olvidara, se compararía la versión de una carpeta con la
   // de otra y saldría cualquier cosa.
-  if (anterior?.id !== sincro?.id) {
-    olvidarEstado()
-    conflictoVivo = null
-    yaPendiente = false
-    yaConflicto = false
-  }
+  if (anterior?.id !== sincro?.id) olvidarSincro()
   await arrancar()
 }
 
@@ -77,6 +73,21 @@ function actualizar(cambios: Partial<EstadoSincro>): EstadoSincro {
   yaPendiente = siguiente.pendiente
   yaConflicto = siguiente.conflicto
   return siguiente
+}
+
+/**
+ * Borra todo lo que este dispositivo creía saber de una carpeta de
+ * sincronización: lo guardado, el espejo en memoria y el conflicto vivo.
+ *
+ * Las tres cosas van juntas o no van: olvidar solo `localStorage` deja el
+ * espejo diciendo «ya está marcado como pendiente», y a partir de ahí ninguna
+ * escritura del maestro vuelve a marcarse.
+ */
+export function olvidarSincro(): void {
+  olvidarEstado()
+  conflictoVivo = null
+  yaPendiente = false
+  yaConflicto = false
 }
 
 export class ErrorSincro extends Error {
@@ -127,10 +138,20 @@ async function leerMeta(id: string): Promise<MetaRemota | null> {
 
 // ——————————————————————————— subida ———————————————————————————
 
-async function subir(sincro: ConfigSincro, previa: MetaRemota | null): Promise<void> {
+/**
+ * Huella del contenido local ahora mismo.
+ *
+ * Es la única medida honesta de «¿ha cambiado algo de verdad?». El `.enc` no
+ * sirve —cada cifrado usa salt e IV nuevos— y el marcador `pendiente` es solo
+ * un proxy: lo pone cualquier escritura, la haya provocado el maestro o no.
+ */
+async function huellaLocal(): Promise<string> {
   const tablas = await volcarTablas()
-  const claro = new TextEncoder().encode(JSON.stringify({ tablas }))
-  const huellaActual = await huella(claro)
+  return huella(new TextEncoder().encode(JSON.stringify({ tablas })))
+}
+
+async function subir(sincro: ConfigSincro, previa: MetaRemota | null): Promise<void> {
+  const huellaActual = await huellaLocal()
 
   // Nada cambió de verdad. No se puede detectar comparando el `.enc` porque
   // cada cifrado usa salt e IV nuevos y los bytes siempre difieren.
@@ -220,9 +241,16 @@ async function bajar(sincro: ConfigSincro, meta: MetaRemota): Promise<void> {
     restaurarBackup(fichero, sincro.passphrase, { conservar: [...CONSERVAR] }),
   )
 
+  // La huella se recalcula, no se anula: acabamos de quedar en sincronía con el
+  // servidor, así que este es el contenido de referencia contra el que medir si
+  // más adelante ha cambiado algo de verdad. (No coincide con la huella que
+  // calculó quien subió la copia, porque `conservar` deja aquí los campos de
+  // config de este dispositivo; da igual: solo se compara contra huellas
+  // locales.) Dejarla en `null` cegaba la revalidación de `ejecutar()` justo
+  // después de bajar, que es cuando más falta hace.
   actualizar({
     versionAplicada: meta.version,
-    huellaSubida: null,
+    huellaSubida: await huellaLocal(),
     pendiente: false,
     ultimaEscritura: null,
     fallosSeguidos: 0,
@@ -308,26 +336,14 @@ export async function descargarRemotaAFichero(): Promise<{ fichero: Uint8Array<A
 
 // ——————————————————————————— detección de cambios locales ———————————————————————————
 
-/**
- * Contador de supresión. Mientras es > 0, las escrituras no cuentan como
- * «cambió algo»: son de la propia sincronización (la restauración de una copia
- * bajada, o el sello de `ultimoBackup`) y marcarlas provocaría un bucle.
- */
-let suprimidas = 0
-
-async function sinMarcar<T>(accion: () => T | Promise<T>): Promise<T> {
-  suprimidas++
-  try {
-    return await accion()
-  } finally {
-    suprimidas--
-  }
-}
-
 let temporizador: number | undefined
 
 function marcarCambio(): void {
-  if (suprimidas > 0) return
+  // Las escrituras internas —siembra de criterios, restauración de una copia
+  // bajada, sello de `ultimoBackup`— no son trabajo del maestro. El contador
+  // vive en `db/supresion.ts` para que quien siembra pueda envolverlas sin
+  // importar este módulo entero.
+  if (marcadoSuprimido()) return
   // `yaPendiente` y `yaConflicto` son el espejo en memoria de `localStorage`:
   // este hook se dispara una vez POR FILA, y sembrar los criterios oficiales
   // inserta miles de golpe.
@@ -341,7 +357,8 @@ function marcarCambio(): void {
 
 let hooksPuestos = false
 
-function observarEscrituras(): void {
+/** Exportada solo para poder probar el marcado sin montar la app entera. */
+export function observarEscrituras(): void {
   if (hooksPuestos) return
   hooksPuestos = true
   // Mismo recorrido de tablas que `volcarTablas`: un único punto y ninguna
@@ -403,6 +420,23 @@ export async function ejecutar(): Promise<void> {
         await bajar(sincro, meta!)
         break
       case 'conflicto': {
+        // Antes de parar la app y pedirle al maestro que elija, comprobar que
+        // hay algo real que elegir. `pendiente` es un proxy —lo pone cualquier
+        // escritura— y además se lee DESPUÉS del viaje de red a `leerMeta()`,
+        // así que una escritura ocurrida durante esa ida y vuelta también entra
+        // aquí. La huella no miente: si el contenido local es idéntico al del
+        // último punto de sincronía, no ha divergido nada y esto es un simple
+        // «el servidor va por delante», que se resuelve bajando.
+        //
+        // Se revalida así, y no capturando el estado antes del `await`, porque
+        // esa foto tendría el defecto contrario y mucho peor: una escritura
+        // real llegada durante el viaje de red no aparecería en ella, y se
+        // bajaría la copia remota encima, perdiéndola sin avisar.
+        if (guardado.huellaSubida && (await huellaLocal()) === guardado.huellaSubida) {
+          actualizar({ pendiente: false, ultimaEscritura: null })
+          await bajar(sincro, meta!)
+          break
+        }
         conflictoVivo = {
           meta: meta!,
           localDesde: guardado.ultimaEscritura ?? (await leerConfig()).ultimoBackup,

@@ -624,6 +624,13 @@ export interface Config {
   tema: 'claro' | 'oscuro' | 'sistema'
   /** ISO 8601 del último backup exportado. Alimenta el aviso semanal (M9). */
   ultimoBackup?: string
+  /**
+   * Versión de la semilla de criterios ya volcada en esta base. Mientras
+   * coincida con `VERSION_SEMILLA_CRITERIOS`, el arranque no escribe ni una
+   * fila de criterios. Va en la base y no en `localStorage` para viajar dentro
+   * del backup, igual que los criterios que describe.
+   */
+  semillaCriterios?: number
   /** Servidor WebDAV propio para llevar el `.enc` de un dispositivo a otro. */
   webdav?: ConfigWebdav
   /** Sincronización automática del mismo `.enc` vía Firestore. */
