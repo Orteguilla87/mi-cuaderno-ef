@@ -5,8 +5,10 @@ import {
   conflictoActual,
   descargarRemotaAFichero,
   ejecutar,
+  ErrorSincro,
   resolverConLoLocal,
   resolverConLoRemoto,
+  type CodigoErrorSincro,
 } from '../db/sincro'
 import { crearDescarga } from '../lib/descargar'
 import { nombreFicheroBackup } from '../lib/backup'
@@ -75,6 +77,28 @@ function fecha(iso: string | undefined): string {
   return iso ? new Date(iso).toLocaleString('es-ES') : 'desconocida'
 }
 
+/**
+ * Qué se le dice al maestro según por qué falló. Cada frase termina en lo que
+ * puede hacer él, que es lo único que le sirve; y todas dicen que no se ha
+ * tocado nada, porque desde el Bloque 2 es verdad: un fallo deja el conflicto
+ * exactamente como estaba.
+ */
+const MOTIVO: Record<CodigoErrorSincro, string> = {
+  red: 'No hay conexión con el servidor. No se ha tocado nada: vuelve a elegir cuando tengas cobertura.',
+  permisos:
+    'El servidor ha rechazado la petición. Revisa en Ajustes que el identificador de sincronización es el correcto y que las reglas de seguridad están publicadas.',
+  passphrase:
+    'La contraseña de este dispositivo no abre los datos de la nube: se guardaron con otra distinta. No se ha tocado nada.',
+  incompleta:
+    'La copia del servidor llegó incompleta. No se ha tocado nada: vuelve a intentarlo en un momento.',
+  otro: '',
+}
+
+function motivo(e: unknown, respaldo: string): string {
+  if (!(e instanceof ErrorSincro)) return respaldo
+  return MOTIVO[e.codigo] || e.message || respaldo
+}
+
 function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
   const { estado, detalle } = useSincro()
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -82,14 +106,21 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
   const [trabajando, setTrabajando] = useState(false)
   const [descarga, setDescarga] = useState<{ url: string; nombre: string } | null>(null)
 
-  /** Elegida una de las dos copias, la hoja ya no tiene nada que ofrecer. */
+  /**
+   * Elegida una de las dos copias, la hoja ya no tiene nada que ofrecer.
+   *
+   * Si falla, el motor deja el conflicto exactamente como estaba —no se ha
+   * perdido nada— y lo que hace falta es decir POR QUÉ falló: esperar a que
+   * vuelva la cobertura, reintentar, o caer en que las dos contraseñas no son
+   * la misma no llevan al mismo sitio.
+   */
   async function resolver(accion: () => Promise<void>) {
     setTrabajando(true)
     try {
       await accion()
       onCerrar()
-    } catch {
-      mostrarAviso('No se pudo resolver el conflicto. Se vuelve a intentar cuando quieras.')
+    } catch (e) {
+      mostrarAviso(motivo(e, 'No se pudo resolver el conflicto. No se ha tocado nada.'))
       setTrabajando(false)
     }
   }
@@ -99,8 +130,8 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
     try {
       const { fichero, meta } = await descargarRemotaAFichero()
       setDescarga(crearDescarga(fichero, nombreFicheroBackup(new Date(meta.creado)), 'application/octet-stream'))
-    } catch {
-      mostrarAviso('No se pudo descargar la otra copia.')
+    } catch (e) {
+      mostrarAviso(motivo(e, 'No se pudo descargar la otra copia.'))
     } finally {
       setTrabajando(false)
     }

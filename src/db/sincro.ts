@@ -14,7 +14,7 @@
  * - Si los dos lados avanzaron, NO se fusiona: se para y pregunta.
  */
 
-import { exportarBackup, inspeccionarBackup, restaurarBackup, volcarTablas } from './backup'
+import { ErrorBackup, exportarBackup, inspeccionarBackup, restaurarBackup, volcarTablas } from './backup'
 import { guardarConfig, leerConfig } from './config'
 import { db } from './db'
 import type { ConfigSincro } from './types'
@@ -90,9 +90,17 @@ export function olvidarSincro(): void {
   yaConflicto = false
 }
 
+/**
+ * Causas de fallo que el maestro necesita distinguir, porque la salida de cada
+ * una es distinta: esperar (`red`), publicar las reglas (`permisos`), volver a
+ * intentarlo (`incompleta`) o resolver la divergencia de contraseña
+ * (`passphrase`). Un «no se pudo» genérico no le dice qué hacer.
+ */
+export type CodigoErrorSincro = 'red' | 'permisos' | 'passphrase' | 'incompleta' | 'otro'
+
 export class ErrorSincro extends Error {
   constructor(
-    readonly codigo: 'red' | 'permisos' | 'passphrase' | 'otro',
+    readonly codigo: CodigoErrorSincro,
     mensaje: string,
   ) {
     super(mensaje)
@@ -103,12 +111,9 @@ export class ErrorSincro extends Error {
 // ——————————————————————————— acceso a Firestore ———————————————————————————
 
 async function refs(id: string) {
-  const [bd, { collection, doc }] = await Promise.all([
-    firestore(),
-    import('firebase/firestore'),
-  ])
-  const meta = doc(bd, 'sync', id)
-  return { bd, meta, partes: collection(meta, 'partes') }
+  const [bd, fs] = await Promise.all([firestore(), import('firebase/firestore')])
+  const meta = fs.doc(bd, 'sync', id)
+  return { fs, meta, partes: fs.collection(meta, 'partes') }
 }
 
 /**
@@ -118,6 +123,18 @@ async function refs(id: string) {
  * no lo va a arreglar, así que se distingue del corte de red.
  */
 function traducir(err: unknown): ErrorSincro {
+  // Lo primero, lo ya clasificado: un fallo de descifrado sigue siendo un fallo
+  // de descifrado aunque además se haya ido la cobertura, y meterlo en «red»
+  // haría que la app prometiera reintentarlo solo, que es justo lo que no puede
+  // arreglarlo.
+  if (err instanceof ErrorSincro) return err
+  if (err instanceof ErrorBackup && err.codigo === 'passphrase')
+    return new ErrorSincro(
+      'passphrase',
+      'Los datos guardados en la nube se cifraron con otra contraseña, y con la de este dispositivo no se pueden abrir. No se ha tocado nada.',
+    )
+  if (err instanceof ErrorBackup) return new ErrorSincro('otro', err.message)
+
   const codigo = (err as { code?: string })?.code ?? ''
   if (codigo === 'permission-denied')
     return new ErrorSincro(
@@ -126,13 +143,12 @@ function traducir(err: unknown): ErrorSincro {
     )
   if (codigo === 'unavailable' || codigo === 'deadline-exceeded' || !navigator.onLine)
     return new ErrorSincro('red', 'Sin conexión con el servidor. Se reintentará solo.')
-  if (err instanceof ErrorSincro) return err
   return new ErrorSincro('otro', (err as Error)?.message ?? 'No se pudo sincronizar.')
 }
 
 async function leerMeta(id: string): Promise<MetaRemota | null> {
-  const [{ meta }, { getDoc }] = await Promise.all([refs(id), import('firebase/firestore')])
-  const instantanea = await getDoc(meta)
+  const { fs, meta } = await refs(id)
+  const instantanea = await fs.getDoc(meta)
   return instantanea.exists() ? (instantanea.data() as MetaRemota) : null
 }
 
@@ -150,12 +166,20 @@ async function huellaLocal(): Promise<string> {
   return huella(new TextEncoder().encode(JSON.stringify({ tablas })))
 }
 
-async function subir(sincro: ConfigSincro, previa: MetaRemota | null): Promise<void> {
+async function subir(
+  sincro: ConfigSincro,
+  previa: MetaRemota | null,
+  opciones: { forzar?: boolean } = {},
+): Promise<void> {
   const huellaActual = await huellaLocal()
 
   // Nada cambió de verdad. No se puede detectar comparando el `.enc` porque
   // cada cifrado usa salt e IV nuevos y los bytes siempre difieren.
-  if (huellaActual === leerEstado().huellaSubida) {
+  //
+  // `forzar` lo salta al resolver un conflicto: ahí el contenido local puede ser
+  // idéntico al que se subió la última vez y aun así hay que subirlo, porque lo
+  // que el maestro está diciendo es «pisa lo del servidor con esto».
+  if (!opciones.forzar && huellaActual === leerEstado().huellaSubida) {
     actualizar({ pendiente: false, ultimaEscritura: null })
     return
   }
@@ -163,10 +187,7 @@ async function subir(sincro: ConfigSincro, previa: MetaRemota | null): Promise<v
   const { fichero, cabecera } = await exportarBackup(sincro.passphrase)
   const partes = trocear(fichero)
 
-  const [{ meta, partes: coleccion }, fs] = await Promise.all([
-    refs(sincro.id),
-    import('firebase/firestore'),
-  ])
+  const { fs, meta, partes: coleccion } = await refs(sincro.id)
 
   // Las partes ANTES que la meta: quien lea solo actúa cuando la meta lo dice,
   // así que nunca ve una copia a medio subir.
@@ -192,41 +213,52 @@ async function subir(sincro: ConfigSincro, previa: MetaRemota | null): Promise<v
   for (let i = partes.length; i < (previa?.partes ?? 0); i++)
     await fs.deleteDoc(fs.doc(coleccion, String(i)))
 
+  // El sello de `ultimoBackup` va ANTES de fijar la huella, y no después: es
+  // una escritura más en la base, así que hecha luego dejaría la huella
+  // guardada describiendo un contenido que ya no es el de aquí, y la
+  // revalidación de `ejecutar()` vería divergencia donde solo hay una fecha.
+  await registrarSubida()
   actualizar({
     versionAplicada: version,
-    huellaSubida: huellaActual,
+    huellaSubida: await huellaLocal(),
     pendiente: false,
     ultimaEscritura: null,
     fallosSeguidos: 0,
   })
-  await registrarSubida()
 }
 
-/** La sincronización cuenta como copia hecha: apaga el aviso semanal de M9. */
-async function registrarSubida(): Promise<void> {
-  sinMarcar(() => guardarConfig({ ultimoBackup: new Date().toISOString() }))
+/**
+ * La sincronización cuenta como copia hecha: apaga el aviso semanal de M9.
+ *
+ * El `return` no sobra: sin él, la supresión se levantaba cuando le venía bien
+ * al planificador de promesas, y cualquier cambio del maestro hecho en ese
+ * hueco —justo después de subir— se perdía sin marcar y no volvía a subirse.
+ */
+function registrarSubida(): Promise<void> {
+  return sinMarcar(() => guardarConfig({ ultimoBackup: new Date().toISOString() }))
 }
 
 // ——————————————————————————— bajada ———————————————————————————
 
 async function descargar(sincro: ConfigSincro, meta: MetaRemota): Promise<Uint8Array<ArrayBuffer>> {
-  const [{ partes: coleccion }, fs] = await Promise.all([
-    refs(sincro.id),
-    import('firebase/firestore'),
-  ])
+  const { fs, partes: coleccion } = await refs(sincro.id)
   const trozos = await Promise.all(
     Array.from({ length: meta.partes }, (_, i) => fs.getDoc(fs.doc(coleccion, String(i)))),
   )
   const bytes = trozos.map((t, i) => {
     const datos = t.data()?.datos as { toUint8Array(): Uint8Array } | undefined
-    if (!datos) throw new ErrorSincro('otro', `Falta la parte ${i + 1} de ${meta.partes} de la copia remota.`)
+    if (!datos)
+      throw new ErrorSincro(
+        'incompleta',
+        `Falta el trozo ${i + 1} de ${meta.partes} de la copia del servidor. No se ha tocado nada.`,
+      )
     return datos.toUint8Array()
   })
   const entero = reensamblar(bytes)
   if (entero.length !== meta.bytes)
     throw new ErrorSincro(
-      'otro',
-      'La copia remota llegó incompleta. No se ha tocado nada; se reintentará.',
+      'incompleta',
+      'La copia del servidor llegó incompleta. No se ha tocado nada; puedes volver a intentarlo.',
     )
   return entero
 }
@@ -248,12 +280,18 @@ async function bajar(sincro: ConfigSincro, meta: MetaRemota): Promise<void> {
   // config de este dispositivo; da igual: solo se compara contra huellas
   // locales.) Dejarla en `null` cegaba la revalidación de `ejecutar()` justo
   // después de bajar, que es cuando más falta hace.
+  // Toda la limpieza de estado va AQUÍ, cuando la copia ya está dentro. Hecha
+  // antes —como hacía la resolución de conflictos— un fallo a mitad dejaba el
+  // dispositivo sin la marca de trabajo pendiente y con el conflicto sin
+  // resolver: perdía la única pista de que había algo que subir.
+  conflictoVivo = null
   actualizar({
     versionAplicada: meta.version,
     huellaSubida: await huellaLocal(),
     pendiente: false,
     ultimaEscritura: null,
     fallosSeguidos: 0,
+    conflicto: false,
   })
   // Sellar ANTES de recargar: la marca queda en localStorage y sobrevive al
   // reinicio, así que al volver a arrancar se enseña la fecha correcta.
@@ -305,25 +343,57 @@ export function conflictoActual(): Conflicto | null {
   return conflictoVivo
 }
 
-/** Descarta lo local y se queda con lo del servidor. */
-export async function resolverConLoRemoto(): Promise<void> {
+/**
+ * Ejecuta una resolución de conflicto sin dejar el estado a medias.
+ *
+ * Regla: **no se limpia nada hasta que la resolución ha terminado bien**. Si
+ * falla —se fue la cobertura, la copia llegó incompleta, la contraseña no
+ * abre— el estado vuelve exactamente al que había, el conflicto sigue vivo y
+ * el maestro puede volver a elegir. Lo contrario, que era lo que hacía antes
+ * `resolverConLoRemoto`, borraba la marca de trabajo local sin subirlo a
+ * ninguna parte y dejaba el conflicto sin resolver: lo peor de los dos mundos.
+ */
+async function resolver(accion: (sincro: ConfigSincro, conflicto: Conflicto) => Promise<void>): Promise<void> {
   const sincro = (await leerConfig()).sincro
   if (!sincroConfigurada(sincro) || !conflictoVivo) return
-  const meta = conflictoVivo.meta
-  conflictoVivo = null
-  actualizar({ conflicto: false, pendiente: false, ultimaEscritura: null })
-  await bajar(sincro, meta)
+  const conflicto = conflictoVivo
+  const antes = leerEstado()
+
+  return conCerrojo(async () => {
+    try {
+      await accion(sincro, conflicto)
+    } catch (err) {
+      // `actualizar` con el estado entero: se restaura tal cual estaba, campo a
+      // campo, sin depender de acordarse de cuáles tocó la acción fallida.
+      actualizar(antes)
+      conflictoVivo = conflicto
+      const traducido = traducir(err)
+      estado('conflicto', traducido.message)
+      throw traducido
+    }
+  })
+}
+
+/** Descarta lo local y se queda con lo del servidor. */
+export async function resolverConLoRemoto(): Promise<void> {
+  // `bajar` limpia el conflicto al final, cuando la copia ya está dentro.
+  return resolver((sincro, conflicto) => bajar(sincro, conflicto.meta))
 }
 
 /** Descarta lo del servidor y sube lo de aquí encima. */
 export async function resolverConLoLocal(): Promise<void> {
-  const sincro = (await leerConfig()).sincro
-  if (!sincroConfigurada(sincro) || !conflictoVivo) return
-  // La versión remota se adopta como base para que la subida quede por encima
-  // de ella y el otro dispositivo la vea como más nueva.
-  actualizar({ versionAplicada: conflictoVivo.meta.version, conflicto: false, pendiente: true })
-  conflictoVivo = null
-  await ejecutar()
+  return resolver(async (sincro, conflicto) => {
+    // La versión remota se adopta como base para que la subida quede por encima
+    // de ella y el otro dispositivo la vea como más nueva.
+    actualizar({ versionAplicada: conflicto.meta.version })
+    // `forzar`: el contenido local puede coincidir con el de la última subida y
+    // aun así hay que subirlo, porque el servidor ha avanzado por encima.
+    await subir(sincro, conflicto.meta, { forzar: true })
+    conflictoVivo = null
+    actualizar({ conflicto: false })
+    marcarSincronizadoAhora()
+    estado('sincronizado')
+  })
 }
 
 /** Baja la copia del servidor a un fichero, sin tocar nada. */
@@ -331,7 +401,12 @@ export async function descargarRemotaAFichero(): Promise<{ fichero: Uint8Array<A
   const sincro = (await leerConfig()).sincro
   if (!sincroConfigurada(sincro) || !conflictoVivo)
     throw new ErrorSincro('otro', 'No hay ninguna copia remota pendiente.')
-  return { fichero: await descargar(sincro, conflictoVivo.meta), meta: conflictoVivo.meta }
+  const meta = conflictoVivo.meta
+  try {
+    return { fichero: await descargar(sincro, meta), meta }
+  } catch (err) {
+    throw traducir(err)
+  }
 }
 
 // ——————————————————————————— detección de cambios locales ———————————————————————————
@@ -391,14 +466,30 @@ function marcarSincronizadoAhora(): void {
 let enMarcha = false
 
 /**
- * Una pasada completa: mira el servidor, decide y actúa.
+ * Cerrojo de una sola pasada. Se echa ANTES del primer `await`, no después:
+ * puesto más abajo no cerraba nada —dos llamadas podían colarse las dos— y una
+ * subida propia despierta al `onSnapshot`, que vuelve a entrar antes de que el
+ * marcador local se haya actualizado. El resultado era la app peleándose
+ * consigo misma y declarando un conflicto contra su propia copia recién subida.
  *
- * El cerrojo se echa ANTES del primer `await`, no después. Puesto más abajo no
- * cerraba nada: dos llamadas podían colarse las dos, y una subida propia
- * despierta al `onSnapshot`, que vuelve a entrar aquí antes de que el marcador
- * local se haya actualizado. El resultado era la app peleándose consigo misma y
- * declarando un conflicto contra su propia copia recién subida.
+ * Lo comparten la pasada automática y las resoluciones de conflicto: sin eso,
+ * el ciclo de fondo podía arrancar justo mientras el maestro estaba resolviendo.
  */
+async function conCerrojo<T>(accion: () => Promise<T>): Promise<T> {
+  if (enMarcha)
+    throw new ErrorSincro(
+      'otro',
+      'Hay una sincronización en marcha. Espera un momento y vuelve a intentarlo.',
+    )
+  enMarcha = true
+  try {
+    return await accion()
+  } finally {
+    enMarcha = false
+  }
+}
+
+/** Una pasada completa: mira el servidor, decide y actúa. */
 export async function ejecutar(): Promise<void> {
   if (enMarcha) return
   enMarcha = true
@@ -538,11 +629,8 @@ export async function arrancar(): Promise<void> {
   // `onSnapshot` sobre el documento de meta —unos pocos campos— es una conexión
   // viva, no un sondeo: el otro dispositivo aparece al momento y sin preguntar
   // cada pocos segundos.
-  const [{ meta }, { onSnapshot }] = await Promise.all([
-    refs(sincro.id),
-    import('firebase/firestore'),
-  ])
-  escuchando = onSnapshot(
+  const { fs, meta } = await refs(sincro.id)
+  escuchando = fs.onSnapshot(
     meta,
     (instantanea) => {
       const remota = instantanea.data() as MetaRemota | undefined
