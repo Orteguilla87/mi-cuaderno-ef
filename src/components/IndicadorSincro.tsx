@@ -1,17 +1,22 @@
-import { AlertTriangle, Check, Cloud, CloudOff, Download, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Check, Cloud, CloudOff, Download, KeyRound, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Hoja } from './Hoja'
 import {
+  adoptarPassphraseRemota,
   conflictoActual,
   descargarRemotaAFichero,
+  divergenciaPassphrase,
   ejecutar,
   ErrorSincro,
   resolverConLoLocal,
   resolverConLoRemoto,
+  sobrescribirNubeConLoLocal,
   type CodigoErrorSincro,
 } from '../db/sincro'
+import { Campo } from './Campo'
 import { crearDescarga } from '../lib/descargar'
 import { nombreFicheroBackup } from '../lib/backup'
+import type { MetaRemota } from '../lib/sincro'
 import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
 
@@ -24,6 +29,7 @@ const PINTA = {
   sincronizado: { Icono: Check, texto: 'Todo al día · toca para sincronizar' },
   sincronizando: { Icono: RefreshCw, texto: 'Sincronizando…' },
   conflicto: { Icono: AlertTriangle, texto: 'Conflicto de sincronización' },
+  passphrase: { Icono: KeyRound, texto: 'La contraseña no abre los datos de la nube' },
   sin_conexion: { Icono: CloudOff, texto: 'Sin conexión: los cambios subirán solos' },
   error: { Icono: AlertTriangle, texto: 'Error de sincronización' },
   apagado: { Icono: Cloud, texto: '' },
@@ -44,9 +50,10 @@ export function IndicadorSincro() {
   if (estado === 'apagado') return null
 
   const { Icono, texto } = PINTA[estado]
-  // Conflicto y error son los únicos estados donde hay algo que decidir; en el
-  // resto, tocar significa «mira el servidor ya, no esperes al debounce».
-  const problema = estado === 'conflicto' || estado === 'error'
+  // Conflicto, contraseña que no abre y error son los estados donde hay algo
+  // que decidir; en el resto, tocar significa «mira el servidor ya, no esperes
+  // al debounce».
+  const problema = estado === 'conflicto' || estado === 'passphrase' || estado === 'error'
   // El tic «al día» va en lima (positivo); el resto de estados sin problema, en
   // blanco atenuado, para que solo el check destaque como confirmación.
   const colorIcono = problema ? 'text-white' : estado === 'sincronizado' ? 'text-lima' : 'text-white/75'
@@ -99,10 +106,128 @@ function motivo(e: unknown, respaldo: string): string {
   return MOTIVO[e.codigo] || e.message || respaldo
 }
 
+/**
+ * La contraseña de este dispositivo no es la que cifró lo que hay en la nube.
+ *
+ * Se detecta con el canario de la meta remota, sin descargar nada. Las dos
+ * salidas son las únicas que existen de verdad: recordar la contraseña buena, o
+ * aceptar que lo de la nube se queda ilegible y sustituirlo por lo de aquí. No
+ * hay una tercera, y fingir que la hay sería peor que decirlo.
+ */
+function HojaPassphrase({ meta, onCerrar }: { meta: MetaRemota; onCerrar: () => void }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [passphrase, setPassphrase] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [trabajando, setTrabajando] = useState(false)
+  const [confirmandoPisar, setConfirmandoPisar] = useState(false)
+
+  async function adoptar() {
+    setTrabajando(true)
+    setError(null)
+    try {
+      await adoptarPassphraseRemota(passphrase)
+      onCerrar()
+    } catch (e) {
+      setError(motivo(e, 'No se pudo comprobar esa contraseña.'))
+      setTrabajando(false)
+    }
+  }
+
+  async function pisarLaNube() {
+    setTrabajando(true)
+    try {
+      await sobrescribirNubeConLoLocal()
+      onCerrar()
+    } catch (e) {
+      mostrarAviso(motivo(e, 'No se pudo sustituir la copia de la nube. No se ha tocado nada.'))
+      setTrabajando(false)
+    }
+  }
+
+  return (
+    <Hoja abierta titulo="La contraseña no abre los datos de la nube" onCerrar={onCerrar}>
+      <div className="space-y-3">
+        <p className="text-sm">
+          Los datos guardados en la nube se protegieron con una contraseña distinta de la que tiene
+          este dispositivo, así que desde aquí no se pueden abrir. No se ha perdido nada: lo de este
+          dispositivo sigue intacto y lo de la nube también, solo que cada uno con su llave.
+        </p>
+
+        <div className="rounded-xl border border-borde p-3 dark:border-noche-borde">
+          <div className="font-semibold">La copia de la nube ({meta.dispositivo})</div>
+          <div className="text-sm texto-suave">
+            Guardada el <span className="cifra">{fecha(meta.creado)}</span>
+          </div>
+        </div>
+
+        <label className="block">
+          <span className="etiqueta">Contraseña con la que se guardaron los datos de la nube</span>
+          <Campo
+            type="password"
+            className="campo"
+            valor={passphrase}
+            onValor={(v) => {
+              setPassphrase(v)
+              setError(null)
+            }}
+            autoComplete="off"
+          />
+        </label>
+
+        {error && (
+          <p role="alert" className="text-sm font-medium text-acento">
+            {error}
+          </p>
+        )}
+
+        <button
+          className="btn-primario w-full"
+          disabled={trabajando || !passphrase}
+          onClick={() => void adoptar()}
+        >
+          {trabajando ? 'Comprobando…' : 'Usar esta contraseña en este dispositivo'}
+        </button>
+        <p className="text-xs texto-suave">
+          Se comprueba antes de descargar nada. Si no es la correcta, no se cambia nada aquí.
+        </p>
+
+        {confirmandoPisar ? (
+          <div className="space-y-3 rounded-xl border border-acento p-3">
+            <p className="text-sm">
+              Se sustituirá la copia de la nube por la de este dispositivo. Todo lo que el otro
+              dispositivo hubiera guardado ahí y no esté aquí se pierde, y no hay forma de
+              recuperarlo desde este dispositivo. Después, escribe la misma contraseña en los dos.
+            </p>
+            <button
+              className="btn-peligro w-full"
+              disabled={trabajando}
+              onClick={() => void pisarLaNube()}
+            >
+              {trabajando ? 'Sustituyendo…' : 'Sí, sustituir la copia de la nube'}
+            </button>
+            <button className="btn-suave w-full" onClick={() => setConfirmandoPisar(false)}>
+              Mejor no
+            </button>
+          </div>
+        ) : (
+          <button
+            className="btn-suave w-full"
+            disabled={trabajando}
+            onClick={() => setConfirmandoPisar(true)}
+          >
+            No recuerdo esa contraseña
+          </button>
+        )}
+      </div>
+    </Hoja>
+  )
+}
+
 function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
   const { estado, detalle } = useSincro()
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const conflicto = conflictoActual()
+  const divergencia = divergenciaPassphrase()
   const [trabajando, setTrabajando] = useState(false)
   const [descarga, setDescarga] = useState<{ url: string; nombre: string } | null>(null)
 
@@ -136,6 +261,9 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
       setTrabajando(false)
     }
   }
+
+  if (estado === 'passphrase' && divergencia)
+    return <HojaPassphrase meta={divergencia} onCerrar={onCerrar} />
 
   if (estado !== 'conflicto' || !conflicto)
     return (

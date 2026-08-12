@@ -20,11 +20,14 @@ import { db } from './db'
 import type { ConfigSincro } from './types'
 import { firebaseConfigurado, firestore, idSincroValido } from '../lib/firebase'
 import {
+  canarioCoincide,
+  crearCanario,
   decidir,
   esperaTrasFallo,
   huella,
   nombreDispositivo,
   reensamblar,
+  selloDeCanario,
   trocear,
   type MetaRemota,
 } from '../lib/sincro'
@@ -54,6 +57,9 @@ export async function guardarConfigSincro(sincro: ConfigSincro | undefined): Pro
   // anterior: si no se olvidara, se compararía la versión de una carpeta con la
   // de otra y saldría cualquier cosa.
   if (anterior?.id !== sincro?.id) olvidarSincro()
+  // Cambiar la contraseña invalida el «ya comprobé que este canario abre»: el
+  // canario es el mismo, pero la llave con la que se comprobó ya no.
+  else if (anterior?.passphrase !== sincro?.passphrase) actualizar({ canarioOk: null })
   await arrancar()
 }
 
@@ -86,6 +92,7 @@ function actualizar(cambios: Partial<EstadoSincro>): EstadoSincro {
 export function olvidarSincro(): void {
   olvidarEstado()
   conflictoVivo = null
+  passphraseAjena = null
   yaPendiente = false
   yaConflicto = false
 }
@@ -197,6 +204,9 @@ async function subir(
     ),
   )
 
+  // El canario va en la meta y no dentro del `.enc`: hay que poder comprobar la
+  // contraseña SIN descargar ni descifrar la copia entera.
+  const canario = await crearCanario(sincro.passphrase)
   const version = (previa?.version ?? 0) + 1
   await fs.setDoc(meta, {
     version,
@@ -206,7 +216,11 @@ async function subir(
     creado: cabecera.creado,
     dispositivo: nombreDispositivo(),
     actualizado: fs.serverTimestamp(),
+    canario,
   })
+  // Lo que acaba de subir este dispositivo lo abre este dispositivo: no hace
+  // falta volver a derivar la clave en la siguiente pasada para comprobarlo.
+  actualizar({ canarioOk: canario.sello })
 
   // Poda de las partes que sobran si la copia encogió. Va después de la meta:
   // borrarlas antes dejaría un hueco visible para un lector concurrente.
@@ -317,6 +331,100 @@ async function baseConDatos(): Promise<boolean> {
 
 async function resumenLocal(): Promise<{ grupos: number; alumnos: number }> {
   return { grupos: await db.grupos.count(), alumnos: await db.alumnos.count() }
+}
+
+// ——————————————————————— divergencia de contraseña ———————————————————————
+
+/**
+ * La contraseña de este dispositivo no abre lo que hay en la nube.
+ *
+ * Pasa porque la contraseña se teclea en cada dispositivo (Ajustes) y nadie la
+ * cotejaba nunca: subir funcionaba desde los dos, pero bajar solo funcionaba en
+ * el que había cifrado. La divergencia no converge sola —al restaurar se
+ * conserva a propósito el bloque `sincro` de este dispositivo— así que hay que
+ * verla y resolverla a mano.
+ */
+let passphraseAjena: MetaRemota | null = null
+
+export function divergenciaPassphrase(): MetaRemota | null {
+  return passphraseAjena
+}
+
+/**
+ * Comprueba el canario de la copia remota contra la contraseña de aquí.
+ *
+ * El resultado se recuerda por sello: repetir 600.000 iteraciones de PBKDF2 en
+ * cada pasada, cada cinco minutos y en un móvil, sería gastar batería para
+ * volver a confirmar lo mismo.
+ */
+async function contrasenaAbreLaNube(sincro: ConfigSincro, meta: MetaRemota): Promise<boolean> {
+  const sello = selloDeCanario(meta.canario)
+  if (sello && sello === leerEstado().canarioOk) return true
+  const coincide = await canarioCoincide(meta.canario, sincro.passphrase)
+  actualizar({ canarioOk: coincide ? sello : null })
+  return coincide
+}
+
+/**
+ * Adopta la contraseña con la que se cifró la copia de la nube.
+ *
+ * Se valida ANTES de tocar nada y contra el canario, no descargando el blob
+ * entero: si no es esa, no se ha gastado ni una descarga ni se ha sustituido la
+ * contraseña local. Nunca se cambia en silencio.
+ */
+export async function adoptarPassphraseRemota(passphrase: string): Promise<void> {
+  const config = await leerConfig()
+  const sincro = config.sincro
+  if (!sincroConfigurada(sincro) || !passphraseAjena)
+    throw new ErrorSincro('otro', 'No hay ninguna copia remota que abrir.')
+  if (!passphrase) throw new ErrorSincro('passphrase', 'Escribe la contraseña.')
+
+  if (!(await canarioCoincide(passphraseAjena.canario, passphrase)))
+    throw new ErrorSincro(
+      'passphrase',
+      'Esa contraseña tampoco abre los datos de la nube. No se ha cambiado nada.',
+    )
+
+  await sinMarcar(() => guardarConfig({ sincro: { ...sincro, passphrase } }))
+  actualizar({ canarioOk: selloDeCanario(passphraseAjena.canario) })
+  passphraseAjena = null
+  await ejecutar()
+}
+
+/**
+ * Pisa la nube con lo de este dispositivo, cifrado con la contraseña de aquí.
+ *
+ * Es la única salida cuando la contraseña remota no se recuerda: lo que hay en
+ * la nube no se puede abrir desde aquí, ni ahora ni nunca, así que o se queda
+ * ahí sin servir a nadie o se sustituye. Lo pide el maestro explícitamente,
+ * avisado de que la copia de la nube se pierde.
+ */
+export async function sobrescribirNubeConLoLocal(): Promise<void> {
+  const sincro = (await leerConfig()).sincro
+  if (!sincroConfigurada(sincro) || !passphraseAjena)
+    throw new ErrorSincro('otro', 'No hay ninguna copia remota que sustituir.')
+  const previa = passphraseAjena
+  const antes = leerEstado()
+
+  return conCerrojo(async () => {
+    try {
+      // La versión remota se adopta como base para que esta subida quede por
+      // encima y el otro dispositivo la vea como más nueva.
+      actualizar({ versionAplicada: previa.version })
+      await subir(sincro, previa, { forzar: true })
+      passphraseAjena = null
+      marcarSincronizadoAhora()
+      estado('sincronizado')
+    } catch (err) {
+      // Misma regla que en el conflicto: si falla, el estado vuelve al de antes
+      // y el aviso sigue en pie.
+      actualizar(antes)
+      passphraseAjena = previa
+      const traducido = traducir(err)
+      estado('passphrase', traducido.message)
+      throw traducido
+    }
+  })
 }
 
 // ——————————————————————————— resolución de conflictos ———————————————————————————
@@ -501,6 +609,17 @@ export async function ejecutar(): Promise<void> {
 
     estado('sincronizando')
     const meta = await leerMeta(sincro.id)
+
+    // Antes de decidir nada: ¿abre siquiera esta contraseña lo que hay ahí?
+    // Bajar sería descargar y reensamblar medio megabyte para estrellarse al
+    // descifrarlo, y subir encima borraría del servidor unos datos que aquí no
+    // se pueden ni leer. Las dos salidas las tiene que elegir el maestro.
+    if (meta && !(await contrasenaAbreLaNube(sincro, meta))) {
+      passphraseAjena = meta
+      return estado('passphrase')
+    }
+    passphraseAjena = null
+
     const guardado = leerEstado()
     const local = { ...guardado, baseConDatos: await baseConDatos() }
     switch (decidir(meta, local)) {

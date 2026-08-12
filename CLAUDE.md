@@ -201,9 +201,11 @@ Lo mismo que §10, pero solo: el `.enc` de M9 sube unos segundos después de cad
 **Esquema remoto:**
 
 ```
-sync/{idSincro}                 → meta { version, actualizado, dispositivo, partes, bytes, esquema, creado }
+sync/{idSincro}                 → meta { version, actualizado, dispositivo, partes, bytes, esquema, creado, canario }
 sync/{idSincro}/partes/{0..n-1} → { datos: Bytes }
 ```
+
+`canario` es la prueba de con qué passphrase se cifró la copia, **sin revelarla**: un bloque AES-GCM de contenido conocido cifrado con la misma clave PBKDF2 (misma sal propia, mismas 600k iteraciones) que el `.enc`. Existe porque la passphrase se teclea en cada dispositivo y nadie la cotejaba: con dos distintas, subir funcionaba desde ambos y bajar solo desde el que cifró, y la divergencia no converge sola —al restaurar se conserva a propósito el bloque `sincro` local—. Al detectarla, la app se para, lo dice, y ofrece las dos únicas salidas reales: escribir la passphrase buena (se valida contra el canario **antes** de descargar nada) o sustituir la copia de la nube por la local, con confirmación explícita de lo que se pierde. Una copia sin `canario` —subida por una versión anterior— no bloquea nada.
 
 `version` es un entero monótono: se compara sin depender de que los relojes coincidan. Las partes se escriben antes que la meta, así que un lector nunca ve una copia a medio subir. El troceado a ~700 kB existe por el límite de 1 MiB por documento de Firestore.
 

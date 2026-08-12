@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canarioCoincide,
+  crearCanario,
   decidir,
   esperaTrasFallo,
   ESPERAS_REINTENTO,
   huella,
   nombreDispositivo,
   reensamblar,
+  selloDeCanario,
   trocear,
   type EstadoLocal,
   type MetaRemota,
@@ -201,4 +204,59 @@ describe('nombreDispositivo', () => {
   it('no se queda sin respuesta ante un agente desconocido', () => {
     expect(nombreDispositivo('algo raro')).toBe('Otro dispositivo')
   })
+})
+
+// ——————————————————————————— Bloque 3 ———————————————————————————
+
+/**
+ * El canario es lo único que permite saber, ANTES de descargar medio megabyte
+ * y estrellarse al descifrarlo, que la contraseña de este dispositivo no es la
+ * que cifró lo que hay en la nube.
+ */
+describe('canario de contraseña', () => {
+  // PBKDF2 con 600.000 iteraciones no es rápido, y cada caso deriva la clave
+  // dos veces. El tope de Vitest se queda corto.
+  const LENTO = 30_000
+
+  it('la misma contraseña lo abre', async () => {
+    const canario = await crearCanario('la buena')
+
+    expect(await canarioCoincide(canario, 'la buena')).toBe(true)
+  }, LENTO)
+
+  it('otra contraseña no lo abre', async () => {
+    const canario = await crearCanario('la buena')
+
+    expect(await canarioCoincide(canario, 'la otra')).toBe(false)
+  }, LENTO)
+
+  it('un canario manipulado tampoco', async () => {
+    const canario = await crearCanario('la buena')
+    const tocado = { ...canario, sello: canario.sello.replace(/^./, (c) => (c === 'A' ? 'B' : 'A')) }
+
+    expect(await canarioCoincide(tocado, 'la buena')).toBe(false)
+  }, LENTO)
+
+  /**
+   * Las copias subidas antes de que esto existiera no llevan canario. Tratarlas
+   * como divergentes sería inventarse un problema que no consta.
+   */
+  it('sin canario no bloquea nada', async () => {
+    expect(await canarioCoincide(undefined, 'cualquiera')).toBe(true)
+  })
+
+  it('no guarda la contraseña ni nada que se le parezca', async () => {
+    const canario = await crearCanario('zanahoria-con-patatas')
+
+    expect(JSON.stringify(canario)).not.toContain('zanahoria')
+    expect(canario.iteraciones).toBe(600_000)
+  }, LENTO)
+
+  it('dos canarios de la misma contraseña son distintos: sal e IV nuevos', async () => {
+    const [a, b] = [await crearCanario('la buena'), await crearCanario('la buena')]
+
+    expect(a.sal).not.toBe(b.sal)
+    expect(a.sello).not.toBe(b.sello)
+    expect(selloDeCanario(a)).toBe(a.sello)
+  }, LENTO)
 })

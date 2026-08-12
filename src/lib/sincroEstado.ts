@@ -42,6 +42,13 @@ export interface EstadoSincro {
    * como sorpresa en cada arranque y para no seguir intentando subir encima.
    */
   conflicto: boolean
+  /**
+   * Sello del último canario que se comprobó y coincidía con la contraseña de
+   * este dispositivo. Evita repetir 600.000 iteraciones de PBKDF2 en cada
+   * pasada —cada cinco minutos, y en un móvil— para volver a confirmar lo que
+   * ya se sabe. Cambia el canario, cambia el sello, y se vuelve a comprobar.
+   */
+  canarioOk: string | null
 }
 
 export const ESTADO_INICIAL: EstadoSincro = {
@@ -52,6 +59,7 @@ export const ESTADO_INICIAL: EstadoSincro = {
   fallosSeguidos: 0,
   conflicto: false,
   ultimaSincro: null,
+  canarioOk: null,
 }
 
 export function leerEstado(): EstadoSincro {

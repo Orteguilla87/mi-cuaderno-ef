@@ -7,13 +7,93 @@
  * funciones puras que se pueden probar sin red y sin navegador.
  */
 
-import { aBase64 } from './cripto'
+import {
+  aBase64,
+  aBytes,
+  aTexto,
+  aleatorios,
+  BYTES_IV,
+  BYTES_SALT,
+  cifrar,
+  deBase64,
+  derivarClave,
+  descifrar,
+  ITERACIONES_PBKDF2,
+} from './cripto'
 
 /**
  * Firestore admite 1 MiB por documento. Se trocea bastante por debajo para
  * dejar sitio a la envoltura del propio documento y no vivir en el límite.
  */
 export const BYTES_POR_PARTE = 700_000
+
+/**
+ * Prueba de que quien subió la copia usaba una contraseña concreta, sin
+ * revelarla.
+ *
+ * Es un bloque AES-GCM de contenido conocido (`TESTIGO`) cifrado con la MISMA
+ * clave que el `.enc`: PBKDF2-SHA256 con las mismas 600.000 iteraciones y una
+ * sal propia. Quien tenga la contraseña lo abre; quien no, se enfrenta a
+ * exactamente el mismo trabajo que ya le supondría atacar el `.enc` que está al
+ * lado en el servidor. Por eso no empeora nada: no añade una vía más barata.
+ *
+ * Un hash a secas habría sido más corto, pero un hash rápido de la contraseña sí
+ * habría regalado un oráculo barato; y con las mismas iteraciones no ahorraba
+ * nada frente a esto.
+ */
+export interface Canario {
+  /** Sal del PBKDF2, base64. Propia: nunca la del backup. */
+  sal: string
+  iv: string
+  /** `TESTIGO` cifrado, con su sello de autenticación. Base64. */
+  sello: string
+  iteraciones: number
+}
+
+/** Contenido conocido del canario. Cambiarlo invalida los canarios ya subidos. */
+export const TESTIGO = 'cuaderno-ef/sincro/v1'
+
+export async function crearCanario(passphrase: string): Promise<Canario> {
+  const sal = aleatorios(BYTES_SALT)
+  const iv = aleatorios(BYTES_IV)
+  const clave = await derivarClave(passphrase, sal, ITERACIONES_PBKDF2)
+  const sello = await cifrar(clave, iv, aBytes(TESTIGO))
+  return {
+    sal: aBase64(sal),
+    iv: aBase64(iv),
+    sello: aBase64(sello),
+    iteraciones: ITERACIONES_PBKDF2,
+  }
+}
+
+/**
+ * `true` si esta contraseña es la que cifró la copia del servidor.
+ *
+ * Sin canario devuelve `true`: las copias subidas por versiones anteriores de
+ * la app no lo llevan, y bloquearlas sería inventarse una divergencia donde no
+ * se sabe si la hay. Lo peor que pasa entonces es lo de antes: el fallo aparece
+ * al descifrar.
+ */
+export async function canarioCoincide(
+  canario: Canario | undefined,
+  passphrase: string,
+): Promise<boolean> {
+  if (!canario?.sal || !canario.iv || !canario.sello) return true
+  try {
+    const clave = await derivarClave(passphrase, deBase64(canario.sal), canario.iteraciones)
+    const claro = await descifrar(clave, deBase64(canario.iv), deBase64(canario.sello))
+    return aTexto(claro) === TESTIGO
+  } catch {
+    // AES-GCM no distingue «clave mala» de «bytes tocados», y aquí las dos
+    // llevan al mismo sitio: con esta contraseña no se va a poder abrir nada.
+    return false
+  }
+}
+
+/** Identidad del canario, para no volver a derivar la clave del ya comprobado. */
+export function selloDeCanario(canario: Canario | undefined): string | null {
+  return canario?.sello ?? null
+}
 
 /** Lo que se guarda en `sync/{id}`. Recuentos y fechas: ningún dato personal. */
 export interface MetaRemota {
@@ -28,6 +108,11 @@ export interface MetaRemota {
   creado: string
   /** Nombre legible del dispositivo que la subió, para la tarjeta de conflicto. */
   dispositivo: string
+  /**
+   * Prueba de con qué contraseña se cifró. Opcional porque las copias subidas
+   * antes de existir esto no lo llevan.
+   */
+  canario?: Canario
 }
 
 /** Lo que este dispositivo sabe de la última sincronización que le salió bien. */

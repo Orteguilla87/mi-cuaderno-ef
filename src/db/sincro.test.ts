@@ -51,14 +51,18 @@ import { sembrarCriterios, VERSION_SEMILLA_CRITERIOS } from './criterios'
 import { guardarConfig, leerConfig } from './config'
 import { db, nuevoId } from './db'
 import {
+  adoptarPassphraseRemota,
   conflictoActual,
+  divergenciaPassphrase,
   ejecutar,
   observarEscrituras,
   olvidarSincro,
   resolverConLoLocal,
   resolverConLoRemoto,
+  sobrescribirNubeConLoLocal,
 } from './sincro'
 import { sinMarcar } from './supresion'
+import { canarioCoincide, type Canario } from '../lib/sincro'
 import { leerEstado } from '../lib/sincroEstado'
 import { useSincro } from '../store/sincro'
 import { almacen, meta, reiniciarFirestoreFalso, romperParte } from '../test/firestoreFalso'
@@ -293,4 +297,100 @@ describe('subir, bajar y resolver conflictos', () => {
     expect(leerEstado().conflicto).toBe(false)
     expect(leerEstado().versionAplicada).toBe(2)
   })
+})
+
+// ——————————————————————————— Bloque 3 ———————————————————————————
+
+/**
+ * La divergencia de contraseña era invisible: subir funcionaba desde los dos
+ * dispositivos y bajar solo desde el que había cifrado, así que el maestro solo
+ * veía «datos rotos o contraseña incorrecta» al resolver un conflicto.
+ */
+describe('divergencia de contraseña entre dispositivos', () => {
+  const LENTO = 40_000
+  const OTRA = 'la-contrasena-del-otro-cacharro'
+
+  beforeEach(async () => {
+    await Promise.all(db.tables.map((t) => t.clear()))
+    olvidarSincro()
+    reiniciarFirestoreFalso()
+    useSincro.setState({ estado: 'apagado', detalle: undefined })
+    await sinMarcar(() => guardarConfig({ sincro: { id: ID_SINCRO, passphrase: OTRA } }))
+    await arranque()
+  })
+
+  /** Deja en la nube una copia cifrada con OTRA, y aquí la contraseña buena. */
+  async function nubeConOtraContrasena(): Promise<void> {
+    await db.grupos.add(grupo('3ºA'))
+    await ejecutar()
+    await sinMarcar(() => guardarConfig({ sincro: { id: ID_SINCRO, passphrase: PASSPHRASE } }))
+    olvidarSincro()
+  }
+
+  it('se detecta sin descargar la copia y sin tocar nada', async () => {
+    await nubeConOtraContrasena()
+    const gruposAntes = await db.grupos.count()
+
+    await ejecutar()
+
+    expect(useSincro.getState().estado).toBe('passphrase')
+    expect(divergenciaPassphrase()?.dispositivo).toBe('Windows')
+    expect(await db.grupos.count()).toBe(gruposAntes)
+  }, LENTO)
+
+  it('no sube encima: eso borraría de la nube datos que aquí no se pueden leer', async () => {
+    await nubeConOtraContrasena()
+    const versionAntes = meta(ID_SINCRO)!.version
+
+    await db.grupos.add(grupo('4ºB'))
+    await ejecutar()
+
+    expect(meta(ID_SINCRO)!.version).toBe(versionAntes)
+  }, LENTO)
+
+  it('una contraseña equivocada no cambia la de este dispositivo', async () => {
+    await nubeConOtraContrasena()
+    await ejecutar()
+
+    await expect(adoptarPassphraseRemota('ni-esta-ni-la-otra')).rejects.toThrow(/tampoco/i)
+
+    expect((await leerConfig()).sincro?.passphrase).toBe(PASSPHRASE)
+    expect(divergenciaPassphrase()).not.toBeNull()
+  }, LENTO)
+
+  it('con la contraseña buena, la adopta y sigue sincronizando', async () => {
+    await nubeConOtraContrasena()
+    await ejecutar()
+
+    await adoptarPassphraseRemota(OTRA)
+
+    expect((await leerConfig()).sincro?.passphrase).toBe(OTRA)
+    expect(divergenciaPassphrase()).toBeNull()
+    expect(useSincro.getState().estado).not.toBe('passphrase')
+  }, LENTO)
+
+  it('si no se recuerda, sustituir la nube deja una copia que este dispositivo sí abre', async () => {
+    await nubeConOtraContrasena()
+    await ejecutar()
+    const versionAntes = meta(ID_SINCRO)!.version as number
+
+    await sobrescribirNubeConLoLocal()
+
+    expect(meta(ID_SINCRO)!.version).toBe(versionAntes + 1)
+    expect(divergenciaPassphrase()).toBeNull()
+    expect(
+      await canarioCoincide(meta(ID_SINCRO)!.canario as Canario, PASSPHRASE),
+    ).toBe(true)
+  }, LENTO)
+
+  it('una copia sin canario, de una versión anterior de la app, no se bloquea', async () => {
+    await nubeConOtraContrasena()
+    const sinCanario = { ...meta(ID_SINCRO)! }
+    delete sinCanario.canario
+    almacen.set(`sync/${ID_SINCRO}`, sinCanario)
+
+    await ejecutar()
+
+    expect(useSincro.getState().estado).not.toBe('passphrase')
+  }, LENTO)
 })

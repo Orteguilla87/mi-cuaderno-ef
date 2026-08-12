@@ -11,6 +11,12 @@ export type EstadoUI =
   | 'sincronizando'
   /** Los dos lados avanzaron. Parado a la espera de que el usuario elija. */
   | 'conflicto'
+  /**
+   * La contraseña de este dispositivo no es la que cifró lo que hay en la nube.
+   * Parado: bajar es imposible y subir encima borraría datos que aquí no se
+   * pueden ni leer.
+   */
+  | 'passphrase'
   | 'sin_conexion'
   /** Fallo que no es de red: reglas sin publicar, copia corrupta… */
   | 'error'
