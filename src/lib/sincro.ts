@@ -113,6 +113,47 @@ export interface MetaRemota {
    * antes de existir esto no lo llevan.
    */
   canario?: Canario
+  /**
+   * Registros por tabla de la copia. Es lo mismo que ya va en la cabecera en
+   * claro del `.enc` —recuentos, sin nombres ni contenido— y está aquí para
+   * poder enseñar QUÉ hay a cada lado de un conflicto sin descargar nada.
+   * Opcional: las copias anteriores no lo llevan.
+   */
+  registros?: Record<string, number>
+}
+
+/**
+ * Lo que hay dentro de una copia, en las cuatro cifras que le dicen algo a un
+ * maestro. Se enseña a los dos lados de un conflicto: elegir entre dos fechas
+ * es elegir a ciegas, porque lo que se descarta se borra entero.
+ */
+export interface ResumenCopia {
+  grupos: number
+  alumnos: number
+  sesiones: number
+  /** Todo lo evaluable y registrable: notas, asistencias, observaciones… */
+  registros: number
+}
+
+/** Tablas que suman en `registros`: el trabajo del día a día. */
+const TABLAS_DE_REGISTRO = [
+  'asistencias',
+  'observaciones',
+  'calificaciones',
+  'evalTrimestrales',
+  'evalFinales',
+  'registrosInfantil',
+  'informesInfantil',
+] as const
+
+export function resumirRecuentos(recuentos: Record<string, number> | undefined): ResumenCopia | null {
+  if (!recuentos) return null
+  return {
+    grupos: recuentos.grupos ?? 0,
+    alumnos: recuentos.alumnos ?? 0,
+    sesiones: recuentos.sesiones ?? 0,
+    registros: TABLAS_DE_REGISTRO.reduce((n, t) => n + (recuentos[t] ?? 0), 0),
+  }
 }
 
 /** Lo que este dispositivo sabe de la última sincronización que le salió bien. */

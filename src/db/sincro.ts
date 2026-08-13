@@ -14,7 +14,14 @@
  * - Si los dos lados avanzaron, NO se fusiona: se para y pregunta.
  */
 
-import { ErrorBackup, exportarBackup, inspeccionarBackup, restaurarBackup, volcarTablas } from './backup'
+import {
+  contarRegistros,
+  ErrorBackup,
+  exportarBackup,
+  inspeccionarBackup,
+  restaurarBackup,
+  volcarTablas,
+} from './backup'
 import { guardarConfig, leerConfig } from './config'
 import { db } from './db'
 import type { ConfigSincro } from './types'
@@ -27,9 +34,11 @@ import {
   huella,
   nombreDispositivo,
   reensamblar,
+  resumirRecuentos,
   selloDeCanario,
   trocear,
   type MetaRemota,
+  type ResumenCopia,
 } from '../lib/sincro'
 import {
   guardarEstado,
@@ -217,6 +226,10 @@ async function subir(
     dispositivo: nombreDispositivo(),
     actualizado: fs.serverTimestamp(),
     canario,
+    // Los mismos recuentos que ya van en la cabecera en claro del `.enc`. Sin
+    // ellos, la tarjeta de conflicto solo puede ofrecer una fecha, y elegir
+    // entre dos fechas es elegir a ciegas: lo que se descarta se borra entero.
+    registros: cabecera.registros,
   })
   // Lo que acaba de subir este dispositivo lo abre este dispositivo: no hace
   // falta volver a derivar la clave en la siguiente pasada para comprobarlo.
@@ -329,8 +342,14 @@ async function baseConDatos(): Promise<boolean> {
   return (await db.grupos.count()) > 0
 }
 
-async function resumenLocal(): Promise<{ grupos: number; alumnos: number }> {
-  return { grupos: await db.grupos.count(), alumnos: await db.alumnos.count() }
+/**
+ * Qué hay en esta base, en las mismas cuatro cifras con las que se describe la
+ * copia remota. Se cuenta con `contarRegistros()`, el mismo recorrido de tablas
+ * que usa la cabecera del backup, para que los dos lados de la tarjeta de
+ * conflicto midan exactamente lo mismo y se puedan comparar de verdad.
+ */
+async function resumenLocal(): Promise<ResumenCopia> {
+  return resumirRecuentos(await contarRegistros())!
 }
 
 // ——————————————————————— divergencia de contraseña ———————————————————————
@@ -443,7 +462,13 @@ export interface Conflicto {
    * que jamás se ha subido, y lo que dice algo es cuánto hay dentro.
    */
   primeraVez: boolean
-  resumenLocal: { grupos: number; alumnos: number }
+  resumenLocal: ResumenCopia
+  /**
+   * Lo que hay en la copia del servidor. `null` si la subió una versión de la
+   * app anterior a que la meta llevara recuentos: entonces no se sabe, y la
+   * tarjeta lo dice en vez de fingir un cero.
+   */
+  resumenRemoto: ResumenCopia | null
 }
 
 let conflictoVivo: Conflicto | null = null
@@ -652,6 +677,7 @@ export async function ejecutar(): Promise<void> {
           localDesde: guardado.ultimaEscritura ?? (await leerConfig()).ultimoBackup,
           primeraVez: guardado.versionAplicada === 0,
           resumenLocal: await resumenLocal(),
+          resumenRemoto: resumirRecuentos(meta!.registros),
         }
         actualizar({ conflicto: true })
         estado('conflicto')

@@ -16,7 +16,7 @@ import {
 import { Campo } from './Campo'
 import { crearDescarga } from '../lib/descargar'
 import { nombreFicheroBackup } from '../lib/backup'
-import type { MetaRemota } from '../lib/sincro'
+import type { MetaRemota, ResumenCopia } from '../lib/sincro'
 import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
 
@@ -99,6 +99,59 @@ const MOTIVO: Record<CodigoErrorSincro, string> = {
   incompleta:
     'La copia del servidor llegó incompleta. No se ha tocado nada: vuelve a intentarlo en un momento.',
   otro: '',
+}
+
+function plural(n: number, singular: string, plural: string): string {
+  return n === 1 ? singular : plural
+}
+
+/**
+ * Una de las dos copias de un conflicto, descrita con lo que hay dentro.
+ *
+ * Antes solo se enseñaba una fecha, y la opción de quedarse con la del
+ * servidor **borra la base local entera** (`restaurarBackup` vacía las tablas y
+ * escribe las de la copia). Elegir entre dos fechas era elegir a ciegas qué
+ * trabajo se tira.
+ */
+function Copia({
+  titulo,
+  cuando,
+  resumen,
+}: {
+  titulo: string
+  cuando: string
+  resumen: ResumenCopia | null
+}) {
+  return (
+    <div className="rounded-xl border border-borde p-3 dark:border-noche-borde">
+      <div className="font-semibold">{titulo}</div>
+      <div className="text-sm texto-suave">{cuando}</div>
+      {resumen ? (
+        <ul className="mt-2 grid grid-cols-2 gap-x-3 text-sm texto-suave">
+          <li>
+            <span className="cifra">{resumen.grupos}</span>{' '}
+            {plural(resumen.grupos, 'grupo', 'grupos')}
+          </li>
+          <li>
+            <span className="cifra">{resumen.alumnos}</span>{' '}
+            {plural(resumen.alumnos, 'alumno', 'alumnos')}
+          </li>
+          <li>
+            <span className="cifra">{resumen.sesiones}</span>{' '}
+            {plural(resumen.sesiones, 'sesión', 'sesiones')}
+          </li>
+          <li>
+            <span className="cifra">{resumen.registros}</span>{' '}
+            {plural(resumen.registros, 'registro', 'registros')}
+          </li>
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm texto-suave">
+          Esta copia se subió con una versión anterior de la app y no dice cuánto lleva dentro.
+        </p>
+      )}
+    </div>
+  )
 }
 
 function motivo(e: unknown, respaldo: string): string {
@@ -290,33 +343,23 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
             : 'Los dos dispositivos han cambiado desde la última vez que se sincronizaron. No se pueden juntar: hay que quedarse con uno de los dos. Elige tú, que sabes cuál tiene el trabajo bueno.'}
         </p>
 
-        <div className="rounded-xl border border-borde p-3 dark:border-noche-borde">
-          <div className="font-semibold">Este dispositivo</div>
-          <div className="text-sm texto-suave">
-            {conflicto.primeraVez ? (
-              <>
-                <span className="cifra">{conflicto.resumenLocal.grupos}</span>{' '}
-                {conflicto.resumenLocal.grupos === 1 ? 'grupo' : 'grupos'} y{' '}
-                <span className="cifra">{conflicto.resumenLocal.alumnos}</span>{' '}
-                {conflicto.resumenLocal.alumnos === 1 ? 'alumno' : 'alumnos'}, sin subir nunca.
-              </>
-            ) : conflicto.localDesde ? (
-              <>
-                Con cambios sin subir desde{' '}
-                <span className="cifra">{fecha(conflicto.localDesde)}</span>
-              </>
-            ) : (
-              'Con cambios sin subir.'
-            )}
-          </div>
-        </div>
+        <Copia
+          titulo="Este dispositivo"
+          cuando={
+            conflicto.primeraVez
+              ? 'Sin subir nunca'
+              : conflicto.localDesde
+                ? `Con cambios sin subir desde ${fecha(conflicto.localDesde)}`
+                : 'Con cambios sin subir'
+          }
+          resumen={conflicto.resumenLocal}
+        />
 
-        <div className="rounded-xl border border-borde p-3 dark:border-noche-borde">
-          <div className="font-semibold">La otra copia ({conflicto.meta.dispositivo})</div>
-          <div className="text-sm texto-suave">
-            Guardada el <span className="cifra">{fecha(conflicto.meta.creado)}</span>
-          </div>
-        </div>
+        <Copia
+          titulo={`La otra copia (${conflicto.meta.dispositivo})`}
+          cuando={`Guardada el ${fecha(conflicto.meta.creado)}`}
+          resumen={conflicto.resumenRemoto}
+        />
 
         {descarga ? (
           <a
@@ -336,16 +379,22 @@ function HojaSincro({ onCerrar }: { onCerrar: () => void }) {
         <button className="btn-primario w-full" disabled={trabajando} onClick={() => void resolver(resolverConLoLocal)}>
           Quedarme con la de este dispositivo
         </button>
+        <p className="text-xs texto-suave">
+          Sube lo de aquí encima de lo del servidor. Se pierde lo de la otra copia.
+        </p>
 
         {/* Quedarse con la del servidor recarga la página al terminar, así que
             esta rama no llega a cerrar la hoja: se la lleva la recarga. */}
         <button className="btn-peligro w-full" disabled={trabajando} onClick={() => void resolver(resolverConLoRemoto)}>
           Quedarme con la otra copia
         </button>
+        <p className="text-xs texto-suave">
+          Sustituye TODO lo de este dispositivo por lo de la otra copia. Lo de aquí se borra entero,
+          no se mezcla nada.
+        </p>
 
         <p className="text-xs texto-suave">
-          La que no elijas se pierde. Si dudas, guarda antes esa copia en un fichero: siempre podrás
-          restaurarla desde Ajustes.
+          Si dudas, guarda antes esa copia en un fichero: siempre podrás restaurarla desde Ajustes.
         </p>
       </div>
     </Hoja>

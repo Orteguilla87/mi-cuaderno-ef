@@ -277,6 +277,66 @@ describe('subir, bajar y resolver conflictos', () => {
     expect(conflictoActual()).not.toBeNull()
   })
 
+  /**
+   * La carrera del Bloque 1: `decidir()` lee el estado local DESPUÉS del viaje
+   * de red, así que una escritura llegada mientras tanto entraba en la
+   * decisión. Si esa escritura no cambia el contenido —un `put` con el mismo
+   * valor, o la siembra— no hay nada que elegir y parar sería mentir.
+   */
+  it('una escritura que no cambia nada no inventa un conflicto', async () => {
+    await db.grupos.add(grupo('3ºA'))
+    await ejecutar()
+    almacen.set(`sync/${ID_SINCRO}`, { ...meta(ID_SINCRO)!, version: 2, dispositivo: 'Android' })
+
+    const [g] = await db.grupos.toArray()
+    await db.grupos.put(g) // marca pendiente sin cambiar una coma
+
+    await ejecutar()
+
+    expect(useSincro.getState().estado).toBe('sincronizado')
+    expect(conflictoActual()).toBeNull()
+  })
+
+  /**
+   * El arranque completo contra un servidor que ya iba por delante: es el
+   * escenario exacto del que salió todo esto —abrir la app en el móvil después
+   * de haber trabajado en el PC— y tiene que bajar sin preguntar.
+   */
+  it('arrancar con la siembra por medio y el servidor por delante: baja, no pregunta', async () => {
+    await db.grupos.add(grupo('3ºA'))
+    await ejecutar()
+    almacen.set(`sync/${ID_SINCRO}`, { ...meta(ID_SINCRO)!, version: 2, dispositivo: 'Android' })
+
+    // Forzar una siembra de verdad, como la de un dispositivo recién abierto
+    // tras subir la versión de semilla.
+    await sinMarcar(() => db.criterios.clear())
+    await arranque()
+    await ejecutar()
+
+    expect(useSincro.getState().estado).toBe('sincronizado')
+    expect(conflictoActual()).toBeNull()
+  })
+
+  it('la tarjeta de conflicto describe las DOS copias, no solo una fecha', async () => {
+    await provocarConflicto()
+
+    const c = conflictoActual()!
+    expect(c.resumenLocal).toEqual({ grupos: 2, alumnos: 0, sesiones: 0, registros: 0 })
+    expect(c.resumenRemoto).toEqual({ grupos: 1, alumnos: 0, sesiones: 0, registros: 0 })
+  })
+
+  it('una copia antigua sin recuentos lo dice en vez de fingir un cero', async () => {
+    await provocarConflicto()
+    const sinRecuentos = { ...meta(ID_SINCRO)! }
+    delete sinRecuentos.registros
+    almacen.set(`sync/${ID_SINCRO}`, sinRecuentos)
+    olvidarSincro()
+    await db.grupos.add(grupo('5ºC'))
+    await ejecutar()
+
+    expect(conflictoActual()?.resumenRemoto).toBeNull()
+  })
+
   it('resuelto con lo local, la copia de aquí queda por encima de la del servidor', async () => {
     await provocarConflicto()
 
