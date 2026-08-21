@@ -100,6 +100,40 @@ export function contarRecursos(bloque: string): number {
   return extraerRecursos(bloque).recursos.length
 }
 
+/**
+ * Ítems de un campo que YA es de material (`Sesion.recursosNecesarios`), no de
+ * un bloque de prosa.
+ *
+ * La diferencia con `extraerRecursos` no es de forma, es de contexto: en una
+ * descripción hace falta una etiqueta para saber qué es material y qué no, pero
+ * aquí el campo entero lo es —para eso existe—, así que exigir «Material:»
+ * dentro de él devolvería una lista vacía justo cuando el dato está completo.
+ * Es lo que pasaba: el importador guarda «25 balones, 12 conos» sin etiqueta,
+ * y «Preparar el material» no encontraba nada que copiar.
+ *
+ * La etiqueta se sigue admitiendo por si el usuario la escribe a mano.
+ */
+export function itemsDeMaterial(campo: string): string[] {
+  const texto = campo?.trim()
+  if (!texto) return []
+
+  const conEtiqueta = extraerRecursos(texto)
+  if (conEtiqueta.recursos.length > 0) return conEtiqueta.recursos
+
+  const items: string[] = []
+  const vistos = new Set<string>()
+  for (const linea of texto.split('\n')) {
+    const contenido = VINETA.exec(linea)?.[1] ?? linea
+    for (const item of trocearLinea(contenido)) {
+      const clave = normalizarTexto(item)
+      if (!clave || vistos.has(clave)) continue
+      vistos.add(clave)
+      items.push(item)
+    }
+  }
+  return items
+}
+
 // ——————————————————————— «Preparar el material» ———————————————————————
 
 export interface ClaseMaterial {
@@ -119,7 +153,7 @@ function recursosDelDia(dia: DiaMaterial): string[] {
   const vistos = new Set<string>()
   const lista: string[] = []
   for (const clase of dia.clases) {
-    for (const item of extraerRecursos(clase.texto ?? '').recursos) {
+    for (const item of itemsDeMaterial(clase.texto ?? '')) {
       const clave = normalizarTexto(item)
       if (vistos.has(clave)) continue
       vistos.add(clave)

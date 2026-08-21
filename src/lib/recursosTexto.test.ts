@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extraerRecursos, textoMaterial } from './recursosTexto'
+import { extraerRecursos, itemsDeMaterial, textoMaterial } from './recursosTexto'
 
 describe('extraerRecursos', () => {
   it('trocea una lista en una sola línea bajo etiqueta', () => {
@@ -74,15 +74,42 @@ describe('textoMaterial', () => {
   })
 
   it('los días sin material no aparecen', () => {
-    const texto = textoMaterial([
-      dia('2026-09-22', 'Material: 12 conos'),
-      dia('2026-09-23', 'Solo carrera continua.'),
-    ])
+    const texto = textoMaterial([dia('2026-09-22', 'Material: 12 conos'), dia('2026-09-23', '')])
     expect(texto).not.toContain('Total de la semana')
     expect(texto).toContain('12 conos')
   })
 
   it('sin material en todo el rango devuelve cadena vacía', () => {
-    expect(textoMaterial([dia('2026-09-22', 'Sin nada'), dia('2026-09-23')])).toBe('')
+    expect(textoMaterial([dia('2026-09-22', ''), dia('2026-09-23')])).toBe('')
+  })
+
+  // El caso que se coló hasta probarlo de punta a punta: lo que el importador
+  // guarda en `recursosNecesarios` es la lista ya limpia, SIN etiqueta.
+  it('lee el campo de material tal como lo deja la importación, sin etiqueta', () => {
+    const texto = textoMaterial([dia('2026-09-22', '25 balones de baloncesto, 12 conos')])
+    expect(texto).toContain('- 25 balones de baloncesto')
+    expect(texto).toContain('- 12 conos')
+  })
+})
+
+describe('itemsDeMaterial', () => {
+  it('trocea el campo entero aunque no lleve etiqueta', () => {
+    expect(itemsDeMaterial('25 balones de baloncesto, 12 conos')).toEqual([
+      '25 balones de baloncesto',
+      '12 conos',
+    ])
+  })
+
+  it('sigue entendiendo la etiqueta si el usuario la escribe a mano', () => {
+    expect(itemsDeMaterial('Material: 4 aros, 6 picas')).toEqual(['4 aros', '6 picas'])
+  })
+
+  it('acepta una lista de viñetas escrita a mano en el campo', () => {
+    expect(itemsDeMaterial('- 4 aros\n- 6 picas')).toEqual(['4 aros', '6 picas'])
+  })
+
+  it('deduplica y no devuelve nada con el campo vacío', () => {
+    expect(itemsDeMaterial('aros, AROS')).toEqual(['aros'])
+    expect(itemsDeMaterial('   ')).toEqual([])
   })
 })
