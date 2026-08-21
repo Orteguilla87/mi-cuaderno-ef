@@ -314,5 +314,8 @@ export async function generarPlanDelDia(fecha: string, clases: PlanClase[]): Pro
     y += 4
   }
 
-  doc.save(nombreArchivo('plan_del_dia', 'pdf'))
+  // La fecha del nombre es la del día COMPARTIDO, no la de hoy: compartir el
+  // plan del jueves un lunes dejaba el fichero sellado con el lunes, y en la
+  // carpeta de descargas dos planes distintos acababan con el mismo nombre.
+  doc.save(`plan_del_dia_${fecha}.pdf`)
 }

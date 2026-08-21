@@ -1,5 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarOff, Check, ChevronDown, ClipboardCheck, Clock, Share2, Table2 } from 'lucide-react'
+import {
+  CalendarOff,
+  Check,
+  ChevronDown,
+  ClipboardCheck,
+  Clock,
+  Package,
+  Share2,
+  Table2,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -22,8 +31,42 @@ import {
   sumarDias,
 } from '../lib/fechas'
 import { generarPlanDelDia } from '../lib/informes'
+import { textoMaterial, type DiaMaterial } from '../lib/recursosTexto'
 import { navegar } from '../lib/router'
 import { useFechaActiva } from '../store/fechaActiva'
+import { useUI } from '../store/ui'
+
+/**
+ * «Preparar el material»: junta lo anotado en `recursosNecesarios` de las
+ * sesiones del rango y lo deja en el portapapeles como texto plano, para pegarlo
+ * en WhatsApp o en cualquier editor. El troceo y la deduplicación los hace el
+ * mismo y único extractor que usa la importación (`lib/recursosTexto.ts`).
+ *
+ * Solo planificación: no lee alumnado, `apoyos` ni observaciones, así que por
+ * aquí no puede salir nada personal (§1.6/§9).
+ */
+function BotonMaterial({ dias, rotulo }: { dias: DiaMaterial[]; rotulo: string }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+
+  async function copiar() {
+    const texto = textoMaterial(dias)
+    // Sin material no se copia nada: dejar el portapapeles vacío borraría lo que
+    // el usuario tuviera dentro a cambio de nada.
+    if (!texto) {
+      mostrarAviso('No hay material anotado en estas sesiones')
+      return
+    }
+    await navigator.clipboard.writeText(texto)
+    mostrarAviso('Material copiado')
+  }
+
+  return (
+    <button className="btn-suave w-full" onClick={() => void copiar()}>
+      <Package size={18} aria-hidden />
+      {rotulo}
+    </button>
+  )
+}
 
 interface Clase {
   grupo: Grupo
@@ -191,6 +234,21 @@ export function Hoy() {
             </section>
 
             {clases && clases.length > 0 && (
+              <BotonMaterial
+                rotulo="Preparar el material del día"
+                dias={[
+                  {
+                    fecha,
+                    clases: clases.map((c) => ({
+                      grupo: c.grupo.nombre,
+                      texto: c.sesion?.recursosNecesarios,
+                    })),
+                  },
+                ]}
+              />
+            )}
+
+            {clases && clases.length > 0 && (
               <button
                 className="btn-suave w-full"
                 onClick={() =>
@@ -325,6 +383,16 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
   const lunesHoy = lunesDe(hoy)
   const viernes = sumarDias(lunes, 4)
 
+  // Los cinco días en orden: el material de la semana se baja del almacén una
+  // sola vez, así que el texto necesita el reparto por día Y el total.
+  const diasMaterial: DiaMaterial[] = [1, 2, 3, 4, 5].map((d) => ({
+    fecha: sumarDias(lunes, d - 1),
+    clases: porDia(d).map((h) => ({
+      grupo: h.grupo.nombre,
+      texto: h.sesion?.recursosNecesarios,
+    })),
+  }))
+
   return (
     <div className="space-y-4 p-4">
       <NavegadorFecha
@@ -339,6 +407,10 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
         ariaAnterior="Semana anterior"
         ariaSiguiente="Semana siguiente"
       />
+
+      {huecos && huecos.length > 0 && (
+        <BotonMaterial rotulo="Preparar el material de la semana" dias={diasMaterial} />
+      )}
 
       {huecos?.length === 0 && (
         <div className="tarjeta text-center">
