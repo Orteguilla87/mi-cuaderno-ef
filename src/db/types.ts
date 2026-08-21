@@ -259,6 +259,36 @@ interface UnidadBase {
   criterios: string[]
   /** Plantilla de la que salió, si se creó a partir de una. */
   plantillaId?: Id
+  /**
+   * Plan de sesiones de la unidad, en orden y todavía sin grupo ni fecha.
+   *
+   * Existe porque una `Sesion` no puede existir sin `grupoId` y `fecha` (el
+   * índice `[grupoId+fecha]` es único), y la programación se escribe mucho antes
+   * de saber en qué clases va a caer. Al llevar la unidad a un grupo, cada
+   * `SesionPlan` se materializa en una `Sesion` con `udId` puesto.
+   *
+   * No es una tabla nueva a propósito: el plan se lee y se escribe siempre
+   * entero con su unidad, no se consulta por índice, y así el backup cifrado y
+   * la sincronización lo llevan sin tocar nada.
+   */
+  sesiones?: SesionPlan[]
+}
+
+/**
+ * Una sesión planificada dentro de la unidad. Mismos campos que la `Sesion`
+ * real salvo lo que depende del calendario (fecha, hora, valoración) y de haber
+ * ocurrido ya (comentarios): eso solo tiene sentido cuando la clase existe.
+ */
+export interface SesionPlan {
+  id: Id
+  orden: number
+  titulo: string
+  /** Descripción de la sesión. Mismo campo que `Sesion.notas`. */
+  notas: string
+  /** «Enlaces y notas». Mismo campo que `Sesion.recursos`. */
+  recursos: Recurso[]
+  /** Material necesario, en texto libre. Mismo campo que `Sesion.recursosNecesarios`. */
+  recursosNecesarios?: string
 }
 
 /**

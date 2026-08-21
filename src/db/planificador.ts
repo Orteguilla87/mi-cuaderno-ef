@@ -1,6 +1,7 @@
 import { cicloDeCurso } from '../lib/ciclos'
 import { estadoDia, type CursoFechas } from '../lib/calendarioEscolar'
 import { aISO, deISO, sumarDias } from '../lib/fechas'
+import { esEnlace } from '../lib/importarTexto'
 import { db, nuevoId } from './db'
 import {
   NIVEL_CICLO_INFANTIL,
@@ -9,6 +10,7 @@ import {
   type Plantilla,
   type Recurso,
   type Sesion,
+  type SesionPlan,
   type Trimestre,
   type UnidadDidactica,
   type UnidadPrimaria,
@@ -220,6 +222,8 @@ export async function crearUnidad(
     trimestre: 1 | 2 | 3 | null
     criterios?: string[]
     plantillaId?: string
+    /** Plan de sesiones, cuando la unidad viene de una importación. */
+    sesiones?: SesionPlan[]
   } & (
     | { etapa: 'primaria'; nivel: number; computa?: boolean; pesoTrimestre?: number }
     | { etapa: 'infantil' }
@@ -231,6 +235,9 @@ export async function crearUnidad(
     trimestre: datos.trimestre,
     criterios: datos.criterios ?? [],
     plantillaId: datos.plantillaId,
+    // Una unidad creada a mano nace sin plan: el campo se omite en vez de
+    // guardarse como `[]`, para no distinguir «sin sesiones» de «vacía».
+    ...(datos.sesiones?.length ? { sesiones: datos.sesiones } : {}),
   }
 
   // En Infantil no se escriben `computa` ni `pesoTrimestre`, ni siquiera a 0:
@@ -564,4 +571,68 @@ export async function copiarPlanificacion(opciones: {
     resultados,
     deshacer: async () => void (await db.sesiones.bulkDelete(ids)),
   }
+}
+
+// ——— Importar una unidad desde texto pegado (§ Bloque 2) ———
+
+/** Una sesión ya revisada en el preview de importación, lista para guardarse. */
+export interface SesionImportada {
+  titulo: string
+  descripcion: string
+  /** Ítems de material, tal como quedaron en los chips del preview. */
+  recursos: string[]
+  /** Una línea por enlace o nota. */
+  enlacesYNotas: string
+}
+
+/**
+ * Crea la unidad con su plan de sesiones a partir de lo confirmado en el
+ * preview. La unidad nace SIN trimestre y sin criterios: el texto pegado no los
+ * trae, y ponerlos por defecto sería meter en el reparto de pesos una unidad
+ * que el usuario todavía no ha colocado. Se completan luego, a mano.
+ *
+ * No recibe grupo ni fechas: las sesiones se quedan en el plan hasta que la
+ * unidad se lleva a un grupo (`aplicarUnidadAGrupo`).
+ */
+export async function importarUnidad(
+  datos: {
+    titulo: string
+    sesiones: SesionImportada[]
+  } & ({ etapa: 'primaria'; nivel: number } | { etapa: 'infantil' }),
+): Promise<{ id: string; deshacer: () => Promise<void> }> {
+  const plan: SesionPlan[] = datos.sesiones.map((s, i) => {
+    const material = s.recursos.map((r) => r.trim()).filter(Boolean).join(', ')
+    const enlaces: Recurso[] = s.enlacesYNotas
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((valor) => ({ tipo: esEnlace(valor) ? 'enlace' : 'nota', valor }))
+
+    return {
+      id: nuevoId(),
+      orden: i,
+      titulo: s.titulo.trim(),
+      notas: s.descripcion,
+      recursos: enlaces,
+      ...(material ? { recursosNecesarios: material } : {}),
+    }
+  })
+
+  const id =
+    datos.etapa === 'infantil'
+      ? await crearUnidad({
+          etapa: 'infantil',
+          titulo: datos.titulo,
+          trimestre: null,
+          sesiones: plan,
+        })
+      : await crearUnidad({
+          etapa: 'primaria',
+          titulo: datos.titulo,
+          nivel: datos.nivel,
+          trimestre: null,
+          sesiones: plan,
+        })
+
+  return { id, deshacer: async () => void (await db.unidades.delete(id)) }
 }

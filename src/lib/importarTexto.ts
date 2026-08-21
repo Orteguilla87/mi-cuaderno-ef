@@ -65,6 +65,11 @@ const ETIQUETA_TITULO = /^\s*t[íi]tulo\s*[:\-–]\s*(.*)$/i
 const ETIQUETA_ENLACES = /^\s*(?:enlaces?|links?|notas)\s*[:\-–]\s*(.*)$/i
 const URL = /\bhttps?:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/gi
 
+/** Si una línea de «Enlaces y notas» es un enlace o una nota suelta. */
+export function esEnlace(valor: string): boolean {
+  return /^(?:https?:\/\/|www\.)\S+$/i.test(valor.trim())
+}
+
 /**
  * Una línea corta, en mayúsculas y sin punto final parece un encabezado. Se pide
  * que tenga alguna letra: «12 - 4 - 2» no es un título.

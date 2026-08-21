@@ -32,6 +32,7 @@ import { Infantil } from './pages/Infantil'
 import { Informes } from './pages/Informes'
 import { Inventario } from './pages/Inventario'
 import { ImportarInventario } from './pages/ImportarInventario'
+import { ImportarUnidad } from './pages/ImportarUnidad'
 import { Juegos } from './pages/Juegos'
 import { Mas } from './pages/Mas'
 import { Observaciones } from './pages/Observaciones'
@@ -95,8 +96,9 @@ function Contenido({ ruta }: { ruta: string }) {
       return param ? <Infantil grupoId={param} /> : <Grupos />
     case 'rubricas':
       return <Rubricas />
+    // /planificador[/importar]
     case 'planificador':
-      return <Planificador />
+      return param === 'importar' ? <ImportarUnidad /> : <Planificador />
     case 'sesiones':
       return param ? <SesionDetalle sesionId={param} /> : <Planificador />
     case 'juegos':

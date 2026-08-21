@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarOff, CalendarRange, ChevronDown, Layers, Plus, Users } from 'lucide-react'
+import { CalendarOff, CalendarRange, ChevronDown, ClipboardPaste, Layers, Plus, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -280,6 +280,11 @@ function VistaUnidades() {
       <button className="btn-primario w-full" onClick={() => setCreando(true)}>
         <Plus size={20} aria-hidden />
         Nueva unidad
+      </button>
+
+      <button className="btn-suave w-full" onClick={() => navegar('/planificador/importar')}>
+        <ClipboardPaste size={20} aria-hidden />
+        Importar pegando texto
       </button>
 
       <div role="group" aria-label="Filtrar por etapa" className="flex gap-2">
