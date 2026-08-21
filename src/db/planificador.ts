@@ -636,3 +636,80 @@ export async function importarUnidad(
 
   return { id, deshacer: async () => void (await db.unidades.delete(id)) }
 }
+
+/**
+ * Materializa el plan de una unidad en sesiones reales de un grupo, a partir de
+ * una fecha. Es el momento en que la programación deja de ser texto y ocupa
+ * clases del calendario.
+ *
+ * Mismo reparto que `copiarPlanificacion`: se avanza sobre las clases REALES
+ * del grupo (festivos y vacaciones ya descontados), y una clase que ya tenga
+ * sesión se salta —nunca se pisa trabajo hecho— y la siguiente del plan busca
+ * el hueco de después. Si se acaban las clases del curso, lo dice en vez de
+ * amontonar sesiones el último día.
+ */
+export async function aplicarUnidadAGrupo(opciones: {
+  udId: string
+  grupoId: string
+  desde: string
+}): Promise<{
+  creadas: number
+  omitidas: number
+  sinHueco: number
+  deshacer: () => Promise<void>
+}> {
+  const { udId, grupoId, desde } = opciones
+  const ud = await db.unidades.get(udId)
+  if (!ud) throw new Error('La unidad ya no existe')
+
+  const grupo = await db.grupos.get(grupoId)
+  if (!grupo) throw new Error('El grupo ya no existe')
+  if (grupo.etapa !== ud.etapa)
+    throw new Error('La unidad es de otra etapa: sus criterios son de otro decreto.')
+
+  const plan = [...(ud.sesiones ?? [])].sort((a, b) => a.orden - b.orden)
+  if (plan.length === 0)
+    throw new Error('Esta unidad no tiene ninguna sesión planificada todavía.')
+
+  // Se piden más fechas que sesiones para tener margen ante huecos ocupados.
+  const candidatas = await proximasClases(grupo, desde, plan.length * 3 + 10)
+  const ocupadas = new Set(
+    (await db.sesiones.where('grupoId').equals(grupoId).toArray()).map((s) => s.fecha),
+  )
+
+  const nuevas: Sesion[] = []
+  let omitidas = 0
+  let indiceFecha = 0
+
+  for (const paso of plan) {
+    while (indiceFecha < candidatas.length && ocupadas.has(candidatas[indiceFecha])) {
+      indiceFecha++
+      omitidas++
+    }
+    if (indiceFecha >= candidatas.length) break
+
+    const fecha = candidatas[indiceFecha++]
+    nuevas.push({
+      id: nuevoId(),
+      grupoId,
+      fecha,
+      titulo: paso.titulo,
+      udId,
+      juegos: [],
+      notas: paso.notas,
+      recursos: paso.recursos,
+      recursosNecesarios: paso.recursosNecesarios,
+    })
+    ocupadas.add(fecha)
+  }
+
+  await db.sesiones.bulkAdd(nuevas)
+  const ids = nuevas.map((s) => s.id)
+
+  return {
+    creadas: nuevas.length,
+    omitidas,
+    sinHueco: plan.length - nuevas.length,
+    deshacer: async () => void (await db.sesiones.bulkDelete(ids)),
+  }
+}

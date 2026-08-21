@@ -1,5 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarOff, CalendarRange, ChevronDown, ClipboardPaste, Layers, Plus, Users } from 'lucide-react'
+import {
+  CalendarOff,
+  CalendarPlus,
+  CalendarRange,
+  ChevronDown,
+  ClipboardPaste,
+  Layers,
+  Plus,
+  Users,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -11,7 +20,13 @@ import { TituloSeccion } from '../components/TituloSeccion'
 import { coberturaInfantil } from '../db/coberturaInfantil'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
-import { crearSesion, crearUnidad, duplicarUnidad, lunesDe } from '../db/planificador'
+import {
+  aplicarUnidadAGrupo,
+  crearSesion,
+  crearUnidad,
+  duplicarUnidad,
+  lunesDe,
+} from '../db/planificador'
 import { huecosDe, type HuecoCalendario } from '../db/sesiones'
 import type { Etapa, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
@@ -248,6 +263,8 @@ function VistaUnidades() {
   const [duplicando, setDuplicando] = useState<{ id: string; titulo: string; nivel: number } | null>(
     null,
   )
+  const [llevando, setLlevando] = useState<UnidadDidactica | null>(null)
+  const [desplegada, setDesplegada] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<FiltroEtapa>('todas')
 
   const unidades = useLiveQuery(async () => {
@@ -314,51 +331,224 @@ function VistaUnidades() {
       )}
 
       <ul className="space-y-2">
-        {visibles.map((u) => (
-          <li key={u.id} className="tarjeta flex items-start gap-2 py-3">
-            <button
-              className="min-w-0 flex-1 text-left"
-              onClick={() => setEditando(u)}
-              aria-label={`Editar ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
-            >
-              <div className="flex items-center gap-2">
-                <p className="truncate text-base font-bold">{u.titulo}</p>
-                {u.etapa === 'primaria' && !u.computa && (
-                  <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
-                    No cuenta
-                  </span>
-                )}
-                {u.etapa === 'infantil' && (
-                  <span className="pildora shrink-0 bg-agua-claro px-2 py-0.5 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
-                    Infantil
-                  </span>
+        {visibles.map((u) => {
+          const plan = [...(u.sesiones ?? [])].sort((a, b) => a.orden - b.orden)
+          const colocadas = conteos?.[u.id] ?? 0
+          const abierta = desplegada === u.id
+          return (
+            <li key={u.id} className="tarjeta space-y-2 py-3">
+              <div className="flex items-start gap-2">
+                <button
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() => setEditando(u)}
+                  aria-label={`Editar ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-base font-bold">{u.titulo}</p>
+                    {u.etapa === 'primaria' && !u.computa && (
+                      <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
+                        No cuenta
+                      </span>
+                    )}
+                    {u.etapa === 'infantil' && (
+                      <span className="pildora shrink-0 bg-agua-claro px-2 py-0.5 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+                        Infantil
+                      </span>
+                    )}
+                  </div>
+                  <p className="cifra mt-0.5 text-sm texto-suave">
+                    {ambitoUnidad(u.etapa, u.nivel)} ·{' '}
+                    {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
+                    {/* Dos cifras distintas: lo que la unidad tiene escrito y lo
+                        que ya ocupa clases. Una sola las confundiría. */}
+                    {plan.length > 0 && `${plan.length} planificadas · `}
+                    {colocadas} colocadas ·{' '}
+                    {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
+                  </p>
+                </button>
+                {/* Duplicar es «llevar esto a otro curso». En Infantil no hay otro
+                    curso al que llevarlo: la unidad ya es del ciclo entero. */}
+                {u.etapa === 'primaria' && (
+                  <button
+                    className="btn-suave shrink-0 px-3 text-xs"
+                    onClick={() => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
+                  >
+                    Duplicar
+                  </button>
                 )}
               </div>
-              <p className="cifra mt-0.5 text-sm texto-suave">
-                {ambitoUnidad(u.etapa, u.nivel)} ·{' '}
-                {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
-                {conteos?.[u.id] ?? 0} sesiones ·{' '}
-                {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
-              </p>
-            </button>
-            {/* Duplicar es «llevar esto a otro curso». En Infantil no hay otro
-                curso al que llevarlo: la unidad ya es del ciclo entero. */}
-            {u.etapa === 'primaria' && (
-              <button
-                className="btn-suave shrink-0 px-3 text-xs"
-                onClick={() => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
-              >
-                Duplicar
-              </button>
-            )}
-          </li>
-        ))}
+
+              {plan.length > 0 && (
+                <>
+                  <div className="flex gap-2">
+                    <button
+                      className="btn-suave flex-1 px-3 text-xs"
+                      onClick={() => setDesplegada(abierta ? null : u.id)}
+                      aria-expanded={abierta}
+                    >
+                      <ChevronDown
+                        size={16}
+                        className={abierta ? 'rotate-180 transition-transform' : 'transition-transform'}
+                        aria-hidden
+                      />
+                      {abierta ? 'Ocultar sesiones' : `Ver las ${plan.length} sesiones`}
+                    </button>
+                    <button
+                      className="btn-suave flex-1 px-3 text-xs"
+                      onClick={() => setLlevando(u)}
+                    >
+                      <CalendarPlus size={16} aria-hidden />
+                      Llevar a un grupo
+                    </button>
+                  </div>
+
+                  {abierta && (
+                    <ol className="space-y-1 border-t border-borde pt-2 dark:border-noche-borde">
+                      {plan.map((s, i) => (
+                        <li key={s.id} className="flex gap-2 text-sm">
+                          <span className="cifra shrink-0 font-bold texto-suave">{i + 1}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-semibold">{s.titulo}</span>
+                            {s.notas && (
+                              <span className="block truncate texto-suave">
+                                {s.notas.split('\n').find((l) => l.trim()) ?? ''}
+                              </span>
+                            )}
+                            {s.recursosNecesarios && (
+                              <span className="block truncate text-xs texto-suave">
+                                Material: {s.recursosNecesarios}
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </>
+              )}
+            </li>
+          )
+        })}
       </ul>
 
       <HojaNuevaUnidad abierta={creando} onCerrar={() => setCreando(false)} />
       <HojaEditarUnidad unidad={editando} onCerrar={() => setEditando(null)} />
       <HojaDuplicarUnidad unidad={duplicando} onCerrar={() => setDuplicando(null)} />
+      <HojaLlevarAGrupo unidad={llevando} onCerrar={() => setLlevando(null)} />
     </>
+  )
+}
+
+/**
+ * Llevar el plan de una unidad a un grupo: es el momento en que la programación
+ * escrita pasa a ocupar clases del calendario.
+ *
+ * Solo se ofrecen grupos de la misma etapa —y, en Primaria, del mismo curso—:
+ * los criterios de la unidad son de un decreto y de un ciclo concretos, y
+ * llevarla a otro sitio los dejaría apuntando a donde no aplican.
+ */
+function HojaLlevarAGrupo({
+  unidad,
+  onCerrar,
+}: {
+  unidad: UnidadDidactica | null
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [grupoId, setGrupoId] = useState('')
+  const [desde, setDesde] = useState(aISO())
+  const [error, setError] = useState<string | null>(null)
+
+  const grupos = useLiveQuery(async () => {
+    if (!unidad) return []
+    const lista = await db.grupos.where('etapa').equals(unidad.etapa).toArray()
+    return lista
+      .filter((g) => unidad.etapa === 'infantil' || g.nivel === unidad.nivel)
+      .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
+  }, [unidad?.id])
+
+  useEffect(() => {
+    if (!unidad) return
+    setDesde(aISO())
+    setError(null)
+    setGrupoId('')
+  }, [unidad])
+
+  if (!unidad) return null
+
+  const plan = unidad.sesiones ?? []
+  const vocabulario = terminologia(unidad.etapa)
+
+  async function llevar() {
+    if (!unidad || !grupoId) return
+    setError(null)
+    try {
+      const r = await aplicarUnidadAGrupo({ udId: unidad.id, grupoId, desde })
+      onCerrar()
+      const partes = [`${r.creadas} ${r.creadas === 1 ? 'sesión colocada' : 'sesiones colocadas'}`]
+      if (r.omitidas > 0) partes.push(`${r.omitidas} ${r.omitidas === 1 ? 'clase ocupada' : 'clases ocupadas'} respetadas`)
+      if (r.sinHueco > 0) partes.push(`${r.sinHueco} sin hueco antes de fin de curso`)
+      mostrarAviso(partes.join(' · '), r.deshacer)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se ha podido llevar la unidad')
+    }
+  }
+
+  return (
+    <Hoja abierta={!!unidad} titulo={`Llevar «${unidad.titulo}» a un grupo`} onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <p className="text-sm texto-suave">
+          Las {plan.length} sesiones de {vocabulario.unidadEnFrase} se colocan en las clases
+          seguidas del grupo a partir de la fecha. Una clase que ya tenga sesión se respeta y la
+          siguiente busca el hueco de después.
+        </p>
+
+        <div>
+          <span className="etiqueta">Grupo</span>
+          {grupos?.length === 0 ? (
+            <p className="text-sm texto-suave">
+              No hay ningún grupo de {ambitoUnidad(unidad.etapa, unidad.nivel)} en esta etapa.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {grupos?.map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => setGrupoId(g.id)}
+                  aria-pressed={grupoId === g.id}
+                  className={(grupoId === g.id ? 'btn-primario' : 'btn-suave') + ' px-4'}
+                >
+                  {g.nombre}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="etiqueta" htmlFor="ud-desde">
+            Primera clase
+          </label>
+          <input
+            id="ud-desde"
+            type="date"
+            className="campo"
+            value={desde}
+            onChange={(e) => setDesde(e.target.value)}
+          />
+        </div>
+
+        {error && <p className="text-sm font-semibold text-acento">{error}</p>}
+
+        <button
+          className="btn-primario w-full"
+          onClick={() => void llevar()}
+          disabled={!grupoId || plan.length === 0}
+        >
+          Colocar {plan.length} {plan.length === 1 ? 'sesión' : 'sesiones'}
+        </button>
+      </div>
+    </Hoja>
   )
 }
 
