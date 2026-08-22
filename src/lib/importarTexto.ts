@@ -12,7 +12,8 @@
  * escrito.
  */
 
-import { extraerRecursos } from './recursosTexto'
+import { URL, extraerRecursos } from './recursosTexto'
+import { normalizarLinea } from './texto'
 
 /** Patrón que ha producido un corte. Se enseña en el preview para poder juzgarlo. */
 export type PatronCorte = 'markdown' | 'sesion-n' | 's-n' | 'mayusculas' | 'numerada'
@@ -50,9 +51,9 @@ export interface ImportacionParseada {
 export function normalizarPegado(texto: string): string {
   return texto
     .replace(/\r\n?/g, '\n')
-    .replace(/[   ]/g, ' ')
-    .replace(/[•●▪]/g, '-')
-    .replace(/[ \t]+$/gm, '')
+    .split('\n')
+    .map(normalizarLinea)
+    .join('\n')
 }
 
 // ——————————————————————— 1.2 cortes ———————————————————————
@@ -63,7 +64,6 @@ const S_N = /^\s*S\s*\d+\s*[:.\-]/i
 const NUMERADA = /^\s*\d+\s*[.\-)]\s+\S/
 const ETIQUETA_TITULO = /^\s*t[íi]tulo\s*[:\-–]\s*(.*)$/i
 const ETIQUETA_ENLACES = /^\s*(?:enlaces?|links?|notas)\s*[:\-–]\s*(.*)$/i
-const URL = /\bhttps?:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/gi
 
 /** Si una línea de «Enlaces y notas» es un enlace o una nota suelta. */
 export function esEnlace(valor: string): boolean {
@@ -184,7 +184,7 @@ function parsearBloque(
   }
 
   // — recursos (1.5): el extractor único, sobre el bloque entero —
-  const { recursos, lineasConsumidas } = extraerRecursos(bloque)
+  const { recursos, enlaces: enlacesDelMaterial, lineasConsumidas } = extraerRecursos(bloque)
   const lineasRecursos = new Set(lineasConsumidas)
 
   // — enlaces y notas (1.6) —
@@ -198,6 +198,11 @@ function parsearBloque(
     vistos.add(limpio)
     enlaces.push(limpio)
   }
+
+  // Las URLs que iban DENTRO del apartado de material entran primero: sus
+  // líneas ya están consumidas, así que el bucle de abajo no las verá, y sin
+  // esto el enlace se perdería por el camino.
+  for (const u of enlacesDelMaterial) anadirEnlace(u)
 
   for (let i = 0; i < lineas.length; i++) {
     if (lineasTitulo.has(i) || lineasRecursos.has(i)) continue
@@ -224,10 +229,14 @@ function parsearBloque(
   }
 
   // — descripción (1.7): el resto, con su estructura intacta —
+  // El `\n{3,}` cierra el hueco que deja el bloque de material al marcharse:
+  // es un movimiento, y un movimiento no debe dejar ni la etiqueta huérfana ni
+  // el agujero donde estaba.
   const descripcion = lineas
     .filter((_, i) => !lineasTitulo.has(i) && !lineasRecursos.has(i) && !lineasEnlace.has(i))
     .join('\n')
     .replace(/^\n+/, '')
+    .replace(/\n{3,}/g, '\n\n')
     .replace(/\s+$/, '')
 
   return {

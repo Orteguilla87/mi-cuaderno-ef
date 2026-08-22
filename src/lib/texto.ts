@@ -21,3 +21,24 @@ export function normalizarTexto(s: string): string {
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+/**
+ * Deja UNA línea en la forma en que el resto de parsers esperan verla, venga de
+ * Word, de Google Docs o de un markdown.
+ *
+ * Nunca añade ni quita saltos de línea, y por eso se aplica línea a línea: los
+ * offsets del preview de importación y los índices de `lineasConsumidas` del
+ * extractor de material están medidos en líneas, y una regla que partiera o
+ * uniera alguna los descuadraría entera.
+ *
+ * La viñeta solo se normaliza al principio de la línea: un `-` en medio de una
+ * frase es un guion, no un punto de lista.
+ */
+export function normalizarLinea(linea: string): string {
+  return linea
+    .replace(/[\u00a0\u2007\u2009\u200a\u202f\u205f\u3000]/g, ' ')
+    .replace(/^([ \t]*)(?:[\u2022\u25cf\u25aa\u2023\u25e6\u25b8\u25ab\u2219\u00b7]|[-\u2013\u2014*])[ \t]+/, '$1- ')
+    .replace(/[\u2022\u25cf\u25aa\u2023\u25e6\u25b8\u25ab]/g, '-')
+    .replace(/ {2,}/g, ' ')
+    .replace(/[ \t]+$/, '')
+}

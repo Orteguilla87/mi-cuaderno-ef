@@ -14,17 +14,63 @@
  */
 
 import { formatoCorto, formatoLargo } from './fechas'
-import { normalizarTexto } from './texto'
+import { normalizarLinea, normalizarTexto } from './texto'
 
-/** Línea que anuncia una lista de material: «Material:», «Recursos necesarios -»… */
-const ETIQUETA_MATERIAL = /^\s*(?:material(?:es)?|recursos?)(?:\s+necesarios?)?\s*[:\-–]\s*(.*)$/i
+/**
+ * Línea que anuncia una lista de material.
+ *
+ * Tres grupos: 1) la coletilla («necesarios», «y materiales»…), capturada solo
+ * para poder saltarla; 2) el separador, OPCIONAL; 3) lo que quede de línea. Que
+ * el separador sea opcional es lo que hace que «MATERIAL» a secas, en su propia
+ * línea, cuente como etiqueta — la forma más común cuando el texto viene de un
+ * documento con la lista debajo.
+ *
+ * El guardarraíl está en quien la usa: sin separador solo vale si NO queda resto
+ * de línea. Si no, «Material didáctico variado para todo el trimestre» en medio
+ * de una descripción se tragaría el párrafo entero como si fuera una lista.
+ *
+ * El tabulador cuenta como separador porque es lo que llega al pegar una celda
+ * de tabla, y ahí no hay dos puntos que valgan.
+ */
+const ETIQUETA_MATERIAL =
+  /^[ \t]*(?:-[ \t]+)?(?:material(?:es)?|recursos?)((?:[ ]+(?:y[ ]+)?(?:material(?:es)?|necesarios?|did[áa]cticos?|de[ ]+clase))*)[ ]*([:\-–—\t])?[ \t]*(.*)$/i
 
 /** Viñeta de lista, en cualquiera de las formas que llegan de Word o markdown. */
-const VINETA = /^\s*[-–—*·•]\s+(.*)$/
+const VINETA = /^[ \t]*[-–—*·•][ \t]+(.*)$/
+
+/** Ítem de una lista numerada: «1. 10 conos», «2) 4 aros». */
+const NUMERADA = /^[ \t]*\d+[ \t]*[.)\-][ \t]+(.*)$/
+
+/**
+ * Etiqueta de OTRO apartado. Cierra el bloque de material: lo que va debajo ya
+ * no es material por mucho que tenga forma de lista.
+ */
+const OTRA_ETIQUETA =
+  /^[ \t]*(?:-[ \t]+)?(?:enlaces?|links?|notas?|t[íi]tulo|desarrollo|objetivos?|criterios?|evaluaci[óo]n|contenidos?|competencias?|metodolog[íi]a|espacios?|instalaci[óo]n|agrupamientos?|duraci[óo]n|temporalizaci[óo]n|calentamiento|parte[ ]+principal|vuelta[ ]+a[ ]+la[ ]+calma|observaciones?|variantes?)\b/i
+
+/**
+ * Encabezado de sesión. Cierra el bloque igual que otra etiqueta.
+ *
+ * La numeración suelta NO entra aquí a propósito: dentro de un bloque de
+ * material «1. 10 conos» es un ítem, no una sesión nueva. Quien decide que una
+ * numeración corta sesiones es `detectarCortes`, y para entonces el bloque ya
+ * está delimitado.
+ */
+const CORTE_SESION =
+  /^[ ]{0,3}#{1,3}[ \t]+\S|^[ \t]*sesi[óo]n[ \t]*(?:n[ºo°]?[ \t]*)?\d+|^[ \t]*S[ \t]*\d+[ \t]*[:.\-]/i
+
+/**
+ * URL en texto libre. Vive aquí, y no en el parser de la importación, porque el
+ * primero que tiene que reconocerla es el extractor: una URL dentro del bloque
+ * de material no es material.
+ */
+export const URL = /\bhttps?:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/gi
 
 export interface RecursosExtraidos {
   /** Ítems en el orden en que aparecen, sin repetidos y con su grafía original. */
   recursos: string[]
+  /** URLs halladas DENTRO del bloque de material: van a «Enlaces y notas». */
+  enlaces: string[]
   /** Índices (base 0) de las líneas del bloque que la lista ha ocupado. */
   lineasConsumidas: number[]
 }
@@ -37,8 +83,55 @@ export interface RecursosExtraidos {
 function trocearLinea(linea: string): string[] {
   return linea
     .split(/[,;·]|\s+[-–—]\s+/)
-    .map((t) => t.trim().replace(/[.;,]+$/, '').trim())
+    .map((t) => t.trim().replace(/[.;,:]+$/, '').trim())
     .filter(Boolean)
+}
+
+/** `true` si la línea abre un apartado de material (con o sin separador). */
+function esEtiquetaMaterial(linea: string): boolean {
+  const m = ETIQUETA_MATERIAL.exec(linea)
+  if (!m) return false
+  return !!m[2] || !m[3].trim()
+}
+
+/**
+ * Una línea sin viñeta ni número puede seguir siendo un ítem: mucha gente
+ * escribe la lista a pelo bajo «Material:». Se pide que sea corta y sin punto
+ * final, que es lo que separa un ítem de una frase de la descripción.
+ */
+function pareceItem(linea: string): boolean {
+  const t = linea.trim()
+  return !!t && t.length < 80 && !t.endsWith('.')
+}
+
+/**
+ * Saca las URLs de una línea ANTES de trocearla y devuelve lo que queda.
+ *
+ * El orden no es un detalle: si se trocea primero, la URL entra en la lista de
+ * la compra como si fuera un material y, además, su línea queda marcada como
+ * consumida, así que el enlace tampoco llega a «Enlaces y notas». Es
+ * exactamente el fallo que esto arregla.
+ *
+ * Si al quitar la URL no queda nada con letras ni números, la línea entera
+ * desaparece del bloque en vez de dejar un ítem fantasma con los dos puntos.
+ */
+function separarEnlaces(contenido: string, anadirEnlace: (u: string) => void): string {
+  const urls = contenido.match(URL)
+  if (!urls || urls.length === 0) return contenido
+
+  let resto = contenido
+  for (const u of urls) {
+    anadirEnlace(u)
+    resto = resto.replace(u, ' ')
+  }
+  resto = resto
+    .replace(/ {2,}/g, ' ')
+    .trim()
+    .replace(/^[:,;.\-–—]+/, '')
+    .replace(/[:,;.\-–—]+$/, '')
+    .trim()
+
+  return /[\p{L}\p{N}]/u.test(resto) ? resto : ''
 }
 
 /**
@@ -48,15 +141,25 @@ function trocearLinea(linea: string): string[] {
  * descripción de sesión está llena de sustantivos que parecen material («los
  * conos del principio se recogen al final») y convertirlos en una lista de la
  * compra sería inventar datos, no extraerlos.
+ *
+ * Dos modos de lista, no uno: la etiqueta puede traer los ítems en su misma
+ * línea («Material: 12 conos, 4 aros») o anunciarlos y dejarlos debajo. Si hay
+ * las dos cosas, se capturan las dos.
  */
 export function extraerRecursos(bloque: string): RecursosExtraidos {
-  const lineas = bloque.split('\n')
+  // Se normaliza aquí dentro, y no solo en el parser de la importación, porque
+  // «Preparar el material» entra por otra puerta y traería el texto crudo. La
+  // normalización es línea a línea a propósito: `lineasConsumidas` son índices
+  // de línea y ninguna regla puede añadir ni quitar saltos.
+  const lineas = bloque.split('\n').map(normalizarLinea)
   const recursos: string[] = []
+  const enlaces: string[] = []
   const vistos = new Set<string>()
+  const vistosEnlace = new Set<string>()
   const lineasConsumidas: number[] = []
 
   const anadir = (item: string) => {
-    const limpio = item.trim().replace(/[.;,]+$/, '').trim()
+    const limpio = item.trim().replace(/[.;,:]+$/, '').trim()
     if (!limpio) return
     const clave = normalizarTexto(limpio)
     if (!clave || vistos.has(clave)) return
@@ -64,35 +167,73 @@ export function extraerRecursos(bloque: string): RecursosExtraidos {
     recursos.push(limpio)
   }
 
+  const anadirEnlace = (valor: string) => {
+    const limpio = valor.trim().replace(/[.,;)]+$/, '')
+    if (!limpio || vistosEnlace.has(limpio)) return
+    vistosEnlace.add(limpio)
+    enlaces.push(limpio)
+  }
+
+  /** Enlaces fuera, material dentro. Nunca al revés. */
+  const consumir = (contenido: string) => {
+    for (const item of trocearLinea(separarEnlaces(contenido, anadirEnlace))) anadir(item)
+  }
+
   for (let i = 0; i < lineas.length; i++) {
     const encabezado = ETIQUETA_MATERIAL.exec(lineas[i])
     if (!encabezado) continue
+    const separador = encabezado[2]
+    const resto = encabezado[3] ?? ''
+    // Sin separador solo cuenta si la etiqueta ocupa la línea entera.
+    if (!separador && resto.trim()) continue
 
     lineasConsumidas.push(i)
-    for (const item of trocearLinea(encabezado[1] ?? '')) anadir(item)
+    consumir(resto)
 
-    // La lista continúa mientras haya viñetas. Una línea en blanco no la corta
-    // (Word intercala párrafos vacíos); una etiqueta nueva o un párrafo suelto sí.
-    for (let j = i + 1; j < lineas.length; j++) {
+    // La lista de debajo tiene un solo estilo: o va marcada (viñeta o número) o
+    // va suelta. Mezclarlos sería colarse en la descripción, que empieza justo
+    // donde la lista deja de tener forma de lista.
+    let modo: 'marcado' | 'suelto' | null = null
+    let j = i + 1
+    while (j < lineas.length) {
       const linea = lineas[j]
+
       if (!linea.trim()) {
-        // Blanco: se consume solo si después sigue habiendo viñetas.
-        const siguiente = lineas.slice(j + 1).find((l) => l.trim())
-        if (siguiente && VINETA.test(siguiente)) {
-          lineasConsumidas.push(j)
-          continue
-        }
-        break
+        // Un blanco no corta si debajo sigue habiendo ítems MARCADOS (Word
+        // intercala párrafos vacíos). Dos blancos seguidos sí cortan, y un
+        // blanco seguido de línea suelta también: ahí ya es otro párrafo.
+        const siguiente = lineas[j + 1]
+        if (!siguiente || !siguiente.trim()) break
+        if (!VINETA.test(siguiente) && !NUMERADA.test(siguiente)) break
+        lineasConsumidas.push(j)
+        j++
+        continue
       }
-      const vineta = VINETA.exec(linea)
-      if (!vineta) break
+
+      if (OTRA_ETIQUETA.test(linea) || CORTE_SESION.test(linea) || esEtiquetaMaterial(linea)) break
+
+      const marcado = VINETA.exec(linea) ?? NUMERADA.exec(linea)
+      let contenido: string
+      if (marcado) {
+        if (modo === 'suelto') break
+        modo = 'marcado'
+        contenido = marcado[1]
+      } else {
+        if (modo === 'marcado') break
+        if (!pareceItem(linea)) break
+        modo = 'suelto'
+        contenido = linea
+      }
+
       lineasConsumidas.push(j)
-      for (const item of trocearLinea(vineta[1])) anadir(item)
-      i = j
+      consumir(contenido)
+      j++
     }
+
+    i = j - 1
   }
 
-  return { recursos, lineasConsumidas }
+  return { recursos, enlaces, lineasConsumidas }
 }
 
 /** Cuántos ítems distintos hay, sin construir la lista. Para contadores de UI. */
@@ -122,9 +263,12 @@ export function itemsDeMaterial(campo: string): string[] {
 
   const items: string[] = []
   const vistos = new Set<string>()
-  for (const linea of texto.split('\n')) {
-    const contenido = VINETA.exec(linea)?.[1] ?? linea
-    for (const item of trocearLinea(contenido)) {
+  for (const cruda of texto.split('\n')) {
+    const linea = normalizarLinea(cruda)
+    const contenido = (VINETA.exec(linea) ?? NUMERADA.exec(linea))?.[1] ?? linea
+    // Una URL escrita a mano en este campo tampoco es material que bajar del
+    // almacén: no se trocea, se descarta.
+    for (const item of trocearLinea(separarEnlaces(contenido, () => {}))) {
       const clave = normalizarTexto(item)
       if (!clave || vistos.has(clave)) continue
       vistos.add(clave)

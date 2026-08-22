@@ -113,3 +113,77 @@ describe('itemsDeMaterial', () => {
     expect(itemsDeMaterial('   ')).toEqual([])
   })
 })
+
+describe('extraerRecursos — formas en que se escribe el apartado', () => {
+  it('etiqueta en línea propia y lista de viñetas debajo', () => {
+    const { recursos } = extraerRecursos(['MATERIAL:', '- 10 conos', '- 4 aros grandes'].join('\n'))
+    expect(recursos).toEqual(['10 conos', '4 aros grandes'])
+  })
+
+  it('etiqueta en línea propia y lista numerada debajo', () => {
+    const { recursos } = extraerRecursos(['Material:', '1. 10 conos', '2) 4 aros'].join('\n'))
+    expect(recursos).toEqual(['10 conos', '4 aros'])
+  })
+
+  it('«MATERIAL» sin dos puntos, seguido de lista', () => {
+    const { recursos } = extraerRecursos(['MATERIAL', '- 10 conos', '- 4 aros'].join('\n'))
+    expect(recursos).toEqual(['10 conos', '4 aros'])
+  })
+
+  it('lista suelta, sin viñeta ni número', () => {
+    const { recursos } = extraerRecursos(['Material:', '10 conos', '4 aros'].join('\n'))
+    expect(recursos).toEqual(['10 conos', '4 aros'])
+  })
+
+  it('admite «Recursos y materiales» y la etiqueta de una celda de tabla', () => {
+    expect(extraerRecursos('Recursos y materiales: conos, aros').recursos).toEqual(['conos', 'aros'])
+    expect(extraerRecursos('Material\tconos, aros').recursos).toEqual(['conos', 'aros'])
+  })
+
+  it('viñetas y espacios duros pegados desde Word', () => {
+    const bloque = ['Material:', '• 10 conos', '‣ 4 aros', '◦ 2 picas'].join('\n')
+    expect(extraerRecursos(bloque).recursos).toEqual(['10 conos', '4 aros', '2 picas'])
+  })
+
+  it('la etiqueta trae ítems en su línea Y lista debajo: captura las dos cosas', () => {
+    const { recursos } = extraerRecursos(['Material: 12 conos', '- 4 aros'].join('\n'))
+    expect(recursos).toEqual(['12 conos', '4 aros'])
+  })
+
+  it('el bloque se corta en otra etiqueta y en un encabezado de sesión', () => {
+    const { recursos } = extraerRecursos(
+      ['Material:', '- 12 conos', 'Objetivos: mejorar el bote', '- 4 aros'].join('\n'),
+    )
+    expect(recursos).toEqual(['12 conos'])
+    expect(extraerRecursos(['Material:', '- 12 conos', 'Sesión 2: Pases', '- 4 aros'].join('\n')).recursos).toEqual([
+      '12 conos',
+    ])
+  })
+
+  it('sin separador solo cuenta si la etiqueta ocupa la línea entera', () => {
+    const { recursos } = extraerRecursos('Material didáctico variado para todo el trimestre.')
+    expect(recursos).toEqual([])
+  })
+})
+
+describe('extraerRecursos — las URLs no son material', () => {
+  it('una línea que es SOLO una URL sale del bloque entera', () => {
+    const { recursos, enlaces } = extraerRecursos(
+      ['Material:', '- conos', '- https://ejemplo.org/video', '- aros'].join('\n'),
+    )
+    expect(recursos).toEqual(['conos', 'aros'])
+    expect(enlaces).toEqual(['https://ejemplo.org/video'])
+  })
+
+  it('una línea que mezcla texto y URL conserva el texto como material', () => {
+    const { recursos, enlaces } = extraerRecursos(
+      ['Material:', '- cuerdas, ver vídeo: https://ejemplo.org/v', '- aros'].join('\n'),
+    )
+    expect(recursos).toEqual(['cuerdas', 'ver vídeo', 'aros'])
+    expect(enlaces).toEqual(['https://ejemplo.org/v'])
+  })
+
+  it('sin URLs, la lista de enlaces viene vacía', () => {
+    expect(extraerRecursos('Material: 12 conos').enlaces).toEqual([])
+  })
+})

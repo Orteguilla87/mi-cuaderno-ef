@@ -165,3 +165,52 @@ describe('fusionarSesiones', () => {
     expect(unida.recursos).toEqual(['4 aros'])
   })
 })
+
+describe('analizarTexto — reparto del apartado de material', () => {
+  const texto = [
+    '## Sesión 1: Bote',
+    'Calentamiento con desplazamientos.',
+    'MATERIAL:',
+    '- 10 conos',
+    '- 4 aros grandes',
+    '- https://ejemplo.org/video',
+    '',
+    '## Sesión 2: Pases',
+    'Trabajo por parejas.',
+    'Material: 8 balones',
+  ].join('\n')
+
+  it('cada sesión se queda con SU material, no todo en la primera', () => {
+    const { sesiones } = analizarTexto(texto)
+    expect(sesiones[0].recursos).toEqual(['10 conos', '4 aros grandes'])
+    expect(sesiones[1].recursos).toEqual(['8 balones'])
+  })
+
+  it('la URL del bloque de material va a «Enlaces y notas», no a recursos', () => {
+    const { sesiones } = analizarTexto(texto)
+    expect(sesiones[0].enlacesYNotas).toBe('https://ejemplo.org/video')
+    expect(sesiones[0].recursos).not.toContain('https://ejemplo.org/video')
+  })
+
+  it('es un movimiento: la descripción ya no contiene el bloque de material', () => {
+    const { sesiones } = analizarTexto(texto)
+    expect(sesiones[0].descripcion).toBe('Calentamiento con desplazamientos.')
+    expect(sesiones[0].descripcion).not.toContain('MATERIAL')
+    expect(sesiones[0].descripcion).not.toContain('conos')
+  })
+
+  it('sin bloque de material la descripción queda intacta', () => {
+    const { sesiones } = analizarTexto(
+      ['## Sesión 1: Bote', 'Los conos del principio se recogen al final.', 'Estiramientos.'].join('\n'),
+    )
+    expect(sesiones[0].recursos).toEqual([])
+    expect(sesiones[0].descripcion).toBe('Los conos del principio se recogen al final.\nEstiramientos.')
+  })
+
+  it('el hueco del bloque no deja líneas en blanco de más', () => {
+    const { sesiones } = analizarTexto(
+      ['## Sesión 1: Bote', 'Antes.', '', 'Material:', '- 12 conos', '', 'Después.'].join('\n'),
+    )
+    expect(sesiones[0].descripcion).toBe('Antes.\n\nDespués.')
+  })
+})

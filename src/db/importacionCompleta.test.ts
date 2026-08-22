@@ -159,3 +159,66 @@ describe('una unidad real, de punta a punta', () => {
     expect(texto).not.toContain('|')
   })
 })
+
+describe('material en bloque, con un enlace dentro', () => {
+  // La forma que llega de un documento: la etiqueta sola, la lista debajo y un
+  // vídeo colado entre los ítems. Antes salía la URL en la lista de la compra y
+  // no salía en ninguna parte el enlace.
+  const TEXTO_BLOQUE = [
+    'UD 5 — Comba',
+    '',
+    'Sesión 1: Saltar a la comba',
+    'Saltos individuales y por parejas.',
+    'MATERIAL',
+    '- 20 combas cortas',
+    '- 2 combas largas, ver vídeo: https://ejemplo.org/comba',
+    '',
+    'Sesión 2: Rutinas',
+    'Encadenamos saltos.',
+    'Material:',
+    '1. 20 combas cortas',
+    '2. 8 petos',
+  ].join('\n')
+
+  it('reparte el bloque entero y el enlace acaba en su campo, no en el material', () => {
+    const r = analizarTexto(TEXTO_BLOQUE)
+
+    expect(r.sesiones[0].recursos).toEqual(['20 combas cortas', '2 combas largas', 'ver vídeo'])
+    expect(r.sesiones[0].enlacesYNotas).toBe('https://ejemplo.org/comba')
+    expect(r.sesiones[0].descripcion).toBe('Saltos individuales y por parejas.')
+
+    // Cada sesión con lo suyo, incluida la lista numerada de la segunda.
+    expect(r.sesiones[1].recursos).toEqual(['20 combas cortas', '8 petos'])
+    expect(r.sesiones[1].descripcion).toBe('Encadenamos saltos.')
+  })
+
+  it('«Preparar el material» lee lo guardado y no cuela la URL como material', async () => {
+    const r = analizarTexto(TEXTO_BLOQUE)
+
+    const { id } = await importarUnidad({
+      etapa: 'primaria',
+      nivel: 4,
+      titulo: r.tituloUnidad!,
+      sesiones: r.sesiones.map((s) => ({
+        titulo: s.titulo!,
+        descripcion: s.descripcion,
+        recursos: s.recursos,
+        enlacesYNotas: s.enlacesYNotas,
+      })),
+    })
+
+    const ud = await db.unidades.get(id)
+    expect(ud?.sesiones?.[0].recursosNecesarios).toBe('20 combas cortas, 2 combas largas, ver vídeo')
+    expect(ud?.sesiones?.[0].recursos).toEqual([{ tipo: 'enlace', valor: 'https://ejemplo.org/comba' }])
+
+    await aplicarUnidadAGrupo({ udId: id, grupoId: GRUPO_ID, desde: '2026-10-06' })
+    const sesiones = (await db.sesiones.toArray()).sort((a, b) => a.fecha.localeCompare(b.fecha))
+
+    const texto = textoMaterial(
+      sesiones.map((s) => ({ fecha: s.fecha, clases: [{ grupo: '4ºB', texto: s.recursosNecesarios }] })),
+    )
+    expect(texto).toContain('- 20 combas cortas')
+    expect(texto).toContain('- 8 petos')
+    expect(texto).not.toContain('http')
+  })
+})
