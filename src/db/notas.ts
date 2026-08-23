@@ -12,6 +12,7 @@ import {
 import { valorNormalizado } from './cuaderno'
 import { db } from './db'
 import { filasPorColumna } from './filas'
+import { unidadesDelCurso } from './planificador'
 import type { Trimestre, ValorCelda } from './types'
 
 /**
@@ -41,13 +42,12 @@ export async function datosCalificacion(
 
   // Las unidades son del curso, no del grupo: 3ºA y 3ºB comparten programación.
   //
-  // Por `[etapa+nivel]` y no por `nivel` a secas: el 3 de un grupo de Infantil
-  // son los 3 años y el de un grupo de Primaria es 3.º, así que el índice
-  // simple mezclaría las unidades de las dos etapas. Aquí, además, solo entra
-  // Primaria: en Infantil no hay nota que calcular (§6).
-  const unidades = (
-    await db.unidades.where('[etapa+nivel]').equals([grupo.etapa, grupo.nivel]).toArray()
-  ).filter((u) => u.etapa === 'primaria')
+  // `unidadesDelCurso` las devuelve ya PROYECTADAS sobre este curso: una unidad
+  // puede abarcar varios, y su peso en el trimestre es distinto en cada uno. El
+  // motor de `lib/notas.ts` recibe así lo de siempre —una unidad de un curso con
+  // un peso— y no se entera del multi-curso. Solo entra Primaria: en Infantil no
+  // hay nota que calcular (§6).
+  const unidades = await unidadesDelCurso(grupo.nivel)
 
   const evaluables: Evaluable[] = unidades.map((unidad) => ({
     unidad,

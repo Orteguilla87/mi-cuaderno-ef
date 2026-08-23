@@ -1,4 +1,4 @@
-import { cicloDeCurso, idCriterioPrimaria } from '../lib/ciclos'
+import { cicloDeCurso, cicloDeUnidad, idCriterioPrimaria, ordinalCiclo } from '../lib/ciclos'
 import { estadoDia, type CursoFechas } from '../lib/calendarioEscolar'
 import { aISO, deISO, sumarDias } from '../lib/fechas'
 import { esEnlace } from '../lib/importarTexto'
@@ -17,8 +17,11 @@ import {
   type SesionPlan,
   type Trimestre,
   type UnidadDidactica,
+  type UnidadEnCurso,
   type UnidadPrimaria,
 } from './types'
+
+export type { UnidadEnCurso }
 
 /** Lunes de la semana a la que pertenece una fecha. */
 export function lunesDe(iso: string): string {
@@ -244,21 +247,223 @@ export async function crearUnidad(
     ...(datos.sesiones?.length ? { sesiones: datos.sesiones } : {}),
   }
 
-  // En Infantil no se escriben `computa` ni `pesoTrimestre`, ni siquiera a 0:
+  // En Infantil no se escriben `computa` ni `pesosPorNivel`, ni siquiera vacíos:
   // no es que valgan cero, es que ahí no hay ponderación que valga.
   const ud: UnidadDidactica =
     datos.etapa === 'infantil'
-      ? { ...comun, etapa: 'infantil', nivel: NIVEL_CICLO_INFANTIL }
+      ? { ...comun, etapa: 'infantil', niveles: [NIVEL_CICLO_INFANTIL] }
       : {
           ...comun,
           etapa: 'primaria',
-          nivel: datos.nivel,
+          // Se crea siempre con un solo curso: los demás se añaden luego, con
+          // la comprobación de ciclo delante.
+          niveles: [datos.nivel],
           computa: datos.computa ?? true,
-          pesoTrimestre: datos.pesoTrimestre ?? 0,
+          pesosPorNivel: { [datos.nivel]: datos.pesoTrimestre ?? 0 },
         }
 
   await db.unidades.add(ud)
   return ud.id
+}
+
+// ——— La unidad vista desde UN curso ———
+//
+// Una unidad abarca varios cursos del mismo ciclo, pero casi todo lo que la
+// consume —el motor de notas, el reparto de pesos, el cuaderno— trabaja siempre
+// desde UN grupo, y por tanto desde UN curso. En vez de enseñarles la lista y
+// obligarlos a elegir, se les entrega la unidad ya PROYECTADA sobre ese curso:
+// con su `nivel` y su `pesoTrimestre` resueltos.
+//
+// Es lo que mantiene el motor de `lib/notas.ts` sin enterarse del multi-curso:
+// sigue viendo una unidad de un curso con un peso, exactamente como antes.
+
+/** Proyecta una unidad de Primaria sobre uno de sus cursos. */
+export function enCurso(unidad: UnidadPrimaria, nivel: number): UnidadEnCurso {
+  return { ...unidad, nivel, pesoTrimestre: unidad.pesosPorNivel[nivel] ?? 0 }
+}
+
+/**
+ * Unidades de Primaria que abarcan un curso, ya proyectadas sobre él.
+ *
+ * Por el índice multiEntry `niveles`: una unidad de 3.º y 4.º sale en los dos.
+ * La etapa se filtra en memoria porque un multiEntry no puede formar parte de un
+ * índice compuesto; da igual, son decenas de registros. Aun así el filtro hace
+ * falta: el 3 de un grupo de Infantil son los 3 años y el de Primaria es 3.º.
+ */
+export async function unidadesDelCurso(nivel: number): Promise<UnidadEnCurso[]> {
+  const lista = await db.unidades.where('niveles').equals(nivel).toArray()
+  return lista
+    .filter((u): u is UnidadPrimaria => u.etapa === 'primaria')
+    .map((u) => enCurso(u, nivel))
+}
+
+// ——— Cursos de una unidad ———
+
+/**
+ * Comprueba la regla dura del multi-curso: misma etapa y MISMO CICLO.
+ *
+ * Los criterios de evaluación de Primaria se definen por ciclo, así que una
+ * unidad que abarcara 3.º y 5.º tendría que sostener dos juegos de criterios
+ * distintos a la vez, que es curricularmente incorrecto. Devuelve el motivo en
+ * lenguaje llano, o `null` si el curso se puede añadir.
+ */
+export function motivoNoAdmiteCurso(unidad: UnidadDidactica, nivel: number): string | null {
+  if (unidad.etapa === 'infantil')
+    return 'En Infantil la unidad ya es del 2.º ciclo entero: 3, 4 y 5 años la comparten.'
+  if (unidad.niveles.includes(nivel)) return `La unidad ya incluye ${nivel}º.`
+
+  const cicloUnidad = cicloDeUnidad(unidad.niveles)
+  const cicloNuevo = cicloDeCurso(nivel)
+  if (cicloUnidad !== null && cicloUnidad !== cicloNuevo)
+    return (
+      `${nivel}º es de ${ordinalCiclo(cicloNuevo)} ciclo y la unidad es de ${ordinalCiclo(cicloUnidad)}. ` +
+      'Los criterios de evaluación se definen por ciclo, así que no son los mismos y una unidad no ' +
+      `puede sostener los dos a la vez. Cópiala a ${nivel}º en su lugar.`
+    )
+  return null
+}
+
+/**
+ * Añade un curso a la unidad. El punto de partida de sus sesiones se elige:
+ * `'blanco'` o el curso del que copiar el plan. Nunca se copia en silencio.
+ */
+export async function anadirCursoAUnidad(
+  udId: string,
+  nivel: number,
+  origen: 'blanco' | number,
+): Promise<() => Promise<void>> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) throw new Error('La unidad ya no existe')
+
+  const motivo = motivoNoAdmiteCurso(unidad, nivel)
+  if (motivo) throw new Error(motivo)
+  if (unidad.etapa !== 'primaria') throw new Error(SOLO_PRIMARIA)
+
+  const copiadas =
+    origen === 'blanco'
+      ? []
+      : sesionesDe(unidad, origen).map((s, i) => ({
+          ...s,
+          id: nuevoId(),
+          nivel,
+          orden: i,
+          recursos: [...s.recursos],
+        }))
+
+  const nuevas = [...(unidad.sesiones ?? []), ...copiadas]
+  await db.unidades.put({
+    ...unidad,
+    niveles: [...unidad.niveles, nivel].sort((a, b) => a - b),
+    // El curso entra sin peso: el reparto del trimestre es suyo y se hace luego.
+    pesosPorNivel: { ...unidad.pesosPorNivel, [nivel]: 0 },
+    ...(nuevas.length ? { sesiones: nuevas } : {}),
+  })
+
+  return async () => void (await db.unidades.put(unidad))
+}
+
+/** Recuento para la confirmación de quitar un curso de la unidad. */
+export interface ImpactoQuitarCurso {
+  sesiones: number
+  /** Celdas escritas en grupos de ese curso. Si hay alguna, se bloquea. */
+  valores: number
+  /** Clases ya colocadas en grupos de ese curso, que quedarán sin unidad. */
+  sesionesColocadas: number
+  esElUltimo: boolean
+}
+
+export async function impactoQuitarCurso(
+  udId: string,
+  nivel: number,
+): Promise<ImpactoQuitarCurso | null> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) return null
+
+  const gruposDelCurso = new Set(
+    (await db.grupos.toArray())
+      .filter((g) => g.etapa === unidad.etapa && g.nivel === nivel)
+      .map((g) => g.id),
+  )
+  const columnas = (await db.columnas.where('udId').equals(udId).toArray()).filter((c) =>
+    gruposDelCurso.has(c.grupoId),
+  )
+  const valores = columnas.length
+    ? await db.valores.where('columnaId').anyOf(columnas.map((c) => c.id)).count()
+    : 0
+  const colocadas = (await db.sesiones.where('udId').equals(udId).toArray()).filter((s) =>
+    gruposDelCurso.has(s.grupoId),
+  )
+
+  return {
+    sesiones: sesionesDe(unidad, nivel).length,
+    valores,
+    sesionesColocadas: colocadas.length,
+    esElUltimo: unidad.niveles.length <= 1,
+  }
+}
+
+/**
+ * Quita un curso de la unidad, con sus sesiones planificadas y su peso.
+ *
+ * Se bloquea si hay notas u observaciones puestas en grupos de ese curso
+ * ligadas a la unidad: quitarlo las dejaría colgando de una unidad que ya no es
+ * de su curso. Y no se puede quitar el último: una unidad sin curso no la
+ * encuentra nadie.
+ *
+ * Las clases ya colocadas no se borran —nunca se destruye el registro de algo
+ * que ocurrió—, solo pierden la unidad, igual que al mover.
+ */
+export async function quitarCursoDeUnidad(
+  udId: string,
+  nivel: number,
+): Promise<() => Promise<void>> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) throw new Error('La unidad ya no existe')
+  if (!unidad.niveles.includes(nivel)) throw new Error('Ese curso no está en la unidad')
+  if (unidad.niveles.length <= 1)
+    throw new Error('Es el único curso de la unidad. Si ya no la usas, archívala o elimínala.')
+
+  const impacto = await impactoQuitarCurso(udId, nivel)
+  if ((impacto?.valores ?? 0) > 0)
+    throw new Error(
+      `Hay notas u observaciones puestas en ${nivel}º con esta unidad. Quitar el curso las dejaría colgando: bórralas antes, o deja el curso donde está.`,
+    )
+
+  const { pesosPorNivel, ...resto } = unidad.etapa === 'primaria' ? unidad : { ...unidad, pesosPorNivel: {} }
+  const pesosSinEl = Object.fromEntries(
+    Object.entries(pesosPorNivel).filter(([n]) => Number(n) !== nivel),
+  )
+
+  // Los grupos se leen ANTES de la transacción: `db.grupos` no está en su
+  // alcance, y meterlo solo para leer complicaría la de deshacer sin ganar nada.
+  const gruposDelCurso = new Set(
+    (await db.grupos.toArray())
+      .filter((g) => g.etapa === unidad.etapa && g.nivel === nivel)
+      .map((g) => g.id),
+  )
+  let colocadas: string[] = []
+
+  await db.transaction('rw', [db.unidades, db.sesiones], async () => {
+    colocadas = (await db.sesiones.where('udId').equals(udId).toArray())
+      .filter((s) => gruposDelCurso.has(s.grupoId))
+      .map((s) => s.id)
+    for (const id of colocadas) await db.sesiones.update(id, { udId: undefined })
+
+    const quedan = (unidad.sesiones ?? []).filter((s) => s.nivel !== nivel)
+    await db.unidades.put({
+      ...resto,
+      pesosPorNivel: pesosSinEl,
+      niveles: unidad.niveles.filter((n) => n !== nivel),
+      ...(quedan.length ? { sesiones: quedan } : { sesiones: undefined }),
+    } as UnidadDidactica)
+  })
+
+  return async () => {
+    await db.transaction('rw', [db.unidades, db.sesiones], async () => {
+      await db.unidades.put(unidad)
+      for (const id of colocadas) await db.sesiones.update(id, { udId })
+    })
+  }
 }
 
 // ——— Copiar y mover una unidad a otro curso ———
@@ -337,7 +542,9 @@ export async function resumenCopia(udId: string, nivelDestino: number): Promise<
   if (!unidad) throw new Error('La unidad de origen ya no existe')
   if (unidad.etapa === 'infantil') throw new Error(SOLO_PRIMARIA)
 
-  const { mapeados, sinMapear } = await mapearCriterios(unidad.criterios, unidad.nivel, nivelDestino)
+  // Todos los cursos de la unidad comparten ciclo, así que el primero decide.
+  const nivelOrigen = unidad.niveles[0] ?? 1
+  const { mapeados, sinMapear } = await mapearCriterios(unidad.criterios, nivelOrigen, nivelDestino)
   const impacto = await contarImpactoUnidad(udId)
 
   // El reparto del trimestre destino, sin esta unidad: si va al mismo curso y
@@ -350,9 +557,9 @@ export async function resumenCopia(udId: string, nivelDestino: number): Promise<
 
   return {
     titulo: unidad.titulo,
-    nivelOrigen: unidad.nivel,
-    cambiaDeCiclo: cicloDeCurso(unidad.nivel) !== cicloDeCurso(nivelDestino),
-    sesionesPlan: unidad.sesiones?.length ?? 0,
+    nivelOrigen,
+    cambiaDeCiclo: cicloDeCurso(nivelOrigen) !== cicloDeCurso(nivelDestino),
+    sesionesPlan: sesionesDe(unidad, nivelOrigen).length,
     mapeados,
     sinMapear,
     valores: impacto?.valores ?? 0,
@@ -382,27 +589,31 @@ export async function resumenCopia(udId: string, nivelDestino: number): Promise<
 export async function copiarUnidad(
   udId: string,
   nivelDestino: number,
-  opciones: { pesoTrimestre?: number } = {},
+  opciones: { pesoTrimestre?: number; desdeNivel?: number } = {},
 ): Promise<{ id: string; deshacer: () => Promise<void> }> {
   const origen = await db.unidades.get(udId)
   if (!origen) throw new Error('La unidad de origen ya no existe')
   if (origen.etapa === 'infantil') throw new Error(SOLO_PRIMARIA)
 
+  // La copia va a UN curso, así que se lleva el plan de UN curso de origen. Por
+  // defecto el primero; con varios cursos, el que se elija.
+  const desdeNivel = opciones.desdeNivel ?? origen.niveles[0] ?? 1
   const { mapeados, sinMapear } = await mapearCriterios(
     origen.criterios,
-    origen.nivel,
+    desdeNivel,
     nivelDestino,
   )
 
+  const plan = sesionesDe(origen, desdeNivel)
   const id = nuevoId()
   const copia: UnidadPrimaria = {
     ...origen,
     id,
-    nivel: nivelDestino,
+    niveles: [nivelDestino],
     criterios: mapeados.map((m) => m.destino),
     // El peso NO se hereda: el reparto es de cada curso y el trimestre destino
     // tiene el suyo. Se pide al confirmar (§3.6).
-    pesoTrimestre: opciones.pesoTrimestre ?? 0,
+    pesosPorNivel: { [nivelDestino]: opciones.pesoTrimestre ?? 0 },
     copiadaDe: udId,
     // Una copia nace visible aunque el original estuviera archivado: se copia
     // para usarla.
@@ -410,11 +621,15 @@ export async function copiarUnidad(
     ...(sinMapear.length ? { criteriosSinMapear: sinMapear } : { criteriosSinMapear: undefined }),
     // Ids nuevos por sesión: si compartieran id con las del origen, editar una
     // sería editar la otra en cuanto algo las buscara por id.
-    ...(origen.sesiones?.length
+    ...(plan.length
       ? {
-          sesiones: [...origen.sesiones]
-            .sort((a, b) => a.orden - b.orden)
-            .map((s, i) => ({ ...s, id: nuevoId(), orden: i, recursos: [...s.recursos] })),
+          sesiones: plan.map((s, i) => ({
+            ...s,
+            id: nuevoId(),
+            nivel: nivelDestino,
+            orden: i,
+            recursos: [...s.recursos],
+          })),
         }
       : { sesiones: undefined }),
   }
@@ -448,15 +663,23 @@ export async function moverUnidad(
   if (!origen) throw new Error('La unidad de origen ya no existe')
   if (origen.etapa === 'infantil') throw new Error(SOLO_PRIMARIA)
 
+  // Mover una unidad de varios cursos a UNO es ambiguo: no hay forma de saber
+  // qué pasa con las sesiones de los otros. Se dice, en vez de decidirlo aquí.
+  if (origen.niveles.length > 1)
+    throw new Error(
+      `«${origen.titulo}» abarca ${origen.niveles.length} cursos. Quita los que sobren antes de moverla, o cópiala al curso que quieras.`,
+    )
+
   const impacto = await contarImpactoUnidad(udId)
   if ((impacto?.valores ?? 0) > 0)
     throw new Error(
       'La unidad tiene notas u observaciones puestas: moverla las dejaría atribuidas a otro curso. Cópiala en su lugar.',
     )
 
+  const nivelOrigen = origen.niveles[0] ?? 1
   const { mapeados, sinMapear } = await mapearCriterios(
     origen.criterios,
-    origen.nivel,
+    nivelOrigen,
     nivelDestino,
   )
   const validos = new Set((await criteriosDeGrupo('primaria', nivelDestino)).map((c) => c.id))
@@ -480,10 +703,14 @@ export async function moverUnidad(
 
     await db.unidades.put({
       ...origen,
-      nivel: nivelDestino,
+      niveles: [nivelDestino],
       criterios: mapeados.map((m) => m.destino),
       // El reparto es de cada curso: al cambiar de curso, el peso vuelve a 0.
-      pesoTrimestre: 0,
+      pesosPorNivel: { [nivelDestino]: 0 },
+      // Las sesiones del plan se van con la unidad, cambiando de curso con ella.
+      ...(origen.sesiones?.length
+        ? { sesiones: origen.sesiones.map((s) => ({ ...s, nivel: nivelDestino })) }
+        : {}),
       ...(sinMapear.length ? { criteriosSinMapear: sinMapear } : { criteriosSinMapear: undefined }),
     })
   })
@@ -516,16 +743,31 @@ export async function marcarCriteriosRevisados(udId: string): Promise<() => Prom
 // `orden` es POSICIONAL, no un campo que el usuario escriba: cada escritura lo
 // renumera desde 0 según la posición en el array. Así no hay huecos ni empates
 // que hagan que la sesión 3 salga antes que la 2.
+//
+// Y es posicional DENTRO DE SU CURSO: las sesiones son propias de cada curso de
+// la unidad, así que 3.º y 4.º tienen cada uno su sesión 1. Todas viven en el
+// mismo array porque el plan se guarda entero con la unidad; el `nivel` de cada
+// una es lo que las separa.
 
-/** Plan de la unidad ordenado, listo para transformar. */
-async function leerPlan(udId: string): Promise<{ unidad: UnidadDidactica; plan: SesionPlan[] }> {
+/** Sesiones de un curso concreto de la unidad, ordenadas. */
+export function sesionesDe(unidad: UnidadDidactica, nivel: number): SesionPlan[] {
+  return (unidad.sesiones ?? []).filter((s) => s.nivel === nivel).sort((a, b) => a.orden - b.orden)
+}
+
+/** Plan de UN curso de la unidad, listo para transformar. */
+async function leerPlan(
+  udId: string,
+  nivel: number,
+): Promise<{ unidad: UnidadDidactica; plan: SesionPlan[] }> {
   const unidad = await db.unidades.get(udId)
   if (!unidad) throw new Error('La unidad ya no existe')
-  return { unidad, plan: [...(unidad.sesiones ?? [])].sort((a, b) => a.orden - b.orden) }
+  if (!unidad.niveles.includes(nivel)) throw new Error('Ese curso no está en la unidad')
+  return { unidad, plan: sesionesDe(unidad, nivel) }
 }
 
 /**
- * Escribe el plan renumerando `orden` por posición y devuelve el deshacer.
+ * Escribe el plan de UN curso, renumerando `orden` por posición dentro de ese
+ * curso y dejando intactas las sesiones de los demás.
  *
  * Se guarda el array anterior tal cual en vez de calcular la operación inversa:
  * es lo único que garantiza que deshacer un reordenamiento, un borrado o una
@@ -533,15 +775,18 @@ async function leerPlan(udId: string): Promise<{ unidad: UnidadDidactica; plan: 
  */
 async function escribirPlan(
   unidad: UnidadDidactica,
+  nivel: number,
   plan: SesionPlan[],
 ): Promise<() => Promise<void>> {
   const previo = unidad.sesiones
-  const renumerado = plan.map((s, i) => ({ ...s, orden: i }))
+  const otros = (unidad.sesiones ?? []).filter((s) => s.nivel !== nivel)
+  const renumerado = plan.map((s, i) => ({ ...s, nivel, orden: i }))
+  const completo = [...otros, ...renumerado]
   // Un plan vacío quita el campo en vez de guardarlo como `[]`: así «sin
   // sesiones» y «con el plan vaciado» son el mismo estado, como en `crearUnidad`.
   await db.unidades.put({
     ...unidad,
-    ...(renumerado.length ? { sesiones: renumerado } : { sesiones: undefined }),
+    ...(completo.length ? { sesiones: completo } : { sesiones: undefined }),
   } as UnidadDidactica)
   return async () => void (await db.unidades.put({ ...unidad, sesiones: previo } as UnidadDidactica))
 }
@@ -552,32 +797,36 @@ export type CambiosSesionPlan = Partial<Pick<SesionPlan, 'titulo' | 'notas' | 'r
 /** Añade una sesión vacía al final del plan. */
 export async function anadirSesionPlan(
   udId: string,
+  nivel: number,
   datos: CambiosSesionPlan = {},
 ): Promise<{ id: string; deshacer: () => Promise<void> }> {
-  const { unidad, plan } = await leerPlan(udId)
+  const { unidad, plan } = await leerPlan(udId, nivel)
   const nueva: SesionPlan = {
     id: nuevoId(),
+    nivel,
     orden: plan.length,
     titulo: datos.titulo?.trim() ?? '',
     notas: datos.notas ?? '',
     recursos: datos.recursos ?? [],
     ...(datos.recursosNecesarios ? { recursosNecesarios: datos.recursosNecesarios } : {}),
   }
-  const deshacer = await escribirPlan(unidad, [...plan, nueva])
+  const deshacer = await escribirPlan(unidad, nivel, [...plan, nueva])
   return { id: nueva.id, deshacer }
 }
 
 /** Guarda los cambios de una sesión del plan, sin moverla de sitio. */
 export async function guardarSesionPlan(
   udId: string,
+  nivel: number,
   sesionId: string,
   cambios: CambiosSesionPlan,
 ): Promise<() => Promise<void>> {
-  const { unidad, plan } = await leerPlan(udId)
+  const { unidad, plan } = await leerPlan(udId, nivel)
   if (!plan.some((s) => s.id === sesionId)) throw new Error('Esa sesión ya no está en el plan')
 
   return escribirPlan(
     unidad,
+    nivel,
     plan.map((s) => {
       if (s.id !== sesionId) return s
       const material = cambios.recursosNecesarios?.trim()
@@ -604,14 +853,19 @@ export async function guardarSesionPlan(
  */
 export async function duplicarSesionPlan(
   udId: string,
+  nivel: number,
   sesionId: string,
 ): Promise<{ id: string; deshacer: () => Promise<void> }> {
-  const { unidad, plan } = await leerPlan(udId)
+  const { unidad, plan } = await leerPlan(udId, nivel)
   const i = plan.findIndex((s) => s.id === sesionId)
   if (i < 0) throw new Error('Esa sesión ya no está en el plan')
 
   const copia: SesionPlan = { ...plan[i], id: nuevoId(), recursos: [...plan[i].recursos] }
-  const deshacer = await escribirPlan(unidad, [...plan.slice(0, i + 1), copia, ...plan.slice(i + 1)])
+  const deshacer = await escribirPlan(unidad, nivel, [
+    ...plan.slice(0, i + 1),
+    copia,
+    ...plan.slice(i + 1),
+  ])
   return { id: copia.id, deshacer }
 }
 
@@ -625,12 +879,14 @@ export async function duplicarSesionPlan(
  */
 export async function eliminarSesionPlan(
   udId: string,
+  nivel: number,
   sesionId: string,
 ): Promise<() => Promise<void>> {
-  const { unidad, plan } = await leerPlan(udId)
+  const { unidad, plan } = await leerPlan(udId, nivel)
   if (!plan.some((s) => s.id === sesionId)) throw new Error('Esa sesión ya no está en el plan')
   return escribirPlan(
     unidad,
+    nivel,
     plan.filter((s) => s.id !== sesionId),
   )
 }
@@ -641,10 +897,11 @@ export async function eliminarSesionPlan(
  */
 export async function moverSesionPlan(
   udId: string,
+  nivel: number,
   sesionId: string,
   delta: 1 | -1,
 ): Promise<(() => Promise<void>) | null> {
-  const { unidad, plan } = await leerPlan(udId)
+  const { unidad, plan } = await leerPlan(udId, nivel)
   const i = plan.findIndex((s) => s.id === sesionId)
   if (i < 0) throw new Error('Esa sesión ya no está en el plan')
 
@@ -654,7 +911,7 @@ export async function moverSesionPlan(
 
   const movido = [...plan]
   ;[movido[i], movido[j]] = [movido[j], movido[i]]
-  return escribirPlan(unidad, movido)
+  return escribirPlan(unidad, nivel, movido)
 }
 
 /**
@@ -866,18 +1123,21 @@ export async function archivarUnidad(
  * repartirse—, pero conviene saberlo antes de añadir otra consulta por ese
  * índice y preguntarse dónde han ido.
  */
-export async function unidadesDe(nivel: number, trimestre: Trimestre): Promise<UnidadPrimaria[]> {
-  const lista = await db.unidades.where('[etapa+nivel]').equals(['primaria', nivel]).toArray()
+export async function unidadesDe(
+  nivel: number,
+  trimestre: Trimestre,
+): Promise<UnidadEnCurso[]> {
+  const lista = await unidadesDelCurso(nivel)
   return lista
-    .filter((u): u is UnidadPrimaria => u.etapa === 'primaria' && u.trimestre === trimestre)
+    .filter((u) => u.trimestre === trimestre)
     .sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'))
 }
 
 /** Unidades del curso de Primaria que no computan, para el listado informativo aparte. */
-export async function unidadesQueNoComputan(nivel: number): Promise<UnidadPrimaria[]> {
-  const lista = await db.unidades.where('[etapa+nivel]').equals(['primaria', nivel]).toArray()
+export async function unidadesQueNoComputan(nivel: number): Promise<UnidadEnCurso[]> {
+  const lista = await unidadesDelCurso(nivel)
   return lista
-    .filter((u): u is UnidadPrimaria => u.etapa === 'primaria' && !u.computa)
+    .filter((u) => !u.computa)
     .sort((a, b) => (a.trimestre ?? 9) - (b.trimestre ?? 9) || a.titulo.localeCompare(b.titulo, 'es'))
 }
 
@@ -887,11 +1147,15 @@ export async function unidadesQueNoComputan(nivel: number): Promise<UnidadPrimar
  * volver al reparto anterior de un toque, como en el resto del cuaderno.
  *
  * Se lee y se reescribe la unidad entera en vez de actualizar solo el campo
- * porque `pesoTrimestre` no existe en las unidades de Infantil: así el propio
+ * porque `pesosPorNivel` no existe en las unidades de Infantil: así el propio
  * tipo descarta las que no ponderan, en lugar de confiar en que quien llame
  * haya filtrado bien.
+ *
+ * Lleva `nivel` porque el peso es POR CURSO: la misma unidad puede pesar 40 en
+ * 3.º y 25 en 4.º, y escribir sin decir cuál pisaría el reparto del otro.
  */
 export async function guardarPesosTrimestre(
+  nivel: number,
   pesos: { udId: string; pesoTrimestre: number }[],
 ): Promise<() => Promise<void>> {
   const previos: { udId: string; pesoTrimestre: number }[] = []
@@ -900,8 +1164,11 @@ export async function guardarPesosTrimestre(
     for (const { udId, pesoTrimestre } of pesos) {
       const unidad = await db.unidades.get(udId)
       if (!unidad || unidad.etapa !== 'primaria') continue
-      previos.push({ udId, pesoTrimestre: unidad.pesoTrimestre })
-      await db.unidades.put({ ...unidad, pesoTrimestre })
+      previos.push({ udId, pesoTrimestre: unidad.pesosPorNivel[nivel] ?? 0 })
+      await db.unidades.put({
+        ...unidad,
+        pesosPorNivel: { ...unidad.pesosPorNivel, [nivel]: pesoTrimestre },
+      })
     }
   })
 
@@ -910,7 +1177,10 @@ export async function guardarPesosTrimestre(
       for (const { udId, pesoTrimestre } of previos) {
         const unidad = await db.unidades.get(udId)
         if (!unidad || unidad.etapa !== 'primaria') continue
-        await db.unidades.put({ ...unidad, pesoTrimestre })
+        await db.unidades.put({
+          ...unidad,
+          pesosPorNivel: { ...unidad.pesosPorNivel, [nivel]: pesoTrimestre },
+        })
       }
     })
   }
@@ -1168,6 +1438,9 @@ export async function importarUnidad(
     sesiones: SesionImportada[]
   } & ({ etapa: 'primaria'; nivel: number } | { etapa: 'infantil' }),
 ): Promise<{ id: string; deshacer: () => Promise<void> }> {
+  // Una importación trae UN curso: el plan nace entero en él, y los demás
+  // cursos se añaden después con `anadirCursoAUnidad`.
+  const nivelUnico = datos.etapa === 'infantil' ? NIVEL_CICLO_INFANTIL : datos.nivel
   const plan: SesionPlan[] = datos.sesiones.map((s, i) => {
     const material = s.recursos.map((r) => r.trim()).filter(Boolean).join(', ')
     const enlaces: Recurso[] = s.enlacesYNotas
@@ -1178,6 +1451,7 @@ export async function importarUnidad(
 
     return {
       id: nuevoId(),
+      nivel: nivelUnico,
       orden: i,
       titulo: s.titulo.trim(),
       notas: s.descripcion,
@@ -1234,10 +1508,14 @@ export async function aplicarUnidadAGrupo(opciones: {
   if (!grupo) throw new Error('El grupo ya no existe')
   if (grupo.etapa !== ud.etapa)
     throw new Error('La unidad es de otra etapa: sus criterios son de otro decreto.')
+  if (!ud.niveles.includes(grupo.nivel))
+    throw new Error('La unidad no abarca el curso de este grupo.')
 
-  const plan = [...(ud.sesiones ?? [])].sort((a, b) => a.orden - b.orden)
+  // Solo las sesiones DEL CURSO del grupo: una unidad multi-curso no vuelca las
+  // sesiones de 3.º en un grupo de 4.º.
+  const plan = sesionesDe(ud, grupo.nivel)
   if (plan.length === 0)
-    throw new Error('Esta unidad no tiene ninguna sesión planificada todavía.')
+    throw new Error(`${grupo.nivel}º de esta unidad no tiene ninguna sesión planificada todavía.`)
 
   // Se piden más fechas que sesiones para tener margen ante huecos ocupados.
   const candidatas = await proximasClases(grupo, desde, plan.length * 3 + 10)

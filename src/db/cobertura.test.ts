@@ -16,8 +16,8 @@ beforeEach(async () => {
     { id: 'g5a', cursoEscolarId: 'c', nombre: '5ºA', etapa: 'primaria', nivel: 5, color: '#006A80', orden: 2, horario: [] },
   ])
   await db.unidades.bulkPut([
-    { id: 'ud1', etapa: 'primaria', nivel: 3, trimestre: 1, titulo: 'Cuenta', criterios: [], computa: true, pesoTrimestre: 100 },
-    { id: 'ud2', etapa: 'primaria', nivel: 4, trimestre: 1, titulo: 'No cuenta', criterios: [], computa: false, pesoTrimestre: 0 },
+    { id: 'ud1', etapa: 'primaria', niveles: [3], trimestre: 1, titulo: 'Cuenta', criterios: [], computa: true, pesosPorNivel: { 3: 100 } },
+    { id: 'ud2', etapa: 'primaria', niveles: [4], trimestre: 1, titulo: 'No cuenta', criterios: [], computa: false, pesosPorNivel: {} },
   ])
 })
 

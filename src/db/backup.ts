@@ -145,6 +145,27 @@ export const MIGRACIONES: Migracion[] = [
       for (const u of filas(t, 'unidades')) u.etapa ??= 'primaria'
     },
   },
+  {
+    // Espejo de db.ts v20: la unidad pasa de un curso a una lista de cursos, y
+    // la sesión del plan gana el suyo. Sin este espejo, una copia anterior
+    // restauraría unidades sin `niveles`: quedarían fuera del índice multiEntry
+    // y desaparecerían de todas las consultas, igual que pasaba con `etapa`.
+    hasta: 20,
+    aplicar: (t) => {
+      for (const u of filas(t, 'unidades')) {
+        const nivel = typeof u.nivel === 'number' ? u.nivel : 0
+        u.niveles ??= [nivel]
+        if (u.etapa === 'primaria')
+          u.pesosPorNivel ??= {
+            [nivel]: typeof u.pesoTrimestre === 'number' ? u.pesoTrimestre : 0,
+          }
+        if (Array.isArray(u.sesiones))
+          for (const s of u.sesiones as Fila[]) s.nivel ??= nivel
+        delete u.nivel
+        delete u.pesoTrimestre
+      }
+    },
+  },
 ]
 
 /** Aplica en orden las migraciones pendientes entre `desde` y ESQUEMA_ACTUAL. */

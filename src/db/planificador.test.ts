@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import {
+  anadirCursoAUnidad,
   anadirSesionPlan,
   aplicarUnidadAGrupo,
   archivarUnidad,
@@ -12,13 +13,17 @@ import {
   duplicarSesionPlan,
   eliminarSesionPlan,
   eliminarUnidad,
+  guardarPesosTrimestre,
   guardarSesionPlan,
   importarUnidad,
   mapearCriterios,
   marcarCriteriosRevisados,
   moverSesionPlan,
   moverUnidad,
+  quitarCursoDeUnidad,
   resumenCopia,
+  sesionesDe,
+  unidadesDelCurso,
 } from './planificador'
 import { crearColumna, crearRubrica, guardarValor } from './cuaderno'
 import { sembrarCriterios } from './criterios'
@@ -377,7 +382,7 @@ describe('contarImpactoUnidad', () => {
       titulo: 'Bote',
       nivel: 3,
       trimestre: 1,
-      sesiones: [{ id: 's1', orden: 0, titulo: 'Plan 1', notas: '', recursos: [] }],
+      sesiones: [{ id: 's1', nivel: 3, orden: 0, titulo: 'Plan 1', notas: '', recursos: [] }],
     })
     const colId = await crearColumna({
       grupoId: GRUPO_ID,
@@ -448,7 +453,7 @@ describe('anadirSesionPlan', () => {
   it('añade al final y numera por posición', async () => {
     const udId = await unidadDeTres()
 
-    const { id } = await anadirSesionPlan(udId, { titulo: '  Cuatro  ' })
+    const { id } = await anadirSesionPlan(udId, 3, { titulo: '  Cuatro  ' })
 
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres', 'Cuatro'])
     expect(await ordenPosicional(udId)).toEqual([0, 1, 2, 3])
@@ -459,14 +464,14 @@ describe('anadirSesionPlan', () => {
   it('crea una unidad sin plan su primera sesión', async () => {
     const udId = await crearUnidad({ etapa: 'infantil', titulo: 'El bosque', trimestre: null })
 
-    await anadirSesionPlan(udId)
+    await anadirSesionPlan(udId, 0)
 
     expect(await ordenPosicional(udId)).toEqual([0])
   })
 
   it('deshacer la deja como estaba', async () => {
     const udId = await unidadDeTres()
-    const { deshacer } = await anadirSesionPlan(udId, { titulo: 'Cuatro' })
+    const { deshacer } = await anadirSesionPlan(udId, 3, { titulo: 'Cuatro' })
 
     await deshacer()
 
@@ -477,9 +482,9 @@ describe('anadirSesionPlan', () => {
 describe('guardarSesionPlan', () => {
   it('guarda los mismos campos genéricos en las dos etapas', async () => {
     const udId = await crearUnidad({ etapa: 'infantil', titulo: 'El bosque', trimestre: null })
-    const { id } = await anadirSesionPlan(udId)
+    const { id } = await anadirSesionPlan(udId, 0)
 
-    await guardarSesionPlan(udId, id, {
+    await guardarSesionPlan(udId, 0, id, {
       titulo: 'Reptamos',
       notas: 'Circuito bajo las colchonetas.',
       recursosNecesarios: '4 colchonetas',
@@ -501,7 +506,7 @@ describe('guardarSesionPlan', () => {
     const conMaterial = plan.find((s) => s.titulo === 'Uno')!
     expect(conMaterial.recursosNecesarios).toBe('10 balones')
 
-    await guardarSesionPlan(udId, conMaterial.id, { recursosNecesarios: '   ' })
+    await guardarSesionPlan(udId, 3, conMaterial.id, { recursosNecesarios: '   ' })
 
     const despues = (await db.unidades.get(udId))!.sesiones!.find((s) => s.id === conMaterial.id)
     expect(despues?.recursosNecesarios).toBeUndefined()
@@ -512,7 +517,7 @@ describe('guardarSesionPlan', () => {
     const plan = (await db.unidades.get(udId))!.sesiones!
     const dos = plan.find((s) => s.titulo === 'Dos')!
 
-    const deshacer = await guardarSesionPlan(udId, dos.id, { titulo: 'Dos bis' })
+    const deshacer = await guardarSesionPlan(udId, 3, dos.id, { titulo: 'Dos bis' })
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos bis', 'Tres'])
 
     await deshacer()
@@ -521,7 +526,7 @@ describe('guardarSesionPlan', () => {
 
   it('lanza si la sesión ya no está en el plan', async () => {
     const udId = await unidadDeTres()
-    await expect(guardarSesionPlan(udId, 'no-existe', { titulo: 'X' })).rejects.toThrow(
+    await expect(guardarSesionPlan(udId, 3, 'no-existe', { titulo: 'X' })).rejects.toThrow(
       /ya no está en el plan/,
     )
   })
@@ -532,7 +537,7 @@ describe('duplicarSesionPlan', () => {
     const udId = await unidadDeTres()
     const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
 
-    const { id } = await duplicarSesionPlan(udId, uno.id)
+    const { id } = await duplicarSesionPlan(udId, 3, uno.id)
 
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Uno', 'Dos', 'Tres'])
     expect(await ordenPosicional(udId)).toEqual([0, 1, 2, 3])
@@ -543,8 +548,8 @@ describe('duplicarSesionPlan', () => {
     const udId = await unidadDeTres()
     const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
 
-    const { id } = await duplicarSesionPlan(udId, uno.id)
-    await guardarSesionPlan(udId, id, { titulo: 'Copia editada' })
+    const { id } = await duplicarSesionPlan(udId, 3, uno.id)
+    await guardarSesionPlan(udId, 3, id, { titulo: 'Copia editada' })
 
     const plan = (await db.unidades.get(udId))!.sesiones!
     expect(plan.find((s) => s.id === uno.id)?.titulo).toBe('Uno')
@@ -559,7 +564,7 @@ describe('eliminarSesionPlan', () => {
     const realesAntes = await db.sesiones.count()
     const dos = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Dos')!
 
-    await eliminarSesionPlan(udId, dos.id)
+    await eliminarSesionPlan(udId, 3, dos.id)
 
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Tres'])
     expect(await ordenPosicional(udId)).toEqual([0, 1])
@@ -568,9 +573,9 @@ describe('eliminarSesionPlan', () => {
 
   it('vaciar el plan deja la unidad sin campo `sesiones`, y deshacer lo repone', async () => {
     const udId = await crearUnidad({ etapa: 'primaria', titulo: 'Bote', nivel: 3, trimestre: 1 })
-    const { id } = await anadirSesionPlan(udId, { titulo: 'Única' })
+    const { id } = await anadirSesionPlan(udId, 3, { titulo: 'Única' })
 
-    const deshacer = await eliminarSesionPlan(udId, id)
+    const deshacer = await eliminarSesionPlan(udId, 3, id)
     expect((await db.unidades.get(udId))?.sesiones).toBeUndefined()
 
     await deshacer()
@@ -583,11 +588,11 @@ describe('moverSesionPlan', () => {
     const udId = await unidadDeTres()
     const tres = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Tres')!
 
-    await moverSesionPlan(udId, tres.id, -1)
+    await moverSesionPlan(udId, 3, tres.id, -1)
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Tres', 'Dos'])
     expect(await ordenPosicional(udId)).toEqual([0, 1, 2])
 
-    await moverSesionPlan(udId, tres.id, 1)
+    await moverSesionPlan(udId, 3, tres.id, 1)
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
   })
 
@@ -595,7 +600,7 @@ describe('moverSesionPlan', () => {
     const udId = await unidadDeTres()
     const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
 
-    expect(await moverSesionPlan(udId, uno.id, -1)).toBeNull()
+    expect(await moverSesionPlan(udId, 3, uno.id, -1)).toBeNull()
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
   })
 
@@ -603,7 +608,7 @@ describe('moverSesionPlan', () => {
     const udId = await unidadDeTres()
     const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
 
-    const deshacer = await moverSesionPlan(udId, uno.id, 1)
+    const deshacer = await moverSesionPlan(udId, 3, uno.id, 1)
     expect(await titulosDelPlan(udId)).toEqual(['Dos', 'Uno', 'Tres'])
 
     await deshacer!()
@@ -683,8 +688,8 @@ describe('copiarUnidad', () => {
     const { id } = await copiarUnidad(udId, 5)
 
     const copia = await db.unidades.get(id)
-    await guardarSesionPlan(id, copia!.sesiones![0].id, { titulo: 'Cambiada' })
-    await eliminarSesionPlan(id, copia!.sesiones![2].id)
+    await guardarSesionPlan(id, 5, copia!.sesiones![0].id, { titulo: 'Cambiada' })
+    await eliminarSesionPlan(id, 5, copia!.sesiones![2].id)
 
     const origen = await db.unidades.get(udId)
     expect(origen?.sesiones).toHaveLength(3)
@@ -719,8 +724,8 @@ describe('copiarUnidad', () => {
 
     const a = await db.unidades.get(porDefecto.id)
     const b = await db.unidades.get(conPeso.id)
-    expect(a?.etapa === 'primaria' && a.pesoTrimestre).toBe(0)
-    expect(b?.etapa === 'primaria' && b.pesoTrimestre).toBe(25)
+    expect(a?.etapa === 'primaria' && a.pesosPorNivel[5]).toBe(0)
+    expect(b?.etapa === 'primaria' && b.pesosPorNivel[5]).toBe(25)
   })
 
   it('anota de dónde viene y nace visible aunque el original esté archivado', async () => {
@@ -735,7 +740,7 @@ describe('copiarUnidad', () => {
     // El original sigue archivado y donde estaba.
     const origen = await db.unidades.get(udId)
     expect(origen?.archivada).toBe(true)
-    expect(origen?.nivel).toBe(3)
+    expect(origen?.niveles).toEqual([3])
   })
 
   it('no crea alumnado, notas, observaciones ni asistencia, ni toca las sesiones colocadas', async () => {
@@ -785,7 +790,7 @@ describe('moverUnidad', () => {
     await expect(moverUnidad(udId, 5)).rejects.toThrow(/Cópiala en su lugar/)
 
     const ud = await db.unidades.get(udId)
-    expect(ud?.nivel).toBe(3)
+    expect(ud?.niveles).toEqual([3])
     expect(ud?.criterios).toEqual(['EF.2C.1.1'])
   })
 
@@ -796,10 +801,10 @@ describe('moverUnidad', () => {
 
     expect(await db.unidades.count()).toBe(1)
     const ud = await db.unidades.get(udId)
-    expect(ud?.nivel).toBe(5)
+    expect(ud?.niveles).toEqual([5])
     expect(ud?.criterios).toEqual(['EF.3C.1.1'])
     expect(ud?.criteriosSinMapear).toEqual(['EF.2C.4.5'])
-    expect(ud?.etapa === 'primaria' && ud.pesoTrimestre).toBe(0)
+    expect(ud?.etapa === 'primaria' && ud.pesosPorNivel[5]).toBe(0)
   })
 
   it('conserva las filas de instrumento que dejan de encajar, sin criterio', async () => {
@@ -853,7 +858,7 @@ describe('moverUnidad', () => {
     await deshacer()
 
     const ud = await db.unidades.get(udId)
-    expect(ud?.nivel).toBe(3)
+    expect(ud?.niveles).toEqual([3])
     expect(ud?.criterios).toEqual(['EF.2C.4.5'])
     expect((await db.filas.get(fila.id))?.criterioId).toBe('EF.2C.4.5')
     expect((await db.sesiones.toArray()).every((s) => s.udId === udId)).toBe(true)
@@ -922,5 +927,177 @@ describe('marcarCriteriosRevisados', () => {
 
     await deshacer()
     expect((await db.unidades.get(id))?.criteriosSinMapear).toEqual(['EF.2C.4.5'])
+  })
+})
+
+// ——— Unidad multi-curso ———
+
+async function grupoPrimaria(id: string, nombre: string, nivel: number) {
+  await db.grupos.put({
+    id,
+    cursoEscolarId: CURSO_ID,
+    nombre,
+    etapa: 'primaria',
+    nivel,
+    color: '#006A80',
+    orden: 5,
+    horario: [{ diaSemana: 4, horaInicio: '09:00', horaFin: '09:45' }],
+  })
+}
+
+describe('unidad de un solo curso (no regresión)', () => {
+  it('nace con un curso y su plan en ese curso', async () => {
+    const udId = await unidadDeTres()
+    const ud = await db.unidades.get(udId)
+    expect(ud?.niveles).toEqual([3])
+    expect(ud?.sesiones?.every((s) => s.nivel === 3)).toBe(true)
+    expect(sesionesDe(ud!, 3)).toHaveLength(3)
+  })
+
+  it('llevar a un grupo coloca su plan igual que antes', async () => {
+    const udId = await unidadDeTres()
+    const r = await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
+    expect(r.creadas).toBe(3)
+  })
+})
+
+describe('añadir y quitar cursos', () => {
+  it('bloquea añadir un curso de otro ciclo, y admite uno del mismo', async () => {
+    const udId = await unidadDeTres() // 3º, 2.º ciclo
+
+    // 5º es de 3.er ciclo: no.
+    await expect(anadirCursoAUnidad(udId, 5, 'blanco')).rejects.toThrow(/ciclo/)
+    // 4º es del mismo ciclo: sí.
+    await anadirCursoAUnidad(udId, 4, 'blanco')
+    expect((await db.unidades.get(udId))?.niveles).toEqual([3, 4])
+  })
+
+  it('«en blanco» no crea sesiones; «copiar de 3º» las crea en el curso nuevo', async () => {
+    const udId = await unidadDeTres()
+
+    await anadirCursoAUnidad(udId, 4, 'blanco')
+    let ud = await db.unidades.get(udId)
+    expect(sesionesDe(ud!, 4)).toHaveLength(0)
+
+    // Copiar de 3º a 4º (mismo ciclo) al añadir:
+    const ud2Id = await unidadDeTres()
+    await anadirCursoAUnidad(ud2Id, 4, 3)
+    ud = await db.unidades.get(ud2Id)
+    const enCuatro = sesionesDe(ud!, 4)
+    expect(enCuatro).toHaveLength(3)
+    expect(enCuatro.map((s) => s.titulo)).toEqual(['Uno', 'Dos', 'Tres'])
+    // Ids propios, no compartidos con los de 3º.
+    const ids3 = new Set(sesionesDe(ud!, 3).map((s) => s.id))
+    expect(enCuatro.every((s) => !ids3.has(s.id))).toBe(true)
+  })
+
+  it('quitar un curso borra solo sus sesiones y su peso', async () => {
+    const udId = await unidadDeTres()
+    await anadirCursoAUnidad(udId, 4, 3)
+    await guardarPesosTrimestre(3, [{ udId, pesoTrimestre: 40 }])
+    await guardarPesosTrimestre(4, [{ udId, pesoTrimestre: 25 }])
+
+    await quitarCursoDeUnidad(udId, 4)
+
+    const ud = await db.unidades.get(udId)
+    expect(ud?.niveles).toEqual([3])
+    expect(sesionesDe(ud!, 4)).toHaveLength(0)
+    expect(sesionesDe(ud!, 3)).toHaveLength(3)
+    expect(ud?.etapa === 'primaria' && ud.pesosPorNivel).toEqual({ 3: 40 })
+  })
+
+  it('quitar un curso con notas puestas en ese curso se bloquea', async () => {
+    const udId = await unidadDeTres()
+    await grupoPrimaria('g4', '4ºA', 4)
+    await anadirCursoAUnidad(udId, 4, 'blanco')
+    const colId = await crearColumna({
+      grupoId: 'g4',
+      trimestre: 1,
+      titulo: 'Prueba de 4º',
+      tipo: 'numero',
+      udId,
+    })
+    await guardarValor(colId, 'a1', { numero: 7 })
+
+    await expect(quitarCursoDeUnidad(udId, 4)).rejects.toThrow(/colgando|notas/)
+    expect((await db.unidades.get(udId))?.niveles).toEqual([3, 4])
+  })
+
+  it('no se puede quitar el último curso', async () => {
+    const udId = await unidadDeTres()
+    await expect(quitarCursoDeUnidad(udId, 3)).rejects.toThrow(/único curso/)
+  })
+
+  it('Infantil no admite añadir cursos: ya es del ciclo entero', async () => {
+    const udId = await crearUnidad({ etapa: 'infantil', titulo: 'El bosque', trimestre: null })
+    await expect(anadirCursoAUnidad(udId, 4, 'blanco')).rejects.toThrow(/Infantil|2\.º ciclo/)
+  })
+})
+
+describe('aplicarUnidadAGrupo con varios cursos', () => {
+  it('coloca solo las sesiones del curso del grupo', async () => {
+    const udId = await unidadDeTres() // 3º
+    await anadirCursoAUnidad(udId, 4, 'blanco')
+    // 4º tiene una sesión propia distinta.
+    await anadirSesionPlan(udId, 4, { titulo: 'Solo de cuarto' })
+    await grupoPrimaria('g4', '4ºA', 4)
+
+    const r = await aplicarUnidadAGrupo({ udId, grupoId: 'g4', desde: '2026-09-07' })
+
+    expect(r.creadas).toBe(1)
+    const colocadas = await db.sesiones.where('udId').equals(udId).toArray()
+    expect(colocadas.map((s) => s.titulo)).toEqual(['Solo de cuarto'])
+  })
+
+  it('se niega si el grupo es de un curso que la unidad no abarca', async () => {
+    const udId = await unidadDeTres() // 3º
+    await grupoPrimaria('g4', '4ºA', 4)
+    await expect(
+      aplicarUnidadAGrupo({ udId, grupoId: 'g4', desde: '2026-09-07' }),
+    ).rejects.toThrow(/no abarca/)
+  })
+})
+
+describe('peso por curso', () => {
+  it('cambiar el peso de 3º no toca el de 4º, y la nota usa el del curso del grupo', async () => {
+    await sembrarCriterios()
+    const udId = await crearUnidad({
+      etapa: 'primaria',
+      titulo: 'Con peso',
+      nivel: 3,
+      trimestre: 1,
+      pesoTrimestre: 40,
+    })
+    await anadirCursoAUnidad(udId, 4, 'blanco')
+
+    await guardarPesosTrimestre(4, [{ udId, pesoTrimestre: 25 }])
+
+    const ud = await db.unidades.get(udId)
+    expect(ud?.etapa === 'primaria' && ud.pesosPorNivel).toEqual({ 3: 40, 4: 25 })
+  })
+
+  it('unidadesDelCurso proyecta el peso del curso pedido', async () => {
+    const udId = await crearUnidad({
+      etapa: 'primaria',
+      titulo: 'Con peso',
+      nivel: 3,
+      trimestre: 1,
+      pesoTrimestre: 40,
+    })
+    await anadirCursoAUnidad(udId, 4, 'blanco')
+    await guardarPesosTrimestre(4, [{ udId, pesoTrimestre: 25 }])
+
+    const en3 = await unidadesDelCurso(3)
+    const en4 = await unidadesDelCurso(4)
+    expect(en3.find((u) => u.id === udId)?.pesoTrimestre).toBe(40)
+    expect(en4.find((u) => u.id === udId)?.pesoTrimestre).toBe(25)
+  })
+})
+
+describe('mover una unidad multi-curso', () => {
+  it('se niega: hay que quitar cursos primero o copiar', async () => {
+    const udId = await unidadDeTres()
+    await anadirCursoAUnidad(udId, 4, 'blanco')
+    await expect(moverUnidad(udId, 6)).rejects.toThrow(/cursos/)
   })
 })

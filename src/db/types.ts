@@ -233,18 +233,29 @@ export interface Observacion {
 // ——— UNIDADES ———
 
 /**
- * `nivel` de una unidad de Infantil. Los criterios del Decreto 36/2022 se fijan
- * por ciclo completo —3, 4 y 5 años comparten los 56—, así que la unidad es del
- * ciclo y no de una edad: hay una sola bolsa de unidades para toda la etapa.
+ * El único «curso» de una unidad de Infantil. Los criterios del Decreto 36/2022
+ * se fijan por ciclo completo —3, 4 y 5 años comparten los 56—, así que la
+ * unidad es del ciclo y no de una edad: hay una sola bolsa de unidades para toda
+ * la etapa, y las tres edades la comparten por construcción.
  *
- * Se guarda un 0 en vez de dejar el campo fuera porque `nivel` está indexado y
+ * Se guarda un 0 en vez de dejar el campo fuera porque `niveles` está indexado y
  * IndexedDB no indexa los nulos: con `null` las unidades de Infantil quedarían
- * fuera de `[etapa+nivel]` y no se podrían consultar por índice.
+ * fuera del índice y no se podrían consultar.
  */
 export const NIVEL_CICLO_INFANTIL = 0
 
 interface UnidadBase {
   id: Id
+  /**
+   * Cursos que abarca la unidad. Siempre de la misma etapa y del MISMO CICLO:
+   * los criterios de Primaria se definen por ciclo, y una unidad de 3.º y 5.º
+   * tendría que sostener dos juegos de criterios a la vez. En Infantil es
+   * siempre `[NIVEL_CICLO_INFANTIL]`, porque la unidad ya es del ciclo entero.
+   *
+   * Indexado como multiEntry (`*niveles`): una unidad de 3.º y 4.º sale en las
+   * consultas de los dos cursos.
+   */
+  niveles: number[]
   /** `null` = unidad suelta, fuera de todo cálculo. */
   trimestre: Trimestre | null
   titulo: string
@@ -303,6 +314,12 @@ interface UnidadBase {
  */
 export interface SesionPlan {
   id: Id
+  /**
+   * Curso de la unidad al que pertenece esta sesión. Las sesiones son PROPIAS de
+   * cada curso: la misma unidad se desarrolla distinto en 3.º y en 4.º.
+   */
+  nivel: number
+  /** Posición dentro de las sesiones de SU curso, no del plan entero. */
   orden: number
   titulo: string
   /** Descripción de la sesión. Mismo campo que `Sesion.notas`. */
@@ -325,12 +342,16 @@ export interface SesionPlan {
  */
 export interface UnidadPrimaria extends UnidadBase {
   etapa: 'primaria'
-  /** El curso, 1–6. Mismo significado que `Grupo.nivel`. */
-  nivel: number
-  /** Si es falso, la unidad no entra en la nota, pero sí en el informe de cobertura. */
+  /** Si es falso, la unidad no entra en la nota, pero sí en el informe de cobertura. Compartido. */
   computa: boolean
-  /** Peso de la unidad dentro de su trimestre, 0–100. Se ignora si `computa` es falso. */
-  pesoTrimestre: number
+  /**
+   * Peso de la unidad dentro de su trimestre, 0–100, POR CURSO: el grupo y el
+   * reparto del trimestre son distintos en 3.º y en 4.º, así que un peso único
+   * no significaría lo mismo en los dos. Se ignora si `computa` es falso.
+   *
+   * Un curso ausente del mapa pesa 0, que es lo mismo que no haberlo repartido.
+   */
+  pesosPorNivel: Record<number, number>
 }
 
 /**
@@ -342,11 +363,30 @@ export interface UnidadPrimaria extends UnidadBase {
  */
 export interface UnidadInfantil extends UnidadBase {
   etapa: 'infantil'
-  /** Siempre `NIVEL_CICLO_INFANTIL`: la unidad es del 2.º ciclo entero. */
-  nivel: typeof NIVEL_CICLO_INFANTIL
+  /**
+   * Siempre `[NIVEL_CICLO_INFANTIL]`: la unidad es del 2.º ciclo entero y las
+   * tres edades la comparten. Es `number[]` y no la tupla literal a propósito:
+   * el tipo estrecho obligaba a un aserto en cada `includes` y `filter` que
+   * recorre los cursos de una unidad sin saber su etapa.
+   */
+  niveles: number[]
 }
 
 export type UnidadDidactica = UnidadPrimaria | UnidadInfantil
+
+/**
+ * Una unidad de Primaria resuelta desde UNO de sus cursos, con su `nivel` y su
+ * `pesoTrimestre` ya elegidos.
+ *
+ * Existe porque casi todo lo que consume una unidad —el motor de notas, el
+ * reparto de pesos, el cuaderno— trabaja siempre desde un grupo, y por tanto
+ * desde un curso. Proyectarla en el borde deja al motor viendo lo de siempre:
+ * una unidad de un curso con un peso, sin enterarse del multi-curso.
+ */
+export type UnidadEnCurso = UnidadPrimaria & { nivel: number; pesoTrimestre: number }
+
+/** Lo que ve el motor de notas: una unidad ya resuelta desde su curso. */
+export type UnidadCalificable = UnidadEnCurso | UnidadInfantil
 
 // ——— CUADERNO: columnas flexibles de evaluación ———
 

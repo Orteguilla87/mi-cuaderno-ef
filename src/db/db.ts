@@ -399,6 +399,46 @@ class CuadernoDB extends Dexie {
             u.etapa ??= 'primaria'
           })
       })
+
+    /**
+     * v20 — la unidad pasa de UN curso a una lista de cursos, y la sesión del
+     * plan gana el curso al que pertenece.
+     *
+     * La misma programación se usa en varios cursos del mismo ciclo, y hasta
+     * ahora eso obligaba a duplicar la unidad: dos fichas con el mismo título y
+     * los mismos criterios que se desincronizaban en cuanto se tocaba una.
+     *
+     * `niveles` es multiEntry (`*niveles`) para que una unidad de 3.º y 4.º
+     * salga en las consultas de los dos. Un multiEntry no puede formar parte de
+     * un índice compuesto, así que `[etapa+nivel]` desaparece y la etapa se
+     * filtra en memoria: las unidades son decenas, no miles.
+     *
+     * `pesoTrimestre` pasa a `pesosPorNivel`: el reparto del trimestre es de
+     * cada curso, y un peso único no significaría lo mismo en 3.º que en 4.º.
+     *
+     * Nada se pierde: los tres campos nuevos se derivan de lo que ya había, y
+     * `??=` hace la migración idempotente. Una unidad de un solo curso queda
+     * exactamente igual que antes.
+     */
+    this.version(20)
+      .stores({
+        unidades: 'id, trimestre, etapa, *niveles, [etapa+trimestre]',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('unidades')
+          .toCollection()
+          .modify((u) => {
+            const nivel = typeof u.nivel === 'number' ? u.nivel : 0
+            u.niveles ??= [nivel]
+            if (u.etapa === 'primaria')
+              u.pesosPorNivel ??= { [nivel]: typeof u.pesoTrimestre === 'number' ? u.pesoTrimestre : 0 }
+            if (Array.isArray(u.sesiones))
+              for (const s of u.sesiones) s.nivel ??= nivel
+            delete u.nivel
+            delete u.pesoTrimestre
+          })
+      })
   }
 }
 
@@ -407,7 +447,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 19
+export const ESQUEMA_ACTUAL = 20
 
 export const db = new CuadernoDB()
 

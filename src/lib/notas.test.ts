@@ -5,7 +5,8 @@ import type {
   FilaInstrumento,
   Rubrica,
   TipoColumna,
-  UnidadPrimaria,
+  UnidadCalificable,
+  UnidadEnCurso,
   ValorCelda,
 } from '../db/types'
 import {
@@ -35,15 +36,21 @@ function columna(datos: Partial<Columna> & { titulo: string; tipo: TipoColumna }
   }
 }
 
-function unidad(datos: Partial<UnidadPrimaria> & { titulo: string }): UnidadPrimaria {
+// El motor recibe la unidad ya PROYECTADA sobre un curso: con `nivel` y
+// `pesoTrimestre` resueltos además de `niveles`/`pesosPorNivel`.
+function unidad(datos: Partial<UnidadEnCurso> & { titulo: string }): UnidadEnCurso {
+  const nivel = datos.nivel ?? 3
+  const pesoTrimestre = datos.pesoTrimestre ?? 0
   return {
     id: id(),
     etapa: 'primaria',
-    nivel: 3,
+    niveles: [nivel],
+    nivel,
     trimestre: 1,
     criterios: [],
     computa: true,
-    pesoTrimestre: 0,
+    pesosPorNivel: { [nivel]: pesoTrimestre },
+    pesoTrimestre,
     ...datos,
   }
 }
@@ -405,11 +412,11 @@ describe('notaTrimestre', () => {
     const infantil = {
       id: 'ud-inf',
       etapa: 'infantil',
-      nivel: 0,
+      niveles: [0],
       trimestre: 1,
       titulo: 'El bosque de los sentidos',
       criterios: [],
-    } as unknown as UnidadPrimaria
+    } as unknown as UnidadCalificable
 
     const evaluable: Evaluable = { unidad: infantil, instrumentos: [simple('Prueba', 100)] }
     expect(() => notaTrimestre([evaluable], 1, buscar([]), valorNormalizado)).toThrow(/Infantil/)

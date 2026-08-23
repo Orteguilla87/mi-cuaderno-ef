@@ -26,7 +26,7 @@ import type {
   FilaInstrumento,
   Rubrica,
   Trimestre,
-  UnidadDidactica,
+  UnidadCalificable,
   ValorCelda,
 } from '../db/types'
 import { TIPOS_CALIFICABLES } from '../db/types'
@@ -107,7 +107,11 @@ export interface Instrumento {
 }
 
 export interface Evaluable {
-  unidad: UnidadDidactica
+  /**
+   * Ya proyectada sobre el curso del grupo que se está calificando: el motor no
+   * sabe —ni necesita saber— que una unidad puede abarcar varios cursos.
+   */
+  unidad: UnidadCalificable
   instrumentos: Instrumento[]
 }
 

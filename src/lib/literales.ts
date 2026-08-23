@@ -61,10 +61,17 @@ export function terminologia(etapa: Etapa): Terminologia {
 }
 
 /**
- * A qué alcanza una unidad, en palabras: el curso en Primaria y el ciclo entero
- * en Infantil, donde los criterios del Decreto 36/2022 son los mismos para 3, 4
- * y 5 años y no hay programación por edad.
+ * A qué alcanza una unidad, en palabras: sus cursos en Primaria y el ciclo
+ * entero en Infantil, donde los criterios del Decreto 36/2022 son los mismos
+ * para 3, 4 y 5 años y no hay programación por edad.
+ *
+ * Una unidad puede abarcar varios cursos del mismo ciclo, así que la lista se
+ * resume en una frase legible: «3.º», «3.º y 4.º», «1.º, 2.º y 3.º».
  */
-export function ambitoUnidad(etapa: Etapa, nivel: number): string {
-  return etapa === 'infantil' ? '2.º ciclo' : `${nivel}º`
+export function ambitoUnidad(etapa: Etapa, niveles: number[]): string {
+  if (etapa === 'infantil') return '2.º ciclo'
+  const cursos = [...niveles].sort((a, b) => a - b).map((n) => `${n}º`)
+  if (cursos.length === 0) return 'sin curso'
+  if (cursos.length === 1) return cursos[0]
+  return `${cursos.slice(0, -1).join(', ')} y ${cursos[cursos.length - 1]}`
 }

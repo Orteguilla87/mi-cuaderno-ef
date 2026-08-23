@@ -149,7 +149,7 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
             <option value="">Sin unidad</option>
             {unidades?.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.titulo} ({ambitoUnidad(u.etapa, u.nivel)} ·{' '}
+                {u.titulo} ({ambitoUnidad(u.etapa, u.niveles)} ·{' '}
                 {u.trimestre === null ? 'sin trimestre' : `T${u.trimestre}`})
               </option>
             ))}

@@ -10,6 +10,7 @@ import {
   ClipboardPaste,
   Copy,
   Layers,
+  MinusCircle,
   MoreVertical,
   MoveRight,
   Plus,
@@ -29,6 +30,7 @@ import { coberturaInfantil } from '../db/coberturaInfantil'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import {
+  anadirCursoAUnidad,
   anadirSesionPlan,
   aplicarUnidadAGrupo,
   archivarUnidad,
@@ -40,11 +42,16 @@ import {
   eliminarSesionPlan,
   eliminarUnidad,
   guardarSesionPlan,
+  impactoQuitarCurso,
   lunesDe,
+  motivoNoAdmiteCurso,
   marcarCriteriosRevisados,
   moverSesionPlan,
   moverUnidad,
+  quitarCursoDeUnidad,
   resumenCopia,
+  sesionesDe,
+  type ImpactoQuitarCurso,
   type ImpactoUnidad,
   type ResumenCopia,
 } from '../db/planificador'
@@ -286,9 +293,13 @@ function VistaUnidades() {
   const [llevando, setLlevando] = useState<UnidadDidactica | null>(null)
   const [acciones, setAcciones] = useState<UnidadDidactica | null>(null)
   const [eliminando, setEliminando] = useState<UnidadDidactica | null>(null)
-  const [editandoSesion, setEditandoSesion] = useState<{ udId: string; sesionId: string } | null>(
-    null,
-  )
+  const [editandoSesion, setEditandoSesion] = useState<{
+    udId: string
+    nivel: number
+    sesionId: string
+  } | null>(null)
+  const [anadiendoCurso, setAnadiendoCurso] = useState<UnidadDidactica | null>(null)
+  const [quitandoCurso, setQuitandoCurso] = useState<UnidadDidactica | null>(null)
   const [desplegada, setDesplegada] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<FiltroEtapa>('todas')
   const [verArchivadas, setVerArchivadas] = useState(false)
@@ -298,9 +309,11 @@ function VistaUnidades() {
     // Las unidades sin trimestre van al final de su nivel: son las sueltas.
     // Infantil va primero porque su nivel es 0 (el ciclo entero).
     const orden = (t: number | null) => t ?? 9
+    // Por el primer curso que abarca: todos son del mismo ciclo, así que basta.
+    // Infantil va primero porque su curso es 0 (el ciclo entero).
     return lista.sort(
       (a, b) =>
-        a.nivel - b.nivel ||
+        (a.niveles[0] ?? 0) - (b.niveles[0] ?? 0) ||
         orden(a.trimestre) - orden(b.trimestre) ||
         a.titulo.localeCompare(b.titulo, 'es'),
     )
@@ -380,7 +393,7 @@ function VistaUnidades() {
 
       <ul className="space-y-2">
         {visibles.map((u) => {
-          const plan = [...(u.sesiones ?? [])].sort((a, b) => a.orden - b.orden)
+          const totalPlan = u.sesiones?.length ?? 0
           const colocadas = conteos?.[u.id] ?? 0
           const abierta = desplegada === u.id
           return (
@@ -417,11 +430,11 @@ function VistaUnidades() {
                     )}
                   </div>
                   <p className="cifra mt-0.5 text-sm texto-suave">
-                    {ambitoUnidad(u.etapa, u.nivel)} ·{' '}
+                    {ambitoUnidad(u.etapa, u.niveles)} ·{' '}
                     {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
                     {/* Dos cifras distintas: lo que la unidad tiene escrito y lo
                         que ya ocupa clases. Una sola las confundiría. */}
-                    {plan.length > 0 && `${plan.length} planificadas · `}
+                    {totalPlan > 0 && `${totalPlan} planificadas · `}
                     {colocadas} colocadas ·{' '}
                     {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
                   </p>
@@ -440,11 +453,13 @@ function VistaUnidades() {
 
               <PlanDeUnidad
                 unidad={u}
-                plan={plan}
                 abierta={abierta}
                 onAlternar={() => setDesplegada(abierta ? null : u.id)}
                 onLlevar={() => setLlevando(u)}
-                onEditarSesion={(sesionId) => setEditandoSesion({ udId: u.id, sesionId })}
+                onEditarSesion={(nivel, sesionId) =>
+                  setEditandoSesion({ udId: u.id, nivel, sesionId })
+                }
+                onAnadirCurso={() => setAnadiendoCurso(u)}
               />
             </li>
           )
@@ -469,10 +484,13 @@ function VistaUnidades() {
         onCerrar={() => setAcciones(null)}
         onCopiar={setCopiando}
         onMover={setMoviendo}
+        onQuitarCurso={setQuitandoCurso}
         onEliminar={setEliminando}
       />
       <HojaEliminarUnidad unidad={eliminando} onCerrar={() => setEliminando(null)} />
       <HojaSesionPlan destino={editandoSesion} onCerrar={() => setEditandoSesion(null)} />
+      <HojaAnadirCurso unidad={anadiendoCurso} onCerrar={() => setAnadiendoCurso(null)} />
+      <HojaQuitarCurso unidad={quitandoCurso} onCerrar={() => setQuitandoCurso(null)} />
     </>
   )
 }
@@ -501,7 +519,7 @@ function HojaLlevarAGrupo({
     if (!unidad) return []
     const lista = await db.grupos.where('etapa').equals(unidad.etapa).toArray()
     return lista
-      .filter((g) => unidad.etapa === 'infantil' || g.nivel === unidad.nivel)
+      .filter((g) => unidad.etapa === 'infantil' || unidad.niveles.includes(g.nivel))
       .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
   }, [unidad?.id])
 
@@ -516,6 +534,7 @@ function HojaLlevarAGrupo({
 
   const plan = unidad.sesiones ?? []
   const vocabulario = terminologia(unidad.etapa)
+  const variosCursos = unidad.niveles.length > 1
 
   async function llevar() {
     if (!unidad || !grupoId) return
@@ -536,16 +555,17 @@ function HojaLlevarAGrupo({
     <Hoja abierta={!!unidad} titulo={`Llevar «${unidad.titulo}» a un grupo`} onCerrar={onCerrar}>
       <div className="space-y-4">
         <p className="text-sm texto-suave">
-          Las {plan.length} sesiones de {vocabulario.unidadEnFrase} se colocan en las clases
-          seguidas del grupo a partir de la fecha. Una clase que ya tenga sesión se respeta y la
-          siguiente busca el hueco de después.
+          {variosCursos
+            ? 'Se colocan las sesiones del curso del grupo que elijas, en sus clases seguidas a partir de la fecha.'
+            : `Las ${plan.length} sesiones de ${vocabulario.unidadEnFrase} se colocan en las clases seguidas del grupo a partir de la fecha.`}{' '}
+          Una clase que ya tenga sesión se respeta y la siguiente busca el hueco de después.
         </p>
 
         <div>
           <span className="etiqueta">Grupo</span>
           {grupos?.length === 0 ? (
             <p className="text-sm texto-suave">
-              No hay ningún grupo de {ambitoUnidad(unidad.etapa, unidad.nivel)} en esta etapa.
+              No hay ningún grupo de {ambitoUnidad(unidad.etapa, unidad.niveles)} en esta etapa.
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -593,48 +613,64 @@ function HojaLlevarAGrupo({
 /**
  * El plan de sesiones de una unidad, editable sin salir del listado.
  *
- * Las sesiones se numeran por POSICIÓN, no por un campo que se escriba: el
- * número que se ve es el índice en la lista, y reordenar renumera solo. Por eso
- * subir y bajar son botones y no hay ningún «número de sesión» que tocar.
+ * Una unidad puede abarcar varios cursos del mismo ciclo, y las sesiones son
+ * PROPIAS de cada curso: la misma unidad se desarrolla distinto en 3.º y en 4.º.
+ * Por eso hay una pestaña por curso, y cada una enseña y edita solo sus
+ * sesiones. Con un solo curso las pestañas no se dibujan: se ve igual que antes
+ * del multi-curso.
+ *
+ * Las sesiones se numeran por POSICIÓN dentro de su curso, no por un campo que
+ * se escriba: el número que se ve es el índice en la lista, y reordenar renumera
+ * solo. Por eso subir y bajar son botones y no hay ningún «número» que tocar.
  */
 function PlanDeUnidad({
   unidad,
-  plan,
   abierta,
   onAlternar,
   onLlevar,
   onEditarSesion,
+  onAnadirCurso,
 }: {
   unidad: UnidadDidactica
-  plan: SesionPlan[]
   abierta: boolean
   onAlternar: () => void
   onLlevar: () => void
-  onEditarSesion: (sesionId: string) => void
+  onEditarSesion: (nivel: number, sesionId: string) => void
+  onAnadirCurso: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [borrando, setBorrando] = useState<SesionPlan | null>(null)
+  // Curso activo: el primero mientras no se elija otro. Si la pestaña activa deja
+  // de existir (se quitó ese curso), se cae al primero.
+  const [cursoActivo, setCursoActivo] = useState<number | null>(null)
+  const nivel = cursoActivo != null && unidad.niveles.includes(cursoActivo)
+    ? cursoActivo
+    : (unidad.niveles[0] ?? 0)
+
+  const plan = sesionesDe(unidad, nivel)
+  const totalPlan = unidad.sesiones?.length ?? 0
+  const variosCursos = unidad.niveles.length > 1
 
   async function anadir() {
-    const { id, deshacer } = await anadirSesionPlan(unidad.id)
+    const { id, deshacer } = await anadirSesionPlan(unidad.id, nivel)
     if (!abierta) onAlternar()
-    onEditarSesion(id)
+    onEditarSesion(nivel, id)
     mostrarAviso('Sesión añadida', deshacer)
   }
 
   async function duplicar(s: SesionPlan) {
-    const { deshacer } = await duplicarSesionPlan(unidad.id, s.id)
+    const { deshacer } = await duplicarSesionPlan(unidad.id, nivel, s.id)
     mostrarAviso(`«${s.titulo || 'Sesión sin título'}» duplicada`, deshacer)
   }
 
   async function mover(s: SesionPlan, delta: 1 | -1) {
-    const deshacer = await moverSesionPlan(unidad.id, s.id, delta)
+    const deshacer = await moverSesionPlan(unidad.id, nivel, s.id, delta)
     if (deshacer) mostrarAviso(delta < 0 ? 'Sesión subida' : 'Sesión bajada', deshacer)
   }
 
   async function eliminar() {
     if (!borrando) return
-    const deshacer = await eliminarSesionPlan(unidad.id, borrando.id)
+    const deshacer = await eliminarSesionPlan(unidad.id, nivel, borrando.id)
     const titulo = borrando.titulo || 'Sesión sin título'
     setBorrando(null)
     mostrarAviso(`«${titulo}» quitada del plan`, deshacer)
@@ -655,11 +691,11 @@ function PlanDeUnidad({
           />
           {abierta
             ? 'Ocultar sesiones'
-            : plan.length === 0
+            : totalPlan === 0
               ? 'Añadir sesiones'
-              : `Ver las ${plan.length} sesiones`}
+              : `Ver las ${totalPlan} sesiones`}
         </button>
-        {plan.length > 0 && (
+        {totalPlan > 0 && (
           <button className="btn-suave flex-1 px-3 text-xs" onClick={onLlevar}>
             <CalendarPlus size={16} aria-hidden />
             Llevar a un grupo
@@ -669,9 +705,42 @@ function PlanDeUnidad({
 
       {abierta && (
         <div className="space-y-2 border-t border-borde pt-2 dark:border-noche-borde">
+          {/* Pestañas por curso, solo en Primaria multi-curso. El botón de
+              añadir curso está siempre en Primaria: es el punto de entrada al
+              multi-curso desde una unidad de un solo curso. */}
+          {unidad.etapa === 'primaria' && (
+            <div className="flex flex-wrap items-center gap-1">
+              {variosCursos &&
+                [...unidad.niveles]
+                  .sort((a, b) => a - b)
+                  .map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setCursoActivo(n)}
+                      aria-pressed={n === nivel}
+                      className={
+                        (n === nivel ? 'btn-primario' : 'btn-suave') + ' px-3 py-1.5 text-xs'
+                      }
+                    >
+                      {n}º
+                    </button>
+                  ))}
+              <button
+                className="btn-suave px-3 py-1.5 text-xs"
+                onClick={onAnadirCurso}
+                aria-label="Añadir un curso a la unidad"
+              >
+                <Plus size={14} aria-hidden />
+                {variosCursos ? 'Curso' : 'Añadir curso'}
+              </button>
+            </div>
+          )}
+
           {plan.length === 0 && (
             <p className="text-sm texto-suave">
-              Todavía no hay sesiones. Escribe aquí la secuencia y luego llévala a un grupo.
+              {variosCursos
+                ? `${nivel}º todavía no tiene sesiones. Escribe aquí su secuencia.`
+                : 'Todavía no hay sesiones. Escribe aquí la secuencia y luego llévala a un grupo.'}
             </p>
           )}
 
@@ -683,7 +752,7 @@ function PlanDeUnidad({
                 </span>
                 <button
                   className="min-w-0 flex-1 py-2 text-left"
-                  onClick={() => onEditarSesion(s.id)}
+                  onClick={() => onEditarSesion(nivel, s.id)}
                   aria-label={`Editar sesión ${i + 1}: ${s.titulo || 'sin título'}`}
                 >
                   <span className="block font-semibold">
@@ -738,19 +807,16 @@ function PlanDeUnidad({
 
           <button className="btn-suave w-full text-xs" onClick={() => void anadir()}>
             <Plus size={16} aria-hidden />
-            Añadir sesión
+            Añadir sesión{variosCursos ? ` a ${nivel}º` : ''}
           </button>
         </div>
       )}
 
-      <Hoja
-        abierta={!!borrando}
-        titulo="Quitar sesión del plan"
-        onCerrar={() => setBorrando(null)}
-      >
+      <Hoja abierta={!!borrando} titulo="Quitar sesión del plan" onCerrar={() => setBorrando(null)}>
         <div className="space-y-4">
           <p className="text-sm">
-            «{borrando?.titulo || 'Sesión sin título'}» sale del plan de «{unidad.titulo}».
+            «{borrando?.titulo || 'Sesión sin título'}» sale del plan de «{unidad.titulo}»
+            {variosCursos ? ` en ${nivel}º` : ''}.
           </p>
           {/* Una sesión del plan no lleva notas: las columnas del cuaderno
               cuelgan de la unidad, y las clases ya colocadas son copias con
@@ -781,7 +847,7 @@ function HojaSesionPlan({
   destino,
   onCerrar,
 }: {
-  destino: { udId: string; sesionId: string } | null
+  destino: { udId: string; nivel: number; sesionId: string } | null
   onCerrar: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -823,7 +889,7 @@ function HojaSesionPlan({
   async function guardar() {
     if (!destino) return
     try {
-      const deshacer = await guardarSesionPlan(destino.udId, destino.sesionId, {
+      const deshacer = await guardarSesionPlan(destino.udId, destino.nivel, destino.sesionId, {
         titulo,
         notas,
         recursosNecesarios: material,
@@ -906,12 +972,14 @@ function HojaAccionesUnidad({
   onCerrar,
   onCopiar,
   onMover,
+  onQuitarCurso,
   onEliminar,
 }: {
   unidad: UnidadDidactica | null
   onCerrar: () => void
   onCopiar: (u: UnidadDidactica) => void
   onMover: (u: UnidadDidactica) => void
+  onQuitarCurso: (u: UnidadDidactica) => void
   onEliminar: (u: UnidadDidactica) => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -959,6 +1027,18 @@ function HojaAccionesUnidad({
             <p className="px-1 text-xs texto-suave">
               Copiar deja la original donde está; mover no.
             </p>
+            {unidad.niveles.length > 1 && (
+              <button
+                className="btn-suave w-full justify-start"
+                onClick={() => {
+                  onQuitarCurso(unidad)
+                  onCerrar()
+                }}
+              >
+                <MinusCircle size={20} aria-hidden />
+                Quitar un curso de la unidad
+              </button>
+            )}
           </>
         )}
 
@@ -1026,8 +1106,8 @@ function HojaEliminarUnidad({
   const titulo = unidad?.titulo.trim().toLocaleLowerCase('es') ?? ''
   const coincide = confirmacion.trim().toLocaleLowerCase('es') === titulo && titulo !== ''
   const pesoEnJuego =
-    unidad?.etapa === 'primaria' && unidad.computa && unidad.pesoTrimestre > 0
-      ? unidad.pesoTrimestre
+    unidad?.etapa === 'primaria' && unidad.computa
+      ? Math.max(0, ...Object.values(unidad.pesosPorNivel))
       : 0
   const instrumentos = impacto ? impacto.columnas - impacto.columnasInfantil : 0
 
@@ -1159,6 +1239,250 @@ function HojaEliminarUnidad({
  * el más parecido, así que el aviso no puede desaparecer solo: se queda hasta
  * que el usuario dice que ya lo ha mirado.
  */
+/**
+ * Añade un curso a la unidad. Solo los del mismo ciclo se pueden pulsar: los
+ * demás salen deshabilitados con el motivo, porque los criterios se definen por
+ * ciclo y una unidad no puede sostener dos juegos a la vez (regla dura del §4).
+ *
+ * Al añadir, se elige el punto de partida de las sesiones: en blanco, o copiando
+ * las de un curso que ya esté en la unidad. Nunca se copia en silencio.
+ */
+function HojaAnadirCurso({
+  unidad,
+  onCerrar,
+}: {
+  unidad: UnidadDidactica | null
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [nivel, setNivel] = useState<number | null>(null)
+  const [origen, setOrigen] = useState<'blanco' | number>('blanco')
+
+  useEffect(() => {
+    setNivel(null)
+    setOrigen('blanco')
+  }, [unidad])
+
+  if (!unidad || unidad.etapa !== 'primaria') return null
+
+  // Los cursos con sesiones son los candidatos a «copiar de»; por defecto, el
+  // primero que tenga plan.
+  const conSesiones = unidad.niveles.filter((n) => sesionesDe(unidad, n).length > 0)
+
+  async function anadir() {
+    if (!unidad || nivel === null) return
+    try {
+      const deshacer = await anadirCursoAUnidad(unidad.id, nivel, origen)
+      onCerrar()
+      mostrarAviso(`${nivel}º añadido a «${unidad.titulo}»`, deshacer)
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido añadir el curso')
+    }
+  }
+
+  const motivoActual = nivel !== null ? motivoNoAdmiteCurso(unidad, nivel) : null
+
+  return (
+    <Hoja abierta={!!unidad} titulo="Añadir un curso a la unidad" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <p className="text-sm texto-suave">
+          La unidad pasará a abarcar también ese curso, con sus propias sesiones. El título, los
+          criterios y el trimestre se comparten entre todos los cursos.
+        </p>
+
+        <div>
+          <span className="etiqueta">Curso</span>
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 5, 6].map((n) => {
+              const motivo = motivoNoAdmiteCurso(unidad, n)
+              const yaEsta = unidad.niveles.includes(n)
+              return (
+                <button
+                  key={n}
+                  onClick={() => setNivel(n)}
+                  disabled={!!motivo}
+                  aria-pressed={nivel === n}
+                  title={motivo ?? undefined}
+                  className={
+                    (nivel === n ? 'btn-primario' : 'btn-suave') +
+                    ' min-w-tap flex-1 px-0 disabled:opacity-30'
+                  }
+                >
+                  {n}º{yaEsta ? ' ✓' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Cuando el curso elegido es de otro ciclo, se explica y se remite a
+            copiar, en vez de dejar el botón muerto sin decir por qué. */}
+        {motivoActual && (
+          <div className="aviso">
+            <p>{motivoActual}</p>
+          </div>
+        )}
+
+        {nivel !== null && !motivoActual && conSesiones.length > 0 && (
+          <div>
+            <span className="etiqueta">Sus sesiones</span>
+            <div className="space-y-2">
+              <button
+                onClick={() => setOrigen('blanco')}
+                aria-pressed={origen === 'blanco'}
+                className={
+                  (origen === 'blanco' ? 'btn-primario' : 'btn-suave') + ' w-full justify-start'
+                }
+              >
+                Empezar en blanco
+              </button>
+              {conSesiones.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setOrigen(n)}
+                  aria-pressed={origen === n}
+                  className={
+                    (origen === n ? 'btn-primario' : 'btn-suave') + ' w-full justify-start'
+                  }
+                >
+                  Copiar las {sesionesDe(unidad, n).length} sesiones de {n}º
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button
+          className="btn-primario w-full"
+          onClick={() => void anadir()}
+          disabled={nivel === null || !!motivoActual}
+        >
+          <Plus size={20} aria-hidden />
+          Añadir {nivel !== null ? `${nivel}º` : 'curso'}
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/**
+ * Quita un curso de la unidad. Se elige cuál, se enseña qué se lleva por delante
+ * —las sesiones de ese curso— y se bloquea si tiene notas puestas: entonces
+ * quitarlo las dejaría colgando de una unidad que ya no es de su curso.
+ */
+function HojaQuitarCurso({
+  unidad,
+  onCerrar,
+}: {
+  unidad: UnidadDidactica | null
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [nivel, setNivel] = useState<number | null>(null)
+  const [impacto, setImpacto] = useState<ImpactoQuitarCurso | null>(null)
+
+  useEffect(() => {
+    setNivel(null)
+    setImpacto(null)
+  }, [unidad])
+
+  useEffect(() => {
+    setImpacto(null)
+    if (!unidad || nivel === null) return
+    let vigente = true
+    void impactoQuitarCurso(unidad.id, nivel).then((i) => {
+      if (vigente) setImpacto(i)
+    })
+    return () => {
+      vigente = false
+    }
+  }, [unidad, nivel])
+
+  if (!unidad || unidad.etapa !== 'primaria') return null
+
+  const bloqueado = (impacto?.valores ?? 0) > 0
+
+  async function quitar() {
+    if (!unidad || nivel === null) return
+    try {
+      const deshacer = await quitarCursoDeUnidad(unidad.id, nivel)
+      onCerrar()
+      mostrarAviso(`${nivel}º quitado de «${unidad.titulo}»`, deshacer)
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido quitar el curso')
+    }
+  }
+
+  return (
+    <Hoja abierta={!!unidad} titulo="Quitar un curso de la unidad" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <div>
+          <span className="etiqueta">Curso</span>
+          <div className="flex flex-wrap gap-2">
+            {[...unidad.niveles]
+              .sort((a, b) => a - b)
+              .map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setNivel(n)}
+                  aria-pressed={nivel === n}
+                  className={
+                    (nivel === n ? 'btn-primario' : 'btn-suave') + ' min-w-tap flex-1 px-0'
+                  }
+                >
+                  {n}º
+                </button>
+              ))}
+          </div>
+        </div>
+
+        {nivel !== null && impacto && (
+          <>
+            {bloqueado ? (
+              <div className="aviso-fuerte">
+                <p className="font-semibold">
+                  Hay {impacto.valores}{' '}
+                  {impacto.valores === 1 ? 'dato registrado' : 'datos registrados'} en {nivel}º
+                </p>
+                <p className="mt-1">
+                  Quitar el curso dejaría esas notas colgando de una unidad que ya no es suya.
+                  Bórralas antes, o deja el curso donde está.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="tarjeta space-y-1 py-3 text-sm">
+                  <p className="font-semibold">Al quitar {nivel}º</p>
+                  <ul className="texto-suave">
+                    <li>
+                      Se borran sus {impacto.sesiones}{' '}
+                      {impacto.sesiones === 1 ? 'sesión planificada' : 'sesiones planificadas'}
+                    </li>
+                    {impacto.sesionesColocadas > 0 && (
+                      <li>
+                        {impacto.sesionesColocadas}{' '}
+                        {impacto.sesionesColocadas === 1
+                          ? 'clase ya colocada se queda'
+                          : 'clases ya colocadas se quedan'}{' '}
+                        sin unidad, sin borrarse
+                      </li>
+                    )}
+                    <li>Los demás cursos de la unidad no se tocan</li>
+                  </ul>
+                </div>
+                <button className="btn-peligro w-full" onClick={() => void quitar()}>
+                  <MinusCircle size={20} aria-hidden />
+                  Quitar {nivel}º de la unidad
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </Hoja>
+  )
+}
+
 function AvisoCriteriosSinMapear({ unidad }: { unidad: UnidadDidactica }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const pendientes = unidad.criteriosSinMapear ?? []
@@ -1302,7 +1626,10 @@ function HojaCopiarUnidad({
   const [resumen, setResumen] = useState<ResumenCopia | null>(null)
 
   useEffect(() => {
-    if (unidad) setNivel(unidad.nivel < 6 ? unidad.nivel + 1 : 1)
+    if (unidad) {
+      const base = unidad.niveles[unidad.niveles.length - 1] ?? 0
+      setNivel(base < 6 ? base + 1 : 1)
+    }
     setPeso('0')
   }, [unidad])
 
@@ -1393,7 +1720,10 @@ function HojaMoverUnidad({
   const [resumen, setResumen] = useState<ResumenCopia | null>(null)
 
   useEffect(() => {
-    if (unidad) setNivel(unidad.nivel < 6 ? unidad.nivel + 1 : 1)
+    if (unidad) {
+      const base = unidad.niveles[unidad.niveles.length - 1] ?? 0
+      setNivel(base < 6 ? base + 1 : 1)
+    }
   }, [unidad])
 
   useEffect(() => {
@@ -1425,7 +1755,8 @@ function HojaMoverUnidad({
     <Hoja abierta={!!unidad} titulo="Mover a otro curso" onCerrar={onCerrar}>
       <div className="space-y-4">
         <p className="text-sm">
-          «{unidad?.titulo}» pasa a ser del curso que elijas. No queda copia en {unidad?.nivel}º.
+          «{unidad?.titulo}» pasa a ser del curso que elijas. No queda copia en{' '}
+          {unidad ? ambitoUnidad(unidad.etapa, unidad.niveles) : ''}.
         </p>
 
         <SelectorCurso nivel={nivel} onCambio={setNivel} />
@@ -1688,8 +2019,8 @@ function HojaEditarUnidad({
             </>
           ) : (
             <>
-              Nivel: <strong>{unidad.nivel}º</strong>. Para cambiarlo, duplica la unidad al nivel
-              destino desde la lista.
+              Cursos: <strong>{ambitoUnidad(unidad.etapa, unidad.niveles)}</strong>. Se añaden y
+              quitan desde las pestañas de la unidad; los criterios son del ciclo, comunes a todos.
             </>
           )}
         </div>
@@ -1737,7 +2068,7 @@ function HojaEditarUnidad({
 
         <SelectorCriterios
           etapa={unidad.etapa}
-          nivel={unidad.nivel}
+          nivel={unidad.niveles[0] ?? 1}
           seleccionados={criterios}
           onCambio={setCriterios}
         />

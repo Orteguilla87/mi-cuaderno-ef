@@ -23,12 +23,12 @@ beforeEach(async () => {
   await db.unidades.put({
     id: 'ud1',
     etapa: 'primaria',
-    nivel: 3,
+    niveles: [3],
     trimestre: 1,
     titulo: 'Expresión corporal',
     criterios: ['EF.2C.4.5'],
     computa: true,
-    pesoTrimestre: 100,
+    pesosPorNivel: { 3: 100 },
   })
 })
 

@@ -3,7 +3,7 @@ import { Check, ChevronLeft, ChevronRight, Copy, Plus, Trash2, Users } from 'luc
 import { useEffect, useState } from 'react'
 import { Campo } from './Campo'
 import { cicloDeCurso, criteriosDeGrupo } from '../db/criterios'
-import { ordinalCiclo } from '../lib/ciclos'
+import { cicloDeUnidad, ordinalCiclo } from '../lib/ciclos'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import {
   crearColumna,
@@ -142,7 +142,8 @@ export function HojaColumna({
   const unidadesDelCurso = (unidades ?? []).filter(
     (u) =>
       u.id === udId ||
-      (u.etapa === grupo.etapa && (grupo.etapa === 'infantil' || u.nivel === grupo.nivel)),
+      (u.etapa === grupo.etapa &&
+        (grupo.etapa === 'infantil' || u.niveles.includes(grupo.nivel))),
   )
   const deLaUnidadNueva = (unidadesDelCurso.find((u) => u.id === udId)?.criterios ?? [])
     .map((id) => (delCiclo ?? []).find((c) => c.id === id))
@@ -376,7 +377,7 @@ export function HojaColumna({
               <option value="">Sin unidad</option>
               {unidadesDelCurso.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.titulo} ({ambitoUnidad(u.etapa, u.nivel)} ·{' '}
+                  {u.titulo} ({ambitoUnidad(u.etapa, u.niveles)} ·{' '}
                   {u.trimestre === null ? 'sin trimestre' : `T${u.trimestre}`})
                 </option>
               ))}
@@ -587,7 +588,9 @@ function EditorFilas({
   // La unidad y el criterio tienen que ser del mismo ciclo. Con el selector
   // filtrado por el ciclo del grupo esto solo puede pasar si la unidad es de
   // otro curso; entonces no hay nada que elegir y se dice por qué.
-  const cicloUnidad = unidad ? cicloDeCurso(unidad.nivel) : null
+  // Todos los cursos de una unidad son del mismo ciclo, así que el ciclo de la
+  // unidad está bien definido aunque abarque 3.º y 4.º.
+  const cicloUnidad = unidad ? cicloDeUnidad(unidad.niveles) : null
   const cicloGrupo = cicloDeCurso(grupo.nivel)
   const chocanLosCiclos = cicloUnidad !== null && cicloUnidad !== cicloGrupo
 
@@ -607,7 +610,7 @@ function EditorFilas({
 
       {chocanLosCiclos ? (
         <div className="panel-agua text-sm">
-          «{unidad!.titulo}» es de {unidad!.nivel}º ({ordinalCiclo(cicloUnidad!)} ciclo) y este
+          «{unidad!.titulo}» es de {ambitoUnidad(unidad!.etapa, unidad!.niveles)} ({ordinalCiclo(cicloUnidad!)} ciclo) y este
           grupo es de {grupo.nivel}º ({ordinalCiclo(cicloGrupo)} ciclo). Sus criterios no son los
           mismos, así que no se pueden asignar. Elige una unidad de {grupo.nivel}º o duplica esta
           al curso.

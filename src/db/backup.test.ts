@@ -224,7 +224,9 @@ describe('import de un esquema anterior', () => {
     expect(resultado.migrado).toBe(true)
 
     const unidad = await db.unidades.get('ud-1')
-    expect(unidad).toMatchObject({ computa: true, pesoTrimestre: 0, criterios: ['EF.2C.2.3'] })
+    expect(unidad).toMatchObject({ computa: true, criterios: ['EF.2C.2.3'] })
+    expect((unidad as { pesosPorNivel: Record<number, number> }).pesosPorNivel).toEqual({ 3: 0 })
+    expect(unidad!.niveles).toEqual([3])
     expect((await db.columnas.get('col-1'))?.pesoUd).toBe(0)
 
     const simple = await db.filas.where('columnaId').equals('col-1').toArray()
@@ -260,7 +262,9 @@ describe('import de un esquema anterior', () => {
     expect(resultado.migrado).toBe(true)
 
     const unidad = await db.unidades.get('ud-1')
-    expect(unidad).toMatchObject({ etapa: 'primaria', nivel: 3, computa: true, pesoTrimestre: 100 })
+    expect(unidad).toMatchObject({ etapa: 'primaria', computa: true })
+    expect(unidad!.niveles).toEqual([3])
+    expect((unidad as { pesosPorNivel: Record<number, number> }).pesosPorNivel).toEqual({ 3: 100 })
   })
 })
 

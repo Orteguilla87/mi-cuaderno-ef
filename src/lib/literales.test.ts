@@ -26,8 +26,9 @@ describe('terminología por etapa', () => {
   })
 
   it('el ámbito de la unidad es el curso en Primaria y el ciclo en Infantil', () => {
-    expect(ambitoUnidad('primaria', 4)).toBe('4º')
-    expect(ambitoUnidad('infantil', 4)).toBe('2.º ciclo')
+    expect(ambitoUnidad('primaria', [4])).toBe('4º')
+    expect(ambitoUnidad('primaria', [3, 4])).toBe('3º y 4º')
+    expect(ambitoUnidad('infantil', [0])).toBe('2.º ciclo')
   })
 })
 

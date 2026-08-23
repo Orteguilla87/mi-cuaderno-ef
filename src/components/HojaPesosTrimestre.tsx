@@ -75,7 +75,10 @@ export function HojaPesosTrimestre({
   const hayQueRepartir = conNota.length > 0
 
   async function guardar() {
+    // El peso es por curso: se dice cuál, o se pisaría el reparto de los demás
+    // cursos que compartan la unidad.
     const deshacer = await guardarPesosTrimestre(
+      nivel,
       computan.map((u) => ({ udId: u.id, pesoTrimestre: borrador[u.id] ?? 0 })),
     )
     onCerrar()

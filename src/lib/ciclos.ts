@@ -14,6 +14,20 @@ export function cicloDeCurso(curso: number): 1 | 2 | 3 {
 }
 
 /**
+ * Ciclo de una unidad a partir de los cursos que abarca.
+ *
+ * Todos sus cursos comparten ciclo —es la regla dura del multi-curso—, así que
+ * basta con el primero. Devuelve `null` si no hay ninguno o si son de Infantil
+ * (`NIVEL_CICLO_INFANTIL`, que no es un curso de Primaria): ahí no hay ciclo de
+ * Primaria del que hablar.
+ */
+export function cicloDeUnidad(niveles: number[]): 1 | 2 | 3 | null {
+  const primero = niveles[0]
+  if (primero === undefined || primero < 1) return null
+  return cicloDeCurso(primero)
+}
+
+/**
  * Id de un criterio de Primaria a partir de su ciclo y su código.
  *
  * El código no basta como identidad: «1.1» existe en los tres ciclos con textos
