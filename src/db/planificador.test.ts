@@ -6,6 +6,7 @@ import {
   aplicarUnidadAGrupo,
   archivarUnidad,
   contarImpactoUnidad,
+  copiarUnidad,
   crearSesion,
   crearUnidad,
   duplicarSesionPlan,
@@ -13,9 +14,14 @@ import {
   eliminarUnidad,
   guardarSesionPlan,
   importarUnidad,
+  mapearCriterios,
+  marcarCriteriosRevisados,
   moverSesionPlan,
+  moverUnidad,
+  resumenCopia,
 } from './planificador'
 import { crearColumna, crearRubrica, guardarValor } from './cuaderno'
+import { sembrarCriterios } from './criterios'
 
 const CURSO_ID = 'curso1'
 const GRUPO_ID = 'g1'
@@ -602,5 +608,319 @@ describe('moverSesionPlan', () => {
 
     await deshacer!()
     expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
+  })
+})
+
+// ——— Copiar y mover unidades a otro curso ———
+//
+// Los criterios reales del Decreto 61/2022: 2.º ciclo tiene «4.5» y 3.er ciclo
+// no, así que 2.º→5.º es el caso auténtico de criterio sin equivalente.
+
+async function unidadDe2oCiclo(criterios: string[]) {
+  await sembrarCriterios()
+  return crearUnidad({
+    etapa: 'primaria',
+    titulo: 'Habilidades con móvil',
+    nivel: 3,
+    trimestre: 1,
+    computa: true,
+    pesoTrimestre: 40,
+    criterios,
+  })
+}
+
+describe('mapearCriterios', () => {
+  it('dentro del mismo ciclo pasa los criterios tal cual', async () => {
+    await sembrarCriterios()
+    const r = await mapearCriterios(['EF.2C.1.1', 'EF.2C.4.5'], 3, 4)
+    expect(r.sinMapear).toEqual([])
+    expect(r.mapeados.map((m) => m.destino)).toEqual(['EF.2C.1.1', 'EF.2C.4.5'])
+  })
+
+  it('al cambiar de ciclo remapea por posición', async () => {
+    await sembrarCriterios()
+    const r = await mapearCriterios(['EF.2C.1.1', 'EF.2C.3.1'], 3, 5)
+    expect(r.mapeados).toEqual([
+      { origen: 'EF.2C.1.1', destino: 'EF.3C.1.1' },
+      { origen: 'EF.2C.3.1', destino: 'EF.3C.3.1' },
+    ])
+    expect(r.sinMapear).toEqual([])
+  })
+
+  it('deja sin mapear el criterio que no existe en el ciclo destino', async () => {
+    await sembrarCriterios()
+    // «4.5» está en 2.º ciclo y no en 3.er ciclo.
+    const r = await mapearCriterios(['EF.2C.4.5'], 3, 5)
+    expect(r.mapeados).toEqual([])
+    expect(r.sinMapear).toEqual(['EF.2C.4.5'])
+  })
+})
+
+describe('copiarUnidad', () => {
+  it('copia TODAS las sesiones con su contenido íntegro (la regresión del bug)', async () => {
+    await sembrarCriterios()
+    const udId = await unidadDeTres()
+
+    const { id } = await copiarUnidad(udId, 5)
+
+    const copia = await db.unidades.get(id)
+    const plan = [...(copia?.sesiones ?? [])].sort((a, b) => a.orden - b.orden)
+    expect(plan).toHaveLength(3)
+    expect(plan.map((s) => s.titulo)).toEqual(['Uno', 'Dos', 'Tres'])
+    expect(plan.map((s) => s.orden)).toEqual([0, 1, 2])
+    expect(plan[0].notas).toBe('Desarrollo de Uno.')
+    expect(plan[0].recursosNecesarios).toBe('10 balones')
+
+    // Ids nuevos: si compartieran id, editar una sería editar la otra.
+    const origen = await db.unidades.get(udId)
+    const idsOrigen = new Set(origen?.sesiones?.map((s) => s.id))
+    expect(plan.every((s) => !idsOrigen.has(s.id))).toBe(true)
+  })
+
+  it('editar la copia no toca el original', async () => {
+    await sembrarCriterios()
+    const udId = await unidadDeTres()
+    const { id } = await copiarUnidad(udId, 5)
+
+    const copia = await db.unidades.get(id)
+    await guardarSesionPlan(id, copia!.sesiones![0].id, { titulo: 'Cambiada' })
+    await eliminarSesionPlan(id, copia!.sesiones![2].id)
+
+    const origen = await db.unidades.get(udId)
+    expect(origen?.sesiones).toHaveLength(3)
+    expect([...origen!.sesiones!].sort((a, b) => a.orden - b.orden)[0].titulo).toBe('Uno')
+  })
+
+  it('dentro del mismo ciclo conserva los criterios y no marca nada por revisar', async () => {
+    const udId = await unidadDe2oCiclo(['EF.2C.1.1', 'EF.2C.4.5'])
+
+    const { id } = await copiarUnidad(udId, 4)
+
+    const copia = await db.unidades.get(id)
+    expect(copia?.criterios).toEqual(['EF.2C.1.1', 'EF.2C.4.5'])
+    expect(copia?.criteriosSinMapear).toBeUndefined()
+  })
+
+  it('al cambiar de ciclo remapea y deja fuera lo que no encaja, anotándolo', async () => {
+    const udId = await unidadDe2oCiclo(['EF.2C.1.1', 'EF.2C.4.5'])
+
+    const { id } = await copiarUnidad(udId, 5)
+
+    const copia = await db.unidades.get(id)
+    expect(copia?.criterios).toEqual(['EF.3C.1.1'])
+    expect(copia?.criteriosSinMapear).toEqual(['EF.2C.4.5'])
+  })
+
+  it('no hereda el peso del trimestre: llega el que se le pase', async () => {
+    const udId = await unidadDe2oCiclo([])
+
+    const porDefecto = await copiarUnidad(udId, 5)
+    const conPeso = await copiarUnidad(udId, 5, { pesoTrimestre: 25 })
+
+    const a = await db.unidades.get(porDefecto.id)
+    const b = await db.unidades.get(conPeso.id)
+    expect(a?.etapa === 'primaria' && a.pesoTrimestre).toBe(0)
+    expect(b?.etapa === 'primaria' && b.pesoTrimestre).toBe(25)
+  })
+
+  it('anota de dónde viene y nace visible aunque el original esté archivado', async () => {
+    const udId = await unidadDe2oCiclo([])
+    await archivarUnidad(udId, true)
+
+    const { id } = await copiarUnidad(udId, 5)
+
+    const copia = await db.unidades.get(id)
+    expect(copia?.copiadaDe).toBe(udId)
+    expect(copia?.archivada).toBe(false)
+    // El original sigue archivado y donde estaba.
+    const origen = await db.unidades.get(udId)
+    expect(origen?.archivada).toBe(true)
+    expect(origen?.nivel).toBe(3)
+  })
+
+  it('no crea alumnado, notas, observaciones ni asistencia, ni toca las sesiones colocadas', async () => {
+    await sembrarCriterios()
+    const udId = await unidadDeTres()
+    await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
+    const colocadasAntes = await db.sesiones.count()
+
+    await copiarUnidad(udId, 5)
+
+    expect(await db.sesiones.count()).toBe(colocadasAntes)
+    expect((await db.sesiones.toArray()).every((s) => s.udId === udId)).toBe(true)
+    expect(await db.alumnos.count()).toBe(0)
+    expect(await db.valores.count()).toBe(0)
+    expect(await db.observaciones.count()).toBe(0)
+    expect(await db.asistencias.count()).toBe(0)
+  })
+
+  it('deshacer borra solo la copia', async () => {
+    const udId = await unidadDe2oCiclo([])
+    const { id, deshacer } = await copiarUnidad(udId, 5)
+
+    await deshacer()
+
+    expect(await db.unidades.get(id)).toBeUndefined()
+    expect(await db.unidades.get(udId)).toBeDefined()
+  })
+
+  it('se niega en Infantil: no hay otro curso al que llevarla', async () => {
+    const udId = await crearUnidad({ etapa: 'infantil', titulo: 'El bosque', trimestre: null })
+    await expect(copiarUnidad(udId, 5)).rejects.toThrow(/2\.º ciclo entero/)
+  })
+})
+
+describe('moverUnidad', () => {
+  it('se bloquea si hay notas puestas, y no cambia nada', async () => {
+    const udId = await unidadDe2oCiclo(['EF.2C.1.1'])
+    const colId = await crearColumna({
+      grupoId: GRUPO_ID,
+      trimestre: 1,
+      titulo: 'Prueba',
+      tipo: 'numero',
+      udId,
+    })
+    await guardarValor(colId, 'a1', { numero: 7 })
+
+    await expect(moverUnidad(udId, 5)).rejects.toThrow(/Cópiala en su lugar/)
+
+    const ud = await db.unidades.get(udId)
+    expect(ud?.nivel).toBe(3)
+    expect(ud?.criterios).toEqual(['EF.2C.1.1'])
+  })
+
+  it('cambia de curso, remapea y no deja copia', async () => {
+    const udId = await unidadDe2oCiclo(['EF.2C.1.1', 'EF.2C.4.5'])
+
+    await moverUnidad(udId, 5)
+
+    expect(await db.unidades.count()).toBe(1)
+    const ud = await db.unidades.get(udId)
+    expect(ud?.nivel).toBe(5)
+    expect(ud?.criterios).toEqual(['EF.3C.1.1'])
+    expect(ud?.criteriosSinMapear).toEqual(['EF.2C.4.5'])
+    expect(ud?.etapa === 'primaria' && ud.pesoTrimestre).toBe(0)
+  })
+
+  it('conserva las filas de instrumento que dejan de encajar, sin criterio', async () => {
+    const udId = await unidadDe2oCiclo(['EF.2C.4.5'])
+    const colId = await crearColumna({
+      grupoId: GRUPO_ID,
+      trimestre: 1,
+      titulo: 'Prueba',
+      tipo: 'numero',
+      udId,
+    })
+    const fila = (await db.filas.where('columnaId').equals(colId).toArray())[0]
+    await db.filas.update(fila.id, { criterioId: 'EF.2C.4.5' })
+
+    await moverUnidad(udId, 5)
+
+    const despues = await db.filas.get(fila.id)
+    expect(despues).toBeDefined()
+    expect(despues?.criterioId).toBeNull()
+    expect(despues?.descriptor).toBe(fila.descriptor)
+  })
+
+  it('deja las clases ya colocadas sin unidad, pero sin borrarlas', async () => {
+    await sembrarCriterios()
+    const udId = await unidadDeTres()
+    await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
+    const antes = await db.sesiones.count()
+
+    await moverUnidad(udId, 5)
+
+    expect(await db.sesiones.count()).toBe(antes)
+    expect((await db.sesiones.toArray()).every((s) => s.udId === undefined)).toBe(true)
+  })
+
+  it('deshacer devuelve el curso, los criterios, las filas y las sesiones', async () => {
+    await sembrarCriterios()
+    const udId = await unidadDeTres()
+    await db.unidades.update(udId, { criterios: ['EF.2C.4.5'] })
+    const colId = await crearColumna({
+      grupoId: GRUPO_ID,
+      trimestre: 1,
+      titulo: 'Prueba',
+      tipo: 'numero',
+      udId,
+    })
+    const fila = (await db.filas.where('columnaId').equals(colId).toArray())[0]
+    await db.filas.update(fila.id, { criterioId: 'EF.2C.4.5' })
+    await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
+
+    const deshacer = await moverUnidad(udId, 5)
+    await deshacer()
+
+    const ud = await db.unidades.get(udId)
+    expect(ud?.nivel).toBe(3)
+    expect(ud?.criterios).toEqual(['EF.2C.4.5'])
+    expect((await db.filas.get(fila.id))?.criterioId).toBe('EF.2C.4.5')
+    expect((await db.sesiones.toArray()).every((s) => s.udId === udId)).toBe(true)
+  })
+
+  it('se niega en Infantil', async () => {
+    const udId = await crearUnidad({ etapa: 'infantil', titulo: 'El bosque', trimestre: null })
+    await expect(moverUnidad(udId, 5)).rejects.toThrow(/2\.º ciclo entero/)
+  })
+})
+
+describe('resumenCopia', () => {
+  it('reúne lo que hay que enseñar antes de confirmar', async () => {
+    await sembrarCriterios()
+    const udId = await unidadDeTres()
+    await db.unidades.update(udId, { criterios: ['EF.2C.1.1', 'EF.2C.4.5'], trimestre: 1 })
+    await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
+
+    const r = await resumenCopia(udId, 5)
+
+    expect(r).toMatchObject({
+      titulo: 'Habilidades con móvil',
+      nivelOrigen: 3,
+      cambiaDeCiclo: true,
+      sesionesPlan: 3,
+      sinMapear: ['EF.2C.4.5'],
+      valores: 0,
+      sesionesColocadas: 3,
+    })
+    expect(r.mapeados).toEqual([{ origen: 'EF.2C.1.1', destino: 'EF.3C.1.1' }])
+  })
+
+  it('suma el peso ya repartido en el trimestre destino, sin contar la propia unidad', async () => {
+    await sembrarCriterios()
+    const udId = await crearUnidad({
+      etapa: 'primaria',
+      titulo: 'La que se copia',
+      nivel: 3,
+      trimestre: 1,
+      computa: true,
+      pesoTrimestre: 40,
+    })
+    await crearUnidad({
+      etapa: 'primaria',
+      titulo: 'Ya en 5.º',
+      nivel: 5,
+      trimestre: 1,
+      computa: true,
+      pesoTrimestre: 70,
+    })
+
+    expect((await resumenCopia(udId, 5)).pesoOcupadoDestino).toBe(70)
+    // Al mismo curso: la propia unidad no se cuenta dos veces.
+    expect((await resumenCopia(udId, 3)).pesoOcupadoDestino).toBe(0)
+  })
+})
+
+describe('marcarCriteriosRevisados', () => {
+  it('vacía el aviso y se puede deshacer', async () => {
+    const udId = await unidadDe2oCiclo(['EF.2C.4.5'])
+    const { id } = await copiarUnidad(udId, 5)
+    expect((await db.unidades.get(id))?.criteriosSinMapear).toEqual(['EF.2C.4.5'])
+
+    const deshacer = await marcarCriteriosRevisados(id)
+    expect((await db.unidades.get(id))?.criteriosSinMapear).toBeUndefined()
+
+    await deshacer()
+    expect((await db.unidades.get(id))?.criteriosSinMapear).toEqual(['EF.2C.4.5'])
   })
 })

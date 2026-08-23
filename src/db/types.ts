@@ -259,6 +259,17 @@ interface UnidadBase {
   criterios: string[]
   /** Plantilla de la que salió, si se creó a partir de una. */
   plantillaId?: Id
+  /** Unidad de la que se copió. Solo trazabilidad: nada del cálculo depende de él. */
+  copiadaDe?: Id
+  /**
+   * Ids de criterio del origen que no tenían equivalente en el ciclo destino al
+   * copiar o mover la unidad.
+   *
+   * No se inventa una equivalencia ni se busca «el más parecido»: el criterio
+   * se queda fuera y se anota aquí. Mientras la lista tenga contenido, la unidad
+   * enseña que le falta revisión; se vacía cuando el usuario la da por revisada.
+   */
+  criteriosSinMapear?: string[]
   /**
    * Retira la unidad del listado activo sin destruir nada.
    *

@@ -1,7 +1,8 @@
-import { cicloDeCurso } from '../lib/ciclos'
+import { cicloDeCurso, idCriterioPrimaria } from '../lib/ciclos'
 import { estadoDia, type CursoFechas } from '../lib/calendarioEscolar'
 import { aISO, deISO, sumarDias } from '../lib/fechas'
 import { esEnlace } from '../lib/importarTexto'
+import { criteriosDeGrupo } from './criterios'
 import { db, nuevoId } from './db'
 import {
   NIVEL_CICLO_INFANTIL,
@@ -260,30 +261,249 @@ export async function crearUnidad(
   return ud.id
 }
 
+// ——— Copiar y mover una unidad a otro curso ———
+//
+// Solo Primaria. En Infantil la unidad ya es del 2.º ciclo entero —3, 4 y 5 años
+// comparten los criterios del Decreto 36/2022—, así que no hay otro curso al que
+// llevarla y ninguna de las dos acciones tiene sentido.
+
+/** El error que sale cuando se intenta copiar o mover una unidad de Infantil. */
+const SOLO_PRIMARIA =
+  'Las unidades de Infantil son del 2.º ciclo entero: no hay otro curso al que llevarlas.'
+
+export interface MapeoCriterios {
+  /** Pares origen → destino que sí tienen equivalente. */
+  mapeados: { origen: string; destino: string }[]
+  /** Ids del origen sin equivalente en el ciclo destino. Se quedan fuera. */
+  sinMapear: string[]
+}
+
 /**
- * Duplica una UD de Primaria a otro nivel, que es como se reutiliza entre
- * cursos. En Infantil no aplica: las unidades son del 2.º ciclo entero, así que
- * no hay otro nivel al que llevarlas.
+ * Equivalencia de criterios entre ciclos de Primaria, por POSICIÓN.
+ *
+ * Los ids del Decreto 61/2022 son `EF.{ciclo}C.{codigo}`, así que la
+ * equivalencia es literalmente cambiar el segmento del ciclo: `EF.2C.3.1` →
+ * `EF.3C.3.1`. El código se lee de la base, nunca troceando la cadena: el id es
+ * la clave primaria y el formato es del decreto, no nuestro.
+ *
+ * Si el id equivalente no existe en el ciclo destino, la sugerencia es VACÍA y
+ * el criterio queda «sin mapear». No se busca el más parecido por texto: dos
+ * criterios que se parecen no son el mismo criterio, y adivinarlo aquí
+ * falsearía la trazabilidad curricular de toda la unidad.
  */
-export async function duplicarUnidad(udId: string, nivel: number): Promise<string> {
+export async function mapearCriterios(
+  ids: string[],
+  nivelOrigen: number,
+  nivelDestino: number,
+): Promise<MapeoCriterios> {
+  const cicloDestino = cicloDeCurso(nivelDestino)
+  // Mismo ciclo: son los mismos criterios, no hay nada que remapear.
+  if (cicloDeCurso(nivelOrigen) === cicloDestino)
+    return { mapeados: ids.map((origen) => ({ origen, destino: origen })), sinMapear: [] }
+
+  const validos = new Set((await criteriosDeGrupo('primaria', nivelDestino)).map((c) => c.id))
+  const mapeados: { origen: string; destino: string }[] = []
+  const sinMapear: string[] = []
+
+  for (const origen of ids) {
+    const criterio = await db.criterios.get(origen)
+    const destino = criterio ? idCriterioPrimaria(cicloDestino, criterio.codigo) : undefined
+    if (destino && validos.has(destino)) mapeados.push({ origen, destino })
+    else sinMapear.push(origen)
+  }
+
+  return { mapeados, sinMapear }
+}
+
+/** Lo que hay que enseñar antes de confirmar una copia o un movimiento (§3.8). */
+export interface ResumenCopia {
+  titulo: string
+  nivelOrigen: number
+  cambiaDeCiclo: boolean
+  /** Sesiones del plan, que se copian enteras. */
+  sesionesPlan: number
+  mapeados: { origen: string; destino: string }[]
+  sinMapear: string[]
+  /** Celdas escritas. Si hay alguna, mover se bloquea. */
+  valores: number
+  /** Clases ya colocadas que perderían la unidad al MOVER. Copiar no las toca. */
+  sesionesColocadas: number
+  /** Suma de pesos del trimestre destino sin contar esta unidad (§3.6). */
+  pesoOcupadoDestino: number
+}
+
+export async function resumenCopia(udId: string, nivelDestino: number): Promise<ResumenCopia> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) throw new Error('La unidad de origen ya no existe')
+  if (unidad.etapa === 'infantil') throw new Error(SOLO_PRIMARIA)
+
+  const { mapeados, sinMapear } = await mapearCriterios(unidad.criterios, unidad.nivel, nivelDestino)
+  const impacto = await contarImpactoUnidad(udId)
+
+  // El reparto del trimestre destino, sin esta unidad: si va al mismo curso y
+  // trimestre, contarla sería sumarla dos veces.
+  const hermanas =
+    unidad.trimestre === null ? [] : await unidadesDe(nivelDestino, unidad.trimestre)
+  const pesoOcupadoDestino = hermanas
+    .filter((u) => u.id !== udId && u.computa)
+    .reduce((s, u) => s + u.pesoTrimestre, 0)
+
+  return {
+    titulo: unidad.titulo,
+    nivelOrigen: unidad.nivel,
+    cambiaDeCiclo: cicloDeCurso(unidad.nivel) !== cicloDeCurso(nivelDestino),
+    sesionesPlan: unidad.sesiones?.length ?? 0,
+    mapeados,
+    sinMapear,
+    valores: impacto?.valores ?? 0,
+    sesionesColocadas: impacto?.sesionesReales ?? 0,
+    pesoOcupadoDestino,
+  }
+}
+
+/**
+ * Copia una unidad ENTERA a otro curso. La original se queda donde está.
+ *
+ * Se copia por *spread* de la unidad de origen, no reconstruyéndola campo a
+ * campo: así, cuando la unidad gane campos nuevos, la copia los arrastra sola.
+ * La versión anterior (`crearUnidad` con una lista escrita a mano) perdía en
+ * silencio todo lo que no estuviera en esa lista —el plan de sesiones entero,
+ * entre otras cosas— y por eso la copia llegaba solo con el título.
+ *
+ * NUNCA se copian alumnado, calificaciones, observaciones, asistencia ni las
+ * fechas concretas de las sesiones ya colocadas: el plan viaja sin calendario,
+ * como cuando se escribió. NUNCA se sobrescribe una unidad existente: siempre
+ * se crea una nueva.
+ *
+ * Los instrumentos del cuaderno tampoco viajan: una `Columna` vive en un GRUPO
+ * y un trimestre concretos, no en la unidad, y no hay forma no arbitraria de
+ * decidir en qué grupos del curso destino recrearlos.
+ */
+export async function copiarUnidad(
+  udId: string,
+  nivelDestino: number,
+  opciones: { pesoTrimestre?: number } = {},
+): Promise<{ id: string; deshacer: () => Promise<void> }> {
   const origen = await db.unidades.get(udId)
   if (!origen) throw new Error('La unidad de origen ya no existe')
-  if (origen.etapa === 'infantil')
+  if (origen.etapa === 'infantil') throw new Error(SOLO_PRIMARIA)
+
+  const { mapeados, sinMapear } = await mapearCriterios(
+    origen.criterios,
+    origen.nivel,
+    nivelDestino,
+  )
+
+  const id = nuevoId()
+  const copia: UnidadPrimaria = {
+    ...origen,
+    id,
+    nivel: nivelDestino,
+    criterios: mapeados.map((m) => m.destino),
+    // El peso NO se hereda: el reparto es de cada curso y el trimestre destino
+    // tiene el suyo. Se pide al confirmar (§3.6).
+    pesoTrimestre: opciones.pesoTrimestre ?? 0,
+    copiadaDe: udId,
+    // Una copia nace visible aunque el original estuviera archivado: se copia
+    // para usarla.
+    archivada: false,
+    ...(sinMapear.length ? { criteriosSinMapear: sinMapear } : { criteriosSinMapear: undefined }),
+    // Ids nuevos por sesión: si compartieran id con las del origen, editar una
+    // sería editar la otra en cuanto algo las buscara por id.
+    ...(origen.sesiones?.length
+      ? {
+          sesiones: [...origen.sesiones]
+            .sort((a, b) => a.orden - b.orden)
+            .map((s, i) => ({ ...s, id: nuevoId(), orden: i, recursos: [...s.recursos] })),
+        }
+      : { sesiones: undefined }),
+  }
+
+  await db.unidades.add(copia)
+  return { id, deshacer: async () => void (await db.unidades.delete(id)) }
+}
+
+/**
+ * Lleva una unidad a otro curso sin dejar copia.
+ *
+ * Se bloquea si tiene notas u observaciones puestas: moverla las dejaría
+ * atribuidas a un curso que no es el suyo, y eso no se arregla después. En ese
+ * caso la salida es copiar.
+ *
+ * Al cambiar de ciclo, los criterios se remapean por posición y los que no
+ * encajan quedan anotados en `criteriosSinMapear`. Las FILAS de instrumento
+ * cuyo criterio no exista en el ciclo destino se CONSERVAN con `criterioId` a
+ * `null` —que ya significa «sin traza a ningún criterio»—: nunca se borra una
+ * fila por un cambio de curso.
+ *
+ * Las clases ya colocadas en el calendario pierden `udId`: son clases de los
+ * grupos del curso viejo, y mantenerlas atadas atribuiría una sesión de 3.º a
+ * una unidad que ahora es de 5.º. Se cuentan en el resumen previo.
+ */
+export async function moverUnidad(
+  udId: string,
+  nivelDestino: number,
+): Promise<() => Promise<void>> {
+  const origen = await db.unidades.get(udId)
+  if (!origen) throw new Error('La unidad de origen ya no existe')
+  if (origen.etapa === 'infantil') throw new Error(SOLO_PRIMARIA)
+
+  const impacto = await contarImpactoUnidad(udId)
+  if ((impacto?.valores ?? 0) > 0)
     throw new Error(
-      'Las unidades de Infantil son del ciclo completo: no hay otro nivel al que duplicarlas.',
+      'La unidad tiene notas u observaciones puestas: moverla las dejaría atribuidas a otro curso. Cópiala en su lugar.',
     )
-  return crearUnidad({
-    etapa: 'primaria',
-    titulo: origen.titulo,
-    nivel,
-    trimestre: origen.trimestre,
-    // Los criterios NO se arrastran: son de un ciclo concreto y duplicar a otro
-    // nivel puede cambiar de ciclo, con lo que apuntarían a criterios que no
-    // aplican. El peso tampoco: el reparto es de cada curso.
-    criterios: cicloDeCurso(origen.nivel) === cicloDeCurso(nivel) ? origen.criterios : [],
-    computa: origen.computa,
-    plantillaId: origen.plantillaId,
+
+  const { mapeados, sinMapear } = await mapearCriterios(
+    origen.criterios,
+    origen.nivel,
+    nivelDestino,
+  )
+  const validos = new Set((await criteriosDeGrupo('primaria', nivelDestino)).map((c) => c.id))
+
+  let filasPrevias: FilaInstrumento[] = []
+  let sesionesDesvinculadas: string[] = []
+
+  await db.transaction('rw', [db.unidades, db.sesiones, db.columnas, db.filas], async () => {
+    const columnas = await db.columnas.where('udId').equals(udId).toArray()
+    const columnaIds = columnas.map((c) => c.id)
+    const filas = columnaIds.length
+      ? await db.filas.where('columnaId').anyOf(columnaIds).toArray()
+      : []
+    // Solo las que dejarían de encajar: las demás no se tocan, y así deshacer
+    // no tiene que reponer filas que nunca cambiaron.
+    filasPrevias = filas.filter((f) => f.criterioId && !validos.has(f.criterioId))
+    for (const f of filasPrevias) await db.filas.update(f.id, { criterioId: null })
+
+    sesionesDesvinculadas = (await db.sesiones.where('udId').equals(udId).toArray()).map((s) => s.id)
+    for (const id of sesionesDesvinculadas) await db.sesiones.update(id, { udId: undefined })
+
+    await db.unidades.put({
+      ...origen,
+      nivel: nivelDestino,
+      criterios: mapeados.map((m) => m.destino),
+      // El reparto es de cada curso: al cambiar de curso, el peso vuelve a 0.
+      pesoTrimestre: 0,
+      ...(sinMapear.length ? { criteriosSinMapear: sinMapear } : { criteriosSinMapear: undefined }),
+    })
   })
+
+  return async () => {
+    await db.transaction('rw', [db.unidades, db.sesiones, db.filas], async () => {
+      await db.unidades.put(origen)
+      for (const f of filasPrevias) await db.filas.update(f.id, { criterioId: f.criterioId })
+      for (const id of sesionesDesvinculadas) await db.sesiones.update(id, { udId })
+    })
+  }
+}
+
+/** Da por revisados los criterios que no se pudieron mapear. */
+export async function marcarCriteriosRevisados(udId: string): Promise<() => Promise<void>> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) throw new Error('La unidad ya no existe')
+  const previos = unidad.criteriosSinMapear
+  await db.unidades.put({ ...unidad, criteriosSinMapear: undefined })
+  return async () => void (await db.unidades.put({ ...unidad, criteriosSinMapear: previos }))
 }
 
 // ——— El plan de sesiones de una unidad ———

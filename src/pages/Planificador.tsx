@@ -11,6 +11,7 @@ import {
   Copy,
   Layers,
   MoreVertical,
+  MoveRight,
   Plus,
   Trash2,
   Users,
@@ -32,16 +33,20 @@ import {
   aplicarUnidadAGrupo,
   archivarUnidad,
   contarImpactoUnidad,
+  copiarUnidad,
   crearSesion,
   crearUnidad,
   duplicarSesionPlan,
-  duplicarUnidad,
   eliminarSesionPlan,
   eliminarUnidad,
   guardarSesionPlan,
   lunesDe,
+  marcarCriteriosRevisados,
   moverSesionPlan,
+  moverUnidad,
+  resumenCopia,
   type ImpactoUnidad,
+  type ResumenCopia,
 } from '../db/planificador'
 import { huecosDe, type HuecoCalendario } from '../db/sesiones'
 import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
@@ -276,9 +281,8 @@ const FILTROS: { valor: FiltroEtapa; etiqueta: string }[] = [
 function VistaUnidades() {
   const [creando, setCreando] = useState(false)
   const [editando, setEditando] = useState<UnidadDidactica | null>(null)
-  const [duplicando, setDuplicando] = useState<{ id: string; titulo: string; nivel: number } | null>(
-    null,
-  )
+  const [copiando, setCopiando] = useState<UnidadDidactica | null>(null)
+  const [moviendo, setMoviendo] = useState<UnidadDidactica | null>(null)
   const [llevando, setLlevando] = useState<UnidadDidactica | null>(null)
   const [acciones, setAcciones] = useState<UnidadDidactica | null>(null)
   const [eliminando, setEliminando] = useState<UnidadDidactica | null>(null)
@@ -404,6 +408,13 @@ function VistaUnidades() {
                         Archivada
                       </span>
                     )}
+                    {/* Se copió o se movió y algún criterio no tenía equivalente
+                        en el ciclo destino: queda pendiente elegirlo a mano. */}
+                    {u.criteriosSinMapear?.length && (
+                      <span className="pildora shrink-0 border border-acento/40 bg-acento/10 px-2 py-0.5 text-xs font-semibold text-acento">
+                        Revisar criterios
+                      </span>
+                    )}
                   </div>
                   <p className="cifra mt-0.5 text-sm texto-suave">
                     {ambitoUnidad(u.etapa, u.nivel)} ·{' '}
@@ -442,12 +453,22 @@ function VistaUnidades() {
 
       <HojaNuevaUnidad abierta={creando} onCerrar={() => setCreando(false)} />
       <HojaEditarUnidad unidad={editando} onCerrar={() => setEditando(null)} />
-      <HojaDuplicarUnidad unidad={duplicando} onCerrar={() => setDuplicando(null)} />
+      <HojaCopiarUnidad
+        unidad={copiando}
+        onCerrar={() => setCopiando(null)}
+        onCopiada={(id) => void db.unidades.get(id).then((u) => u && setEditando(u))}
+      />
+      <HojaMoverUnidad
+        unidad={moviendo}
+        onCerrar={() => setMoviendo(null)}
+        onCopiar={() => setCopiando(moviendo)}
+      />
       <HojaLlevarAGrupo unidad={llevando} onCerrar={() => setLlevando(null)} />
       <HojaAccionesUnidad
         unidad={acciones}
         onCerrar={() => setAcciones(null)}
-        onDuplicar={(u) => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
+        onCopiar={setCopiando}
+        onMover={setMoviendo}
         onEliminar={setEliminando}
       />
       <HojaEliminarUnidad unidad={eliminando} onCerrar={() => setEliminando(null)} />
@@ -883,12 +904,14 @@ function HojaSesionPlan({
 function HojaAccionesUnidad({
   unidad,
   onCerrar,
-  onDuplicar,
+  onCopiar,
+  onMover,
   onEliminar,
 }: {
   unidad: UnidadDidactica | null
   onCerrar: () => void
-  onDuplicar: (u: UnidadDidactica & { etapa: 'primaria' }) => void
+  onCopiar: (u: UnidadDidactica) => void
+  onMover: (u: UnidadDidactica) => void
   onEliminar: (u: UnidadDidactica) => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -908,19 +931,35 @@ function HojaAccionesUnidad({
   return (
     <Hoja abierta={!!unidad} titulo={unidad?.titulo ?? ''} onCerrar={onCerrar}>
       <div className="space-y-2">
-        {/* Duplicar es «llevar esto a otro curso». En Infantil no hay otro
-            curso al que llevarlo: la unidad ya es del ciclo entero. */}
+        {/* En Infantil no hay otro curso al que llevarla: la unidad ya es del
+            2.º ciclo entero, y 3, 4 y 5 años comparten criterios. Por eso
+            copiar y mover solo existen en Primaria. */}
         {unidad?.etapa === 'primaria' && (
-          <button
-            className="btn-suave w-full justify-start"
-            onClick={() => {
-              onDuplicar(unidad)
-              onCerrar()
-            }}
-          >
-            <Copy size={20} aria-hidden />
-            Duplicar a otro curso
-          </button>
+          <>
+            <button
+              className="btn-suave w-full justify-start"
+              onClick={() => {
+                onCopiar(unidad)
+                onCerrar()
+              }}
+            >
+              <Copy size={20} aria-hidden />
+              Copiar a otro curso
+            </button>
+            <button
+              className="btn-suave w-full justify-start"
+              onClick={() => {
+                onMover(unidad)
+                onCerrar()
+              }}
+            >
+              <MoveRight size={20} aria-hidden />
+              Mover a otro curso
+            </button>
+            <p className="px-1 text-xs texto-suave">
+              Copiar deja la original donde está; mover no.
+            </p>
+          </>
         )}
 
         <button className="btn-suave w-full justify-start" onClick={() => void archivar()}>
@@ -1114,57 +1153,319 @@ function HojaEliminarUnidad({
   )
 }
 
-/** Duplicar una UD a otro nivel: así se reutiliza el mismo esqueleto entre cursos. */
-function HojaDuplicarUnidad({
+/**
+ * Aviso persistente de §3.8: al copiar o mover a otro ciclo, los criterios sin
+ * equivalente se quedan fuera y hay que elegirlos a mano. No se sustituyen por
+ * el más parecido, así que el aviso no puede desaparecer solo: se queda hasta
+ * que el usuario dice que ya lo ha mirado.
+ */
+function AvisoCriteriosSinMapear({ unidad }: { unidad: UnidadDidactica }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const pendientes = unidad.criteriosSinMapear ?? []
+  if (pendientes.length === 0) return null
+
+  async function revisado() {
+    const deshacer = await marcarCriteriosRevisados(unidad.id)
+    mostrarAviso('Criterios dados por revisados', deshacer)
+  }
+
+  return (
+    <div className="aviso space-y-2">
+      <p className="font-semibold">
+        {pendientes.length === 1
+          ? 'Un criterio se quedó sin equivalente'
+          : `${pendientes.length} criterios se quedaron sin equivalente`}
+      </p>
+      <p>
+        Al traer esta unidad de otro ciclo no existía el equivalente de{' '}
+        <span className="cifra">{pendientes.join(', ')}</span>. Elige abajo los que correspondan a
+        este ciclo.
+      </p>
+      <button className="btn-suave w-full text-sm" onClick={() => void revisado()}>
+        Ya lo he revisado
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Selector de curso destino, común a copiar y a mover. El curso de partida es
+ * el siguiente al de origen: llevarla a su propio curso casi nunca es lo que se
+ * quiere, aunque se permite.
+ */
+function SelectorCurso({
+  nivel,
+  onCambio,
+}: {
+  nivel: number
+  onCambio: (n: number) => void
+}) {
+  return (
+    <div>
+      <span className="etiqueta">Curso de destino</span>
+      <div className="flex flex-wrap gap-2">
+        {[1, 2, 3, 4, 5, 6].map((n) => (
+          <button
+            key={n}
+            onClick={() => onCambio(n)}
+            aria-pressed={nivel === n}
+            className={(nivel === n ? 'btn-primario' : 'btn-suave') + ' min-w-tap flex-1 px-0'}
+          >
+            {n}º
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Resumen previo de 3.8: qué viaja, qué no, y qué queda por revisar. Se enseña
+ * antes del botón de confirmar, en las dos hojas, porque copiar y mover
+ * arrastran exactamente lo mismo — lo que cambia es si el original se queda.
+ */
+function ResumenDeCopia({ resumen, moviendo }: { resumen: ResumenCopia; moviendo: boolean }) {
+  return (
+    <>
+      <div className="tarjeta space-y-1 py-3 text-sm">
+        <p className="font-semibold">Viaja con la unidad</p>
+        <ul className="texto-suave">
+          <li>
+            {resumen.sesionesPlan}{' '}
+            {resumen.sesionesPlan === 1 ? 'sesión planificada' : 'sesiones planificadas'}, con su
+            descripción, material y enlaces
+          </li>
+          <li>
+            {resumen.mapeados.length}{' '}
+            {resumen.mapeados.length === 1 ? 'criterio' : 'criterios'}
+            {resumen.cambiaDeCiclo && ' (equivalentes del ciclo destino)'}
+          </li>
+          <li>El trimestre y si cuenta para la nota</li>
+        </ul>
+      </div>
+
+      <div className="tarjeta space-y-1 py-3 text-sm">
+        <p className="font-semibold">No viaja</p>
+        <ul className="texto-suave">
+          <li>Alumnado, notas, observaciones y asistencia</li>
+          <li>Las fechas de las clases: el plan va sin calendario</li>
+          <li>Los instrumentos del cuaderno, que son de cada grupo</li>
+          <li>El peso en el trimestre, que es de cada curso</li>
+        </ul>
+      </div>
+
+      {resumen.sinMapear.length > 0 && (
+        <div className="aviso">
+          <p className="font-semibold">
+            {resumen.sinMapear.length}{' '}
+            {resumen.sinMapear.length === 1
+              ? 'criterio sin equivalente'
+              : 'criterios sin equivalente'}{' '}
+            en el ciclo destino
+          </p>
+          <p className="mt-1">
+            Se quedan fuera y habrá que elegirlos a mano: {resumen.sinMapear.join(', ')}. No se
+            sustituyen por el más parecido, porque dos criterios que se parecen no son el mismo.
+          </p>
+        </div>
+      )}
+
+      {moviendo && resumen.sesionesColocadas > 0 && (
+        <div className="aviso">
+          <p>
+            {resumen.sesionesColocadas}{' '}
+            {resumen.sesionesColocadas === 1
+              ? 'clase ya colocada se queda'
+              : 'clases ya colocadas se quedan'}{' '}
+            sin unidad: son clases de los grupos del curso de origen y atribuirlas al curso nuevo
+            sería falsear el registro. No se borran.
+          </p>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Copiar una unidad a otro curso: la original se queda donde está. */
+function HojaCopiarUnidad({
   unidad,
   onCerrar,
+  onCopiada,
 }: {
-  unidad: { id: string; titulo: string; nivel: number } | null
+  unidad: UnidadDidactica | null
   onCerrar: () => void
+  onCopiada: (id: string) => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [nivel, setNivel] = useState(1)
+  const [peso, setPeso] = useState('0')
+  const [resumen, setResumen] = useState<ResumenCopia | null>(null)
 
-  // El nivel de partida es el siguiente al de origen: duplicar a su propio
-  // nivel casi nunca es lo que se quiere.
+  useEffect(() => {
+    if (unidad) setNivel(unidad.nivel < 6 ? unidad.nivel + 1 : 1)
+    setPeso('0')
+  }, [unidad])
+
+  useEffect(() => {
+    setResumen(null)
+    if (!unidad) return
+    let vigente = true
+    void resumenCopia(unidad.id, nivel).then((r) => {
+      if (vigente) setResumen(r)
+    })
+    return () => {
+      vigente = false
+    }
+  }, [unidad, nivel])
+
+  const pesoNum = Number(peso) || 0
+  const sumaDestino = (resumen?.pesoOcupadoDestino ?? 0) + pesoNum
+  const computa = unidad?.etapa === 'primaria' && unidad.computa
+
+  async function copiar() {
+    if (!unidad) return
+    try {
+      const { id, deshacer } = await copiarUnidad(unidad.id, nivel, { pesoTrimestre: pesoNum })
+      onCerrar()
+      onCopiada(id)
+      mostrarAviso(`«${unidad.titulo}» copiada a ${nivel}º`, deshacer)
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido copiar')
+    }
+  }
+
+  return (
+    <Hoja abierta={!!unidad} titulo="Copiar a otro curso" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <p className="text-sm">
+          Se crea una unidad nueva en el curso que elijas. «{unidad?.titulo}» se queda donde está.
+        </p>
+
+        <SelectorCurso nivel={nivel} onCambio={setNivel} />
+
+        {/* §3.6: el peso no se hereda, se pide aquí. El aviso de suma ≠ 100 es
+            aviso y no bloqueo, igual que en el reparto del trimestre. */}
+        {computa && unidad?.trimestre !== null && (
+          <div>
+            <label className="etiqueta" htmlFor="ud-peso-destino">
+              Peso en el {unidad?.trimestre}.º trimestre de {nivel}º (%)
+            </label>
+            <Campo
+              id="ud-peso-destino"
+              className="campo cifra"
+              inputMode="numeric"
+              valor={peso}
+              onValor={setPeso}
+            />
+            {resumen && sumaDestino !== 100 && (
+              <p className="mt-1 text-sm texto-suave">
+                Con este peso, el trimestre de {nivel}º suma {sumaDestino} % en vez de 100. Se puede
+                dejar así y repartir luego.
+              </p>
+            )}
+          </div>
+        )}
+
+        {!resumen && <p className="text-sm texto-suave">Comprobando qué se puede llevar…</p>}
+        {resumen && <ResumenDeCopia resumen={resumen} moviendo={false} />}
+
+        <button className="btn-primario w-full" onClick={() => void copiar()} disabled={!resumen}>
+          <Copy size={20} aria-hidden />
+          Copiar a {nivel}º
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/** Mover una unidad a otro curso: no deja copia, y se bloquea si hay datos. */
+function HojaMoverUnidad({
+  unidad,
+  onCerrar,
+  onCopiar,
+}: {
+  unidad: UnidadDidactica | null
+  onCerrar: () => void
+  onCopiar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [nivel, setNivel] = useState(1)
+  const [resumen, setResumen] = useState<ResumenCopia | null>(null)
+
   useEffect(() => {
     if (unidad) setNivel(unidad.nivel < 6 ? unidad.nivel + 1 : 1)
   }, [unidad])
 
-  async function duplicar() {
+  useEffect(() => {
+    setResumen(null)
     if (!unidad) return
-    const id = await duplicarUnidad(unidad.id, nivel)
-    onCerrar()
-    mostrarAviso(`«${unidad.titulo}» duplicada a ${nivel}º`, async () => {
-      await db.unidades.delete(id)
+    let vigente = true
+    void resumenCopia(unidad.id, nivel).then((r) => {
+      if (vigente) setResumen(r)
     })
+    return () => {
+      vigente = false
+    }
+  }, [unidad, nivel])
+
+  const bloqueado = (resumen?.valores ?? 0) > 0
+
+  async function mover() {
+    if (!unidad) return
+    try {
+      const deshacer = await moverUnidad(unidad.id, nivel)
+      onCerrar()
+      mostrarAviso(`«${unidad.titulo}» movida a ${nivel}º`, deshacer)
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido mover')
+    }
   }
 
   return (
-    <Hoja abierta={!!unidad} titulo="Duplicar unidad" onCerrar={onCerrar}>
+    <Hoja abierta={!!unidad} titulo="Mover a otro curso" onCerrar={onCerrar}>
       <div className="space-y-4">
-        <p className="text-sm texto-suave">
-          Se copia «{unidad?.titulo}» con sus criterios y trimestre. Las sesiones no se duplican.
+        <p className="text-sm">
+          «{unidad?.titulo}» pasa a ser del curso que elijas. No queda copia en {unidad?.nivel}º.
         </p>
 
-        <div>
-          <span className="etiqueta">Nivel de destino</span>
-          <div className="flex flex-wrap gap-2">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <button
-                key={n}
-                onClick={() => setNivel(n)}
-                className={(nivel === n ? 'btn-primario' : 'btn-suave') + ' min-w-tap flex-1 px-0'}
-              >
-                {n}º
-              </button>
-            ))}
-          </div>
-        </div>
+        <SelectorCurso nivel={nivel} onCambio={setNivel} />
 
-        <button className="btn-primario w-full" onClick={() => void duplicar()}>
-          Duplicar unidad
-        </button>
+        {!resumen && <p className="text-sm texto-suave">Comprobando qué se puede llevar…</p>}
+
+        {resumen && bloqueado ? (
+          <>
+            <div className="aviso-fuerte">
+              <p className="font-semibold">
+                Hay {resumen.valores}{' '}
+                {resumen.valores === 1 ? 'dato registrado' : 'datos registrados'}
+              </p>
+              <p className="mt-1">
+                Moverla dejaría esas notas atribuidas a un curso que no es el suyo, y eso no se
+                arregla después. Cópiala: el original se queda con sus notas.
+              </p>
+            </div>
+            <button
+              className="btn-primario w-full"
+              onClick={() => {
+                onCerrar()
+                onCopiar()
+              }}
+            >
+              <Copy size={20} aria-hidden />
+              Copiar en su lugar
+            </button>
+          </>
+        ) : (
+          resumen && (
+            <>
+              <ResumenDeCopia resumen={resumen} moviendo />
+              <button className="btn-primario w-full" onClick={() => void mover()}>
+                <MoveRight size={20} aria-hidden />
+                Mover a {nivel}º
+              </button>
+            </>
+          )
+        )}
       </div>
     </Hoja>
   )
@@ -1431,6 +1732,8 @@ function HojaEditarUnidad({
             </span>
           </label>
         )}
+
+        <AvisoCriteriosSinMapear unidad={unidad} />
 
         <SelectorCriterios
           etapa={unidad.etapa}
