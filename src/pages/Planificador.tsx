@@ -6,7 +6,6 @@ import {
   CalendarPlus,
   CalendarRange,
   ChevronDown,
-  ChevronUp,
   ClipboardPaste,
   Copy,
   Layers,
@@ -46,7 +45,6 @@ import {
   lunesDe,
   motivoNoAdmiteCurso,
   marcarCriteriosRevisados,
-  moverSesionPlan,
   moverUnidad,
   quitarCursoDeUnidad,
   resumenCopia,
@@ -663,11 +661,6 @@ function PlanDeUnidad({
     mostrarAviso(`«${s.titulo || 'Sesión sin título'}» duplicada`, deshacer)
   }
 
-  async function mover(s: SesionPlan, delta: 1 | -1) {
-    const deshacer = await moverSesionPlan(unidad.id, nivel, s.id, delta)
-    if (deshacer) mostrarAviso(delta < 0 ? 'Sesión subida' : 'Sesión bajada', deshacer)
-  }
-
   async function eliminar() {
     if (!borrando) return
     const deshacer = await eliminarSesionPlan(unidad.id, nivel, borrando.id)
@@ -770,22 +763,6 @@ function PlanDeUnidad({
                   )}
                 </button>
                 <span className="flex shrink-0 items-center">
-                  <button
-                    className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue disabled:opacity-30"
-                    onClick={() => void mover(s, -1)}
-                    disabled={i === 0}
-                    aria-label={`Subir la sesión ${i + 1}`}
-                  >
-                    <ChevronUp size={18} aria-hidden />
-                  </button>
-                  <button
-                    className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue disabled:opacity-30"
-                    onClick={() => void mover(s, 1)}
-                    disabled={i === plan.length - 1}
-                    aria-label={`Bajar la sesión ${i + 1}`}
-                  >
-                    <ChevronDown size={18} aria-hidden />
-                  </button>
                   <button
                     className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
                     onClick={() => void duplicar(s)}
