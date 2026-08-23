@@ -6,6 +6,7 @@ import {
   CalendarPlus,
   CalendarRange,
   ChevronDown,
+  ChevronUp,
   ClipboardPaste,
   Copy,
   Layers,
@@ -17,27 +18,33 @@ import {
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
-import { Campo } from '../components/Campo'
+import { Campo, CampoArea } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
 import { NavegadorFecha } from '../components/NavegadorFecha'
+import { Recursos } from '../components/Recursos'
 import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { coberturaInfantil } from '../db/coberturaInfantil'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import {
+  anadirSesionPlan,
   aplicarUnidadAGrupo,
   archivarUnidad,
   contarImpactoUnidad,
   crearSesion,
   crearUnidad,
+  duplicarSesionPlan,
   duplicarUnidad,
+  eliminarSesionPlan,
   eliminarUnidad,
+  guardarSesionPlan,
   lunesDe,
+  moverSesionPlan,
   type ImpactoUnidad,
 } from '../db/planificador'
 import { huecosDe, type HuecoCalendario } from '../db/sesiones'
-import type { Etapa, UnidadDidactica } from '../db/types'
+import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
@@ -275,6 +282,9 @@ function VistaUnidades() {
   const [llevando, setLlevando] = useState<UnidadDidactica | null>(null)
   const [acciones, setAcciones] = useState<UnidadDidactica | null>(null)
   const [eliminando, setEliminando] = useState<UnidadDidactica | null>(null)
+  const [editandoSesion, setEditandoSesion] = useState<{ udId: string; sesionId: string } | null>(
+    null,
+  )
   const [desplegada, setDesplegada] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<FiltroEtapa>('todas')
   const [verArchivadas, setVerArchivadas] = useState(false)
@@ -417,54 +427,14 @@ function VistaUnidades() {
                 </button>
               </div>
 
-              {plan.length > 0 && (
-                <>
-                  <div className="flex gap-2">
-                    <button
-                      className="btn-suave flex-1 px-3 text-xs"
-                      onClick={() => setDesplegada(abierta ? null : u.id)}
-                      aria-expanded={abierta}
-                    >
-                      <ChevronDown
-                        size={16}
-                        className={abierta ? 'rotate-180 transition-transform' : 'transition-transform'}
-                        aria-hidden
-                      />
-                      {abierta ? 'Ocultar sesiones' : `Ver las ${plan.length} sesiones`}
-                    </button>
-                    <button
-                      className="btn-suave flex-1 px-3 text-xs"
-                      onClick={() => setLlevando(u)}
-                    >
-                      <CalendarPlus size={16} aria-hidden />
-                      Llevar a un grupo
-                    </button>
-                  </div>
-
-                  {abierta && (
-                    <ol className="space-y-1 border-t border-borde pt-2 dark:border-noche-borde">
-                      {plan.map((s, i) => (
-                        <li key={s.id} className="flex gap-2 text-sm">
-                          <span className="cifra shrink-0 font-bold texto-suave">{i + 1}</span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block font-semibold">{s.titulo}</span>
-                            {s.notas && (
-                              <span className="block truncate texto-suave">
-                                {s.notas.split('\n').find((l) => l.trim()) ?? ''}
-                              </span>
-                            )}
-                            {s.recursosNecesarios && (
-                              <span className="block truncate text-xs texto-suave">
-                                Material: {s.recursosNecesarios}
-                              </span>
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </>
-              )}
+              <PlanDeUnidad
+                unidad={u}
+                plan={plan}
+                abierta={abierta}
+                onAlternar={() => setDesplegada(abierta ? null : u.id)}
+                onLlevar={() => setLlevando(u)}
+                onEditarSesion={(sesionId) => setEditandoSesion({ udId: u.id, sesionId })}
+              />
             </li>
           )
         })}
@@ -481,6 +451,7 @@ function VistaUnidades() {
         onEliminar={setEliminando}
       />
       <HojaEliminarUnidad unidad={eliminando} onCerrar={() => setEliminando(null)} />
+      <HojaSesionPlan destino={editandoSesion} onCerrar={() => setEditandoSesion(null)} />
     </>
   )
 }
@@ -592,6 +563,312 @@ function HojaLlevarAGrupo({
           disabled={!grupoId || plan.length === 0}
         >
           Colocar {plan.length} {plan.length === 1 ? 'sesión' : 'sesiones'}
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/**
+ * El plan de sesiones de una unidad, editable sin salir del listado.
+ *
+ * Las sesiones se numeran por POSICIÓN, no por un campo que se escriba: el
+ * número que se ve es el índice en la lista, y reordenar renumera solo. Por eso
+ * subir y bajar son botones y no hay ningún «número de sesión» que tocar.
+ */
+function PlanDeUnidad({
+  unidad,
+  plan,
+  abierta,
+  onAlternar,
+  onLlevar,
+  onEditarSesion,
+}: {
+  unidad: UnidadDidactica
+  plan: SesionPlan[]
+  abierta: boolean
+  onAlternar: () => void
+  onLlevar: () => void
+  onEditarSesion: (sesionId: string) => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [borrando, setBorrando] = useState<SesionPlan | null>(null)
+
+  async function anadir() {
+    const { id, deshacer } = await anadirSesionPlan(unidad.id)
+    if (!abierta) onAlternar()
+    onEditarSesion(id)
+    mostrarAviso('Sesión añadida', deshacer)
+  }
+
+  async function duplicar(s: SesionPlan) {
+    const { deshacer } = await duplicarSesionPlan(unidad.id, s.id)
+    mostrarAviso(`«${s.titulo || 'Sesión sin título'}» duplicada`, deshacer)
+  }
+
+  async function mover(s: SesionPlan, delta: 1 | -1) {
+    const deshacer = await moverSesionPlan(unidad.id, s.id, delta)
+    if (deshacer) mostrarAviso(delta < 0 ? 'Sesión subida' : 'Sesión bajada', deshacer)
+  }
+
+  async function eliminar() {
+    if (!borrando) return
+    const deshacer = await eliminarSesionPlan(unidad.id, borrando.id)
+    const titulo = borrando.titulo || 'Sesión sin título'
+    setBorrando(null)
+    mostrarAviso(`«${titulo}» quitada del plan`, deshacer)
+  }
+
+  return (
+    <>
+      <div className="flex gap-2">
+        <button
+          className="btn-suave flex-1 px-3 text-xs"
+          onClick={onAlternar}
+          aria-expanded={abierta}
+        >
+          <ChevronDown
+            size={16}
+            className={abierta ? 'rotate-180 transition-transform' : 'transition-transform'}
+            aria-hidden
+          />
+          {abierta
+            ? 'Ocultar sesiones'
+            : plan.length === 0
+              ? 'Añadir sesiones'
+              : `Ver las ${plan.length} sesiones`}
+        </button>
+        {plan.length > 0 && (
+          <button className="btn-suave flex-1 px-3 text-xs" onClick={onLlevar}>
+            <CalendarPlus size={16} aria-hidden />
+            Llevar a un grupo
+          </button>
+        )}
+      </div>
+
+      {abierta && (
+        <div className="space-y-2 border-t border-borde pt-2 dark:border-noche-borde">
+          {plan.length === 0 && (
+            <p className="text-sm texto-suave">
+              Todavía no hay sesiones. Escribe aquí la secuencia y luego llévala a un grupo.
+            </p>
+          )}
+
+          <ol className="space-y-1">
+            {plan.map((s, i) => (
+              <li key={s.id} className="flex items-start gap-1 text-sm">
+                <span className="cifra w-5 shrink-0 pt-3 text-right font-bold texto-suave">
+                  {i + 1}
+                </span>
+                <button
+                  className="min-w-0 flex-1 py-2 text-left"
+                  onClick={() => onEditarSesion(s.id)}
+                  aria-label={`Editar sesión ${i + 1}: ${s.titulo || 'sin título'}`}
+                >
+                  <span className="block font-semibold">
+                    {s.titulo || <span className="texto-suave">Sesión sin título</span>}
+                  </span>
+                  {s.notas && (
+                    <span className="block truncate texto-suave">
+                      {s.notas.split('\n').find((l) => l.trim()) ?? ''}
+                    </span>
+                  )}
+                  {s.recursosNecesarios && (
+                    <span className="block truncate text-xs texto-suave">
+                      Material: {s.recursosNecesarios}
+                    </span>
+                  )}
+                </button>
+                <span className="flex shrink-0 items-center">
+                  <button
+                    className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue disabled:opacity-30"
+                    onClick={() => void mover(s, -1)}
+                    disabled={i === 0}
+                    aria-label={`Subir la sesión ${i + 1}`}
+                  >
+                    <ChevronUp size={18} aria-hidden />
+                  </button>
+                  <button
+                    className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue disabled:opacity-30"
+                    onClick={() => void mover(s, 1)}
+                    disabled={i === plan.length - 1}
+                    aria-label={`Bajar la sesión ${i + 1}`}
+                  >
+                    <ChevronDown size={18} aria-hidden />
+                  </button>
+                  <button
+                    className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+                    onClick={() => void duplicar(s)}
+                    aria-label={`Duplicar la sesión ${i + 1}`}
+                  >
+                    <Copy size={16} aria-hidden />
+                  </button>
+                  <button
+                    className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+                    onClick={() => setBorrando(s)}
+                    aria-label={`Quitar la sesión ${i + 1} del plan`}
+                  >
+                    <Trash2 size={16} aria-hidden />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ol>
+
+          <button className="btn-suave w-full text-xs" onClick={() => void anadir()}>
+            <Plus size={16} aria-hidden />
+            Añadir sesión
+          </button>
+        </div>
+      )}
+
+      <Hoja
+        abierta={!!borrando}
+        titulo="Quitar sesión del plan"
+        onCerrar={() => setBorrando(null)}
+      >
+        <div className="space-y-4">
+          <p className="text-sm">
+            «{borrando?.titulo || 'Sesión sin título'}» sale del plan de «{unidad.titulo}».
+          </p>
+          {/* Una sesión del plan no lleva notas: las columnas del cuaderno
+              cuelgan de la unidad, y las clases ya colocadas son copias con
+              vida propia. Por eso basta una confirmación simple. */}
+          <p className="text-sm texto-suave">
+            Las clases que ya estén colocadas en el calendario no se tocan.
+          </p>
+          <button className="btn-peligro w-full" onClick={() => void eliminar()}>
+            <Trash2 size={20} aria-hidden />
+            Quitar del plan
+          </button>
+        </div>
+      </Hoja>
+    </>
+  )
+}
+
+/**
+ * Edición de una sesión del plan. Los mismos campos genéricos en las dos
+ * etapas: lo que cambia entre Infantil y Primaria es la evaluación, no cómo se
+ * escribe una sesión.
+ *
+ * Guarda sin salir de la unidad y avisa mientras haya cambios sin guardar: es
+ * un formulario con botón, no escritura optimista campo a campo, porque aquí se
+ * reescribe el plan entero de la unidad en cada toque.
+ */
+function HojaSesionPlan({
+  destino,
+  onCerrar,
+}: {
+  destino: { udId: string; sesionId: string } | null
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [titulo, setTitulo] = useState('')
+  const [notas, setNotas] = useState('')
+  const [material, setMaterial] = useState('')
+  const [recursos, setRecursos] = useState<Recurso[]>([])
+  const [sucio, setSucio] = useState(false)
+
+  const unidad = useLiveQuery(
+    async () => (destino ? db.unidades.get(destino.udId) : undefined),
+    [destino?.udId],
+  )
+  const sesion = destino
+    ? unidad?.sesiones?.find((s) => s.id === destino.sesionId)
+    : undefined
+
+  // Se carga una sola vez por sesión abierta: si siguiera al `useLiveQuery`,
+  // guardar reescribiría el formulario encima de lo que se está escribiendo.
+  useEffect(() => {
+    setSucio(false)
+    if (!destino) return
+    void db.unidades.get(destino.udId).then((u) => {
+      const s = u?.sesiones?.find((x) => x.id === destino.sesionId)
+      setTitulo(s?.titulo ?? '')
+      setNotas(s?.notas ?? '')
+      setMaterial(s?.recursosNecesarios ?? '')
+      setRecursos(s?.recursos ?? [])
+    })
+  }, [destino])
+
+  function editar<T>(set: (v: T) => void) {
+    return (v: T) => {
+      set(v)
+      setSucio(true)
+    }
+  }
+
+  async function guardar() {
+    if (!destino) return
+    try {
+      const deshacer = await guardarSesionPlan(destino.udId, destino.sesionId, {
+        titulo,
+        notas,
+        recursosNecesarios: material,
+        recursos,
+      })
+      setSucio(false)
+      onCerrar()
+      mostrarAviso('Sesión guardada', deshacer)
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido guardar')
+    }
+  }
+
+  return (
+    <Hoja abierta={!!destino} titulo="Sesión de la unidad" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        {destino && !sesion && unidad && (
+          <p className="aviso">Esta sesión ya no está en el plan.</p>
+        )}
+
+        <div>
+          <label className="etiqueta" htmlFor="sp-titulo">
+            Título
+          </label>
+          <Campo
+            id="sp-titulo"
+            className="campo"
+            valor={titulo}
+            onValor={editar(setTitulo)}
+            placeholder="Circuito de equilibrio"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="etiqueta" htmlFor="sp-notas">
+            Descripción
+          </label>
+          <CampoArea
+            id="sp-notas"
+            className="campo h-40 resize-none py-2"
+            valor={notas}
+            onValor={editar(setNotas)}
+            placeholder="Organización, variantes, qué vigilar…"
+          />
+        </div>
+
+        <div>
+          <label className="etiqueta" htmlFor="sp-material">
+            Recursos necesarios
+          </label>
+          <CampoArea
+            id="sp-material"
+            className="campo h-20 resize-none py-2"
+            valor={material}
+            onValor={editar(setMaterial)}
+            placeholder="12 conos, silbato, petos de 2 colores…"
+          />
+        </div>
+
+        <Recursos recursos={recursos} onCambio={editar(setRecursos)} />
+
+        {sucio && <p className="text-sm texto-suave">Hay cambios sin guardar.</p>}
+
+        <button className="btn-primario w-full" onClick={() => void guardar()} disabled={!sucio}>
+          Guardar cambios
         </button>
       </div>
     </Hoja>

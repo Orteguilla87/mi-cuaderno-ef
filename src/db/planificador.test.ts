@@ -2,13 +2,18 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import {
+  anadirSesionPlan,
   aplicarUnidadAGrupo,
   archivarUnidad,
   contarImpactoUnidad,
   crearSesion,
   crearUnidad,
+  duplicarSesionPlan,
+  eliminarSesionPlan,
   eliminarUnidad,
+  guardarSesionPlan,
   importarUnidad,
+  moverSesionPlan,
 } from './planificador'
 import { crearColumna, crearRubrica, guardarValor } from './cuaderno'
 
@@ -415,5 +420,187 @@ describe('archivarUnidad', () => {
     await deshacer()
     expect((await db.unidades.get(udId))?.archivada).toBe(false)
     expect(await db.unidades.get(udId)).toBeDefined()
+  })
+})
+
+// ——— El plan de sesiones de una unidad ———
+
+/** Títulos del plan, en el orden en que se verán. */
+async function titulosDelPlan(udId: string) {
+  const ud = await db.unidades.get(udId)
+  return [...(ud?.sesiones ?? [])].sort((a, b) => a.orden - b.orden).map((s) => s.titulo)
+}
+
+/** Comprueba que `orden` es 0..n-1 sin huecos ni empates. */
+async function ordenPosicional(udId: string) {
+  const ud = await db.unidades.get(udId)
+  const plan = [...(ud?.sesiones ?? [])].sort((a, b) => a.orden - b.orden)
+  return plan.map((s) => s.orden)
+}
+
+describe('anadirSesionPlan', () => {
+  it('añade al final y numera por posición', async () => {
+    const udId = await unidadDeTres()
+
+    const { id } = await anadirSesionPlan(udId, { titulo: '  Cuatro  ' })
+
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres', 'Cuatro'])
+    expect(await ordenPosicional(udId)).toEqual([0, 1, 2, 3])
+    const ud = await db.unidades.get(udId)
+    expect(ud?.sesiones?.find((s) => s.id === id)?.titulo).toBe('Cuatro')
+  })
+
+  it('crea una unidad sin plan su primera sesión', async () => {
+    const udId = await crearUnidad({ etapa: 'infantil', titulo: 'El bosque', trimestre: null })
+
+    await anadirSesionPlan(udId)
+
+    expect(await ordenPosicional(udId)).toEqual([0])
+  })
+
+  it('deshacer la deja como estaba', async () => {
+    const udId = await unidadDeTres()
+    const { deshacer } = await anadirSesionPlan(udId, { titulo: 'Cuatro' })
+
+    await deshacer()
+
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
+  })
+})
+
+describe('guardarSesionPlan', () => {
+  it('guarda los mismos campos genéricos en las dos etapas', async () => {
+    const udId = await crearUnidad({ etapa: 'infantil', titulo: 'El bosque', trimestre: null })
+    const { id } = await anadirSesionPlan(udId)
+
+    await guardarSesionPlan(udId, id, {
+      titulo: 'Reptamos',
+      notas: 'Circuito bajo las colchonetas.',
+      recursosNecesarios: '4 colchonetas',
+      recursos: [{ tipo: 'nota', valor: 'Vigilar el paso estrecho' }],
+    })
+
+    const s = (await db.unidades.get(udId))?.sesiones?.[0]
+    expect(s).toMatchObject({
+      titulo: 'Reptamos',
+      notas: 'Circuito bajo las colchonetas.',
+      recursosNecesarios: '4 colchonetas',
+    })
+    expect(s?.recursos).toEqual([{ tipo: 'nota', valor: 'Vigilar el paso estrecho' }])
+  })
+
+  it('el material en blanco quita el campo en vez de guardar una cadena vacía', async () => {
+    const udId = await unidadDeTres()
+    const plan = (await db.unidades.get(udId))!.sesiones!
+    const conMaterial = plan.find((s) => s.titulo === 'Uno')!
+    expect(conMaterial.recursosNecesarios).toBe('10 balones')
+
+    await guardarSesionPlan(udId, conMaterial.id, { recursosNecesarios: '   ' })
+
+    const despues = (await db.unidades.get(udId))!.sesiones!.find((s) => s.id === conMaterial.id)
+    expect(despues?.recursosNecesarios).toBeUndefined()
+  })
+
+  it('no cambia el orden, y deshacer restaura el contenido anterior', async () => {
+    const udId = await unidadDeTres()
+    const plan = (await db.unidades.get(udId))!.sesiones!
+    const dos = plan.find((s) => s.titulo === 'Dos')!
+
+    const deshacer = await guardarSesionPlan(udId, dos.id, { titulo: 'Dos bis' })
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos bis', 'Tres'])
+
+    await deshacer()
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
+  })
+
+  it('lanza si la sesión ya no está en el plan', async () => {
+    const udId = await unidadDeTres()
+    await expect(guardarSesionPlan(udId, 'no-existe', { titulo: 'X' })).rejects.toThrow(
+      /ya no está en el plan/,
+    )
+  })
+})
+
+describe('duplicarSesionPlan', () => {
+  it('coloca la copia justo detrás de la original y renumera', async () => {
+    const udId = await unidadDeTres()
+    const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
+
+    const { id } = await duplicarSesionPlan(udId, uno.id)
+
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Uno', 'Dos', 'Tres'])
+    expect(await ordenPosicional(udId)).toEqual([0, 1, 2, 3])
+    expect(id).not.toBe(uno.id)
+  })
+
+  it('copia el contenido, no la referencia', async () => {
+    const udId = await unidadDeTres()
+    const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
+
+    const { id } = await duplicarSesionPlan(udId, uno.id)
+    await guardarSesionPlan(udId, id, { titulo: 'Copia editada' })
+
+    const plan = (await db.unidades.get(udId))!.sesiones!
+    expect(plan.find((s) => s.id === uno.id)?.titulo).toBe('Uno')
+    expect(plan.find((s) => s.id === uno.id)?.recursosNecesarios).toBe('10 balones')
+  })
+})
+
+describe('eliminarSesionPlan', () => {
+  it('quita la sesión, renumera el resto y no toca las sesiones ya colocadas', async () => {
+    const udId = await unidadDeTres()
+    await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
+    const realesAntes = await db.sesiones.count()
+    const dos = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Dos')!
+
+    await eliminarSesionPlan(udId, dos.id)
+
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Tres'])
+    expect(await ordenPosicional(udId)).toEqual([0, 1])
+    expect(await db.sesiones.count()).toBe(realesAntes)
+  })
+
+  it('vaciar el plan deja la unidad sin campo `sesiones`, y deshacer lo repone', async () => {
+    const udId = await crearUnidad({ etapa: 'primaria', titulo: 'Bote', nivel: 3, trimestre: 1 })
+    const { id } = await anadirSesionPlan(udId, { titulo: 'Única' })
+
+    const deshacer = await eliminarSesionPlan(udId, id)
+    expect((await db.unidades.get(udId))?.sesiones).toBeUndefined()
+
+    await deshacer()
+    expect(await titulosDelPlan(udId)).toEqual(['Única'])
+  })
+})
+
+describe('moverSesionPlan', () => {
+  it('sube y baja una posición, renumerando', async () => {
+    const udId = await unidadDeTres()
+    const tres = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Tres')!
+
+    await moverSesionPlan(udId, tres.id, -1)
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Tres', 'Dos'])
+    expect(await ordenPosicional(udId)).toEqual([0, 1, 2])
+
+    await moverSesionPlan(udId, tres.id, 1)
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
+  })
+
+  it('en los extremos no hace nada y lo dice devolviendo null', async () => {
+    const udId = await unidadDeTres()
+    const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
+
+    expect(await moverSesionPlan(udId, uno.id, -1)).toBeNull()
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
+  })
+
+  it('deshacer devuelve el orden anterior', async () => {
+    const udId = await unidadDeTres()
+    const uno = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Uno')!
+
+    const deshacer = await moverSesionPlan(udId, uno.id, 1)
+    expect(await titulosDelPlan(udId)).toEqual(['Dos', 'Uno', 'Tres'])
+
+    await deshacer!()
+    expect(await titulosDelPlan(udId)).toEqual(['Uno', 'Dos', 'Tres'])
   })
 })

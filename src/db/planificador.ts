@@ -286,6 +286,157 @@ export async function duplicarUnidad(udId: string, nivel: number): Promise<strin
   })
 }
 
+// ——— El plan de sesiones de una unidad ———
+//
+// El plan vive embebido en `unidad.sesiones[]`, no en una tabla: se lee y se
+// escribe siempre entero. Por eso todas estas funciones hacen lo mismo —leer la
+// unidad, transformar el array, reescribirla— y por eso el deshacer es siempre
+// «volver a poner el array de antes», sin reconstruir nada.
+//
+// `orden` es POSICIONAL, no un campo que el usuario escriba: cada escritura lo
+// renumera desde 0 según la posición en el array. Así no hay huecos ni empates
+// que hagan que la sesión 3 salga antes que la 2.
+
+/** Plan de la unidad ordenado, listo para transformar. */
+async function leerPlan(udId: string): Promise<{ unidad: UnidadDidactica; plan: SesionPlan[] }> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) throw new Error('La unidad ya no existe')
+  return { unidad, plan: [...(unidad.sesiones ?? [])].sort((a, b) => a.orden - b.orden) }
+}
+
+/**
+ * Escribe el plan renumerando `orden` por posición y devuelve el deshacer.
+ *
+ * Se guarda el array anterior tal cual en vez de calcular la operación inversa:
+ * es lo único que garantiza que deshacer un reordenamiento, un borrado o una
+ * edición devuelva exactamente lo que había.
+ */
+async function escribirPlan(
+  unidad: UnidadDidactica,
+  plan: SesionPlan[],
+): Promise<() => Promise<void>> {
+  const previo = unidad.sesiones
+  const renumerado = plan.map((s, i) => ({ ...s, orden: i }))
+  // Un plan vacío quita el campo en vez de guardarlo como `[]`: así «sin
+  // sesiones» y «con el plan vaciado» son el mismo estado, como en `crearUnidad`.
+  await db.unidades.put({
+    ...unidad,
+    ...(renumerado.length ? { sesiones: renumerado } : { sesiones: undefined }),
+  } as UnidadDidactica)
+  return async () => void (await db.unidades.put({ ...unidad, sesiones: previo } as UnidadDidactica))
+}
+
+/** Campos editables de una sesión del plan. Los mismos en las dos etapas. */
+export type CambiosSesionPlan = Partial<Pick<SesionPlan, 'titulo' | 'notas' | 'recursos' | 'recursosNecesarios'>>
+
+/** Añade una sesión vacía al final del plan. */
+export async function anadirSesionPlan(
+  udId: string,
+  datos: CambiosSesionPlan = {},
+): Promise<{ id: string; deshacer: () => Promise<void> }> {
+  const { unidad, plan } = await leerPlan(udId)
+  const nueva: SesionPlan = {
+    id: nuevoId(),
+    orden: plan.length,
+    titulo: datos.titulo?.trim() ?? '',
+    notas: datos.notas ?? '',
+    recursos: datos.recursos ?? [],
+    ...(datos.recursosNecesarios ? { recursosNecesarios: datos.recursosNecesarios } : {}),
+  }
+  const deshacer = await escribirPlan(unidad, [...plan, nueva])
+  return { id: nueva.id, deshacer }
+}
+
+/** Guarda los cambios de una sesión del plan, sin moverla de sitio. */
+export async function guardarSesionPlan(
+  udId: string,
+  sesionId: string,
+  cambios: CambiosSesionPlan,
+): Promise<() => Promise<void>> {
+  const { unidad, plan } = await leerPlan(udId)
+  if (!plan.some((s) => s.id === sesionId)) throw new Error('Esa sesión ya no está en el plan')
+
+  return escribirPlan(
+    unidad,
+    plan.map((s) => {
+      if (s.id !== sesionId) return s
+      const material = cambios.recursosNecesarios?.trim()
+      return {
+        ...s,
+        titulo: cambios.titulo?.trim() ?? s.titulo,
+        notas: cambios.notas ?? s.notas,
+        recursos: cambios.recursos ?? s.recursos,
+        // El material vacío quita el campo, para no distinguir «sin material»
+        // de «con la cadena vacía» al mostrarlo.
+        ...(cambios.recursosNecesarios === undefined
+          ? {}
+          : material
+            ? { recursosNecesarios: material }
+            : { recursosNecesarios: undefined }),
+      }
+    }),
+  )
+}
+
+/**
+ * Duplica una sesión justo detrás de la original: el caso real es «la siguiente
+ * es casi esta», y aparecer al final obligaría a subirla a mano.
+ */
+export async function duplicarSesionPlan(
+  udId: string,
+  sesionId: string,
+): Promise<{ id: string; deshacer: () => Promise<void> }> {
+  const { unidad, plan } = await leerPlan(udId)
+  const i = plan.findIndex((s) => s.id === sesionId)
+  if (i < 0) throw new Error('Esa sesión ya no está en el plan')
+
+  const copia: SesionPlan = { ...plan[i], id: nuevoId(), recursos: [...plan[i].recursos] }
+  const deshacer = await escribirPlan(unidad, [...plan.slice(0, i + 1), copia, ...plan.slice(i + 1)])
+  return { id: copia.id, deshacer }
+}
+
+/**
+ * Quita una sesión del plan.
+ *
+ * No arrastra nada: una `SesionPlan` no tiene calificaciones —las columnas del
+ * cuaderno cuelgan de la UNIDAD, no de la sesión— y las sesiones ya
+ * materializadas en un grupo son copias con vida propia, sin referencia de
+ * vuelta al plan. Por eso basta una confirmación simple.
+ */
+export async function eliminarSesionPlan(
+  udId: string,
+  sesionId: string,
+): Promise<() => Promise<void>> {
+  const { unidad, plan } = await leerPlan(udId)
+  if (!plan.some((s) => s.id === sesionId)) throw new Error('Esa sesión ya no está en el plan')
+  return escribirPlan(
+    unidad,
+    plan.filter((s) => s.id !== sesionId),
+  )
+}
+
+/**
+ * Sube o baja una sesión una posición. Mismo patrón que `moverColumna` del
+ * cuaderno: intercambio con la vecina y renumeración por posición.
+ */
+export async function moverSesionPlan(
+  udId: string,
+  sesionId: string,
+  delta: 1 | -1,
+): Promise<(() => Promise<void>) | null> {
+  const { unidad, plan } = await leerPlan(udId)
+  const i = plan.findIndex((s) => s.id === sesionId)
+  if (i < 0) throw new Error('Esa sesión ya no está en el plan')
+
+  const j = i + delta
+  // En los extremos no es un error: el botón simplemente no tiene a dónde ir.
+  if (j < 0 || j >= plan.length) return null
+
+  const movido = [...plan]
+  ;[movido[i], movido[j]] = [movido[j], movido[i]]
+  return escribirPlan(unidad, movido)
+}
+
 /**
  * Lo que cuelga de una unidad, contado antes de ofrecer el borrado.
  *
