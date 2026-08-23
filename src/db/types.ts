@@ -260,6 +260,17 @@ interface UnidadBase {
   /** Plantilla de la que salió, si se creó a partir de una. */
   plantillaId?: Id
   /**
+   * Retira la unidad del listado activo sin destruir nada.
+   *
+   * Es la salida para las unidades que ya no se usan pero cuyo borrado sería
+   * pérdida irreversible —las que tienen notas u observaciones puestas—, y
+   * también para las de cursos pasados que simplemente estorban. `undefined` es
+   * «no archivada»: el campo es opcional y no indexado a propósito, así que las
+   * unidades que ya existían no necesitan migración ni cambian de
+   * comportamiento, y el filtro se hace en memoria (son decenas, no miles).
+   */
+  archivada?: boolean
+  /**
    * Plan de sesiones de la unidad, en orden y todavía sin grupo ni fecha.
    *
    * Existe porque una `Sesion` no puede existir sin `grupoId` y `fecha` (el

@@ -5,6 +5,9 @@ import { esEnlace } from '../lib/importarTexto'
 import { db, nuevoId } from './db'
 import {
   NIVEL_CICLO_INFANTIL,
+  type Columna,
+  type Etapa,
+  type FilaInstrumento,
   type Grupo,
   type JuegoEnSesion,
   type Plantilla,
@@ -281,6 +284,200 @@ export async function duplicarUnidad(udId: string, nivel: number): Promise<strin
     computa: origen.computa,
     plantillaId: origen.plantillaId,
   })
+}
+
+/**
+ * Lo que cuelga de una unidad, contado antes de ofrecer el borrado.
+ *
+ * `valores` es el número que manda: mientras haya una sola celda escrita, la
+ * unidad no se puede borrar. En este esquema Primaria e Infantil comparten
+ * `columnas` y `valores`, así que «calificaciones registradas» y «columnas de
+ * observación con datos» son literalmente la misma cuenta.
+ */
+export interface ImpactoUnidad {
+  etapa: Etapa
+  titulo: string
+  /** Sesiones escritas en el plan de la unidad. Se van con ella. */
+  sesionesPlan: number
+  /** Sesiones ya colocadas en un grupo y una fecha. Se conservan, desvinculadas. */
+  sesionesReales: number
+  /** Columnas del cuaderno vinculadas, de cualquier etapa. */
+  columnas: number
+  /** Columnas de Infantil, que se conservan desvinculadas (§1.5). */
+  columnasInfantil: number
+  /** Filas de instrumento de esas columnas. */
+  filas: number
+  /** Celdas con dato escrito. Si hay una sola, el borrado se bloquea. */
+  valores: number
+  /** Agrupamientos guardados. Se conservan, desvinculados. */
+  equipos: number
+}
+
+/** Etapa de cada grupo, para saber qué columnas son de observación de Infantil. */
+async function etapaPorGrupo(): Promise<Map<string, Etapa>> {
+  const grupos = await db.grupos.toArray()
+  return new Map(grupos.map((g) => [g.id, g.etapa]))
+}
+
+/**
+ * Cuenta el impacto real de borrar una unidad, para poder enseñarlo antes de
+ * preguntar. No escribe nada.
+ */
+export async function contarImpactoUnidad(udId: string): Promise<ImpactoUnidad | null> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) return null
+
+  const [sesionesReales, columnas, equipos, etapas] = await Promise.all([
+    db.sesiones.where('udId').equals(udId).count(),
+    db.columnas.where('udId').equals(udId).toArray(),
+    db.equipos.where('udId').equals(udId).count(),
+    etapaPorGrupo(),
+  ])
+
+  const columnaIds = columnas.map((c) => c.id)
+  const filas = columnaIds.length
+    ? await db.filas.where('columnaId').anyOf(columnaIds).count()
+    : 0
+  const valores = columnaIds.length
+    ? await db.valores.where('columnaId').anyOf(columnaIds).count()
+    : 0
+
+  return {
+    etapa: unidad.etapa,
+    titulo: unidad.titulo,
+    sesionesPlan: unidad.sesiones?.length ?? 0,
+    sesionesReales,
+    columnas: columnas.length,
+    columnasInfantil: columnas.filter((c) => etapas.get(c.grupoId) === 'infantil').length,
+    filas,
+    valores,
+    equipos,
+  }
+}
+
+/**
+ * Borra una unidad. No hay papelera ni tombstones, así que la regla es que solo
+ * muere lo que ES la unidad —su ficha y su plan de sesiones— y lo que existe
+ * únicamente para ella y está vacío: sus columnas de Primaria con sus filas.
+ *
+ * Todo lo que sea registro de algo que ya ocurrió sobrevive con `udId` a
+ * `undefined`: las sesiones ya colocadas (llevan valoración, notas y
+ * comentarios de una clase que se dio), las columnas de observación de Infantil
+ * (§1.5: la asociación con la unidad siempre fue opcional) y los agrupamientos.
+ *
+ * El banco de `rubricas` no se toca: no cuelga de la unidad, se comparte entre
+ * unidades y cursos, y borrarlo aquí destruiría rúbricas ajenas.
+ *
+ * Lanza si queda alguna celda escrita. La comprobación se repite DENTRO de la
+ * transacción a propósito: entre que la pantalla contó y el usuario confirmó,
+ * la sincronización o el agente pueden haber escrito una nota.
+ */
+export async function eliminarUnidad(udId: string): Promise<() => Promise<void>> {
+  const etapas = await etapaPorGrupo()
+
+  // Lo que hará falta para deshacer, capturado antes de tocar nada.
+  let unidadPrevia: UnidadDidactica | undefined
+  let columnasBorradas: Columna[] = []
+  let filasBorradas: FilaInstrumento[] = []
+  let sesionesDesvinculadas: string[] = []
+  let equiposDesvinculados: string[] = []
+  let columnasDesvinculadas: { id: string; udId: string; pesoUd: number }[] = []
+
+  await db.transaction(
+    'rw',
+    [db.unidades, db.sesiones, db.columnas, db.filas, db.valores, db.equipos],
+    async () => {
+      const unidad = await db.unidades.get(udId)
+      if (!unidad) throw new Error('La unidad ya no existe')
+      unidadPrevia = unidad
+
+      const columnas = await db.columnas.where('udId').equals(udId).toArray()
+      const columnaIds = columnas.map((c) => c.id)
+
+      const valores = columnaIds.length
+        ? await db.valores.where('columnaId').anyOf(columnaIds).count()
+        : 0
+      if (valores > 0)
+        throw new Error(
+          'La unidad tiene notas u observaciones puestas: bórralas antes, o archívala.',
+        )
+
+      // Infantil: la columna de observación se conserva, solo pierde la unidad.
+      const aDesvincular = columnas.filter((c) => etapas.get(c.grupoId) === 'infantil')
+      const aBorrar = columnas.filter((c) => etapas.get(c.grupoId) !== 'infantil')
+
+      columnasDesvinculadas = aDesvincular.map((c) => ({
+        id: c.id,
+        udId: udId,
+        pesoUd: c.pesoUd,
+      }))
+      for (const c of aDesvincular) {
+        await db.columnas.update(c.id, { udId: undefined, pesoUd: 0 })
+      }
+
+      const idsABorrar = aBorrar.map((c) => c.id)
+      filasBorradas = idsABorrar.length
+        ? await db.filas.where('columnaId').anyOf(idsABorrar).toArray()
+        : []
+      columnasBorradas = aBorrar
+      await db.filas.bulkDelete(filasBorradas.map((f) => f.id))
+      await db.columnas.bulkDelete(idsABorrar)
+
+      // Sesiones reales y equipos: nunca se destruyen, solo pierden la unidad.
+      sesionesDesvinculadas = (await db.sesiones.where('udId').equals(udId).toArray()).map(
+        (s) => s.id,
+      )
+      for (const id of sesionesDesvinculadas) {
+        await db.sesiones.update(id, { udId: undefined })
+      }
+
+      equiposDesvinculados = (await db.equipos.where('udId').equals(udId).toArray()).map((e) => e.id)
+      for (const id of equiposDesvinculados) {
+        await db.equipos.update(id, { udId: undefined })
+      }
+
+      await db.unidades.delete(udId)
+    },
+  )
+
+  return async () => {
+    await db.transaction(
+      'rw',
+      [db.unidades, db.sesiones, db.columnas, db.filas, db.equipos],
+      async () => {
+        if (unidadPrevia) await db.unidades.put(unidadPrevia)
+        if (columnasBorradas.length) await db.columnas.bulkAdd(columnasBorradas)
+        if (filasBorradas.length) await db.filas.bulkAdd(filasBorradas)
+        for (const c of columnasDesvinculadas) {
+          await db.columnas.update(c.id, { udId: c.udId, pesoUd: c.pesoUd })
+        }
+        for (const id of sesionesDesvinculadas) {
+          await db.sesiones.update(id, { udId })
+        }
+        for (const id of equiposDesvinculados) {
+          await db.equipos.update(id, { udId })
+        }
+      },
+    )
+  }
+}
+
+/**
+ * Archiva o desarchiva una unidad: la retira del listado activo sin destruir
+ * nada. Es la salida para las que no se pueden borrar porque tienen notas
+ * puestas, y también para las de cursos pasados que solo estorban.
+ */
+export async function archivarUnidad(
+  udId: string,
+  archivada: boolean,
+): Promise<() => Promise<void>> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) throw new Error('La unidad ya no existe')
+  const previo = unidad.archivada ?? false
+
+  await db.unidades.update(udId, { archivada })
+
+  return async () => void (await db.unidades.update(udId, { archivada: previo }))
 }
 
 /**

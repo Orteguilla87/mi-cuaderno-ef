@@ -1,12 +1,17 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  Archive,
+  ArchiveRestore,
   CalendarOff,
   CalendarPlus,
   CalendarRange,
   ChevronDown,
   ClipboardPaste,
+  Copy,
   Layers,
+  MoreVertical,
   Plus,
+  Trash2,
   Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -22,10 +27,14 @@ import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import {
   aplicarUnidadAGrupo,
+  archivarUnidad,
+  contarImpactoUnidad,
   crearSesion,
   crearUnidad,
   duplicarUnidad,
+  eliminarUnidad,
   lunesDe,
+  type ImpactoUnidad,
 } from '../db/planificador'
 import { huecosDe, type HuecoCalendario } from '../db/sesiones'
 import type { Etapa, UnidadDidactica } from '../db/types'
@@ -264,8 +273,11 @@ function VistaUnidades() {
     null,
   )
   const [llevando, setLlevando] = useState<UnidadDidactica | null>(null)
+  const [acciones, setAcciones] = useState<UnidadDidactica | null>(null)
+  const [eliminando, setEliminando] = useState<UnidadDidactica | null>(null)
   const [desplegada, setDesplegada] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<FiltroEtapa>('todas')
+  const [verArchivadas, setVerArchivadas] = useState(false)
 
   const unidades = useLiveQuery(async () => {
     const lista = await db.unidades.toArray()
@@ -287,7 +299,10 @@ function VistaUnidades() {
     return mapa
   }, [])
 
-  const visibles = (unidades ?? []).filter((u) => filtro === 'todas' || u.etapa === filtro)
+  const porEtapa = (unidades ?? []).filter((u) => filtro === 'todas' || u.etapa === filtro)
+  // Archivar no borra: la unidad sigue ahí, solo deja de estorbar en el listado.
+  const archivadas = porEtapa.filter((u) => u.archivada).length
+  const visibles = porEtapa.filter((u) => (verArchivadas ? u.archivada : !u.archivada))
   // El rótulo del estado vacío y del botón de alta siguen al filtro: con
   // «Infantil» activo, «Nueva unidad didáctica» sería el nombre equivocado.
   const vocabulario = terminologia(filtro === 'infantil' ? 'infantil' : 'primaria')
@@ -317,15 +332,34 @@ function VistaUnidades() {
         ))}
       </div>
 
-      {filtro === 'infantil' && <AvisoCoberturaInfantil unidades={visibles} />}
+      {(archivadas > 0 || verArchivadas) && (
+        <button
+          className={(verArchivadas ? 'btn-primario' : 'btn-suave') + ' w-full text-sm'}
+          onClick={() => setVerArchivadas(!verArchivadas)}
+          aria-pressed={verArchivadas}
+        >
+          <Archive size={16} aria-hidden />
+          {verArchivadas
+            ? 'Volver a las activas'
+            : `Ver archivadas (${archivadas})`}
+        </button>
+      )}
+
+      {filtro === 'infantil' && !verArchivadas && <AvisoCoberturaInfantil unidades={visibles} />}
 
       {visibles.length === 0 && (
         <div className="tarjeta text-center">
-          <p className="text-base font-semibold">Sin {vocabulario.unidadPluralEnFrase}</p>
+          <p className="text-base font-semibold">
+            {verArchivadas
+              ? `Sin ${vocabulario.unidadPluralEnFrase} archivadas`
+              : `Sin ${vocabulario.unidadPluralEnFrase}`}
+          </p>
           <p className="mt-1 text-sm texto-suave">
-            {filtro === 'infantil'
-              ? 'Agrupa las sesiones de Psicomotricidad para vincularlas a los criterios del Decreto 36/2022.'
-              : 'Agrupa las sesiones en unidades para reutilizarlas entre niveles.'}
+            {verArchivadas
+              ? 'Al archivar una, se guarda aquí sin perder nada de lo que tiene dentro.'
+              : filtro === 'infantil'
+                ? 'Agrupa las sesiones de Psicomotricidad para vincularlas a los criterios del Decreto 36/2022.'
+                : 'Agrupa las sesiones en unidades para reutilizarlas entre niveles.'}
           </p>
         </div>
       )}
@@ -355,6 +389,11 @@ function VistaUnidades() {
                         Infantil
                       </span>
                     )}
+                    {u.archivada && (
+                      <span className="pildora shrink-0 px-2 py-0.5 text-xs font-semibold texto-suave">
+                        Archivada
+                      </span>
+                    )}
                   </div>
                   <p className="cifra mt-0.5 text-sm texto-suave">
                     {ambitoUnidad(u.etapa, u.nivel)} ·{' '}
@@ -366,16 +405,16 @@ function VistaUnidades() {
                     {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
                   </p>
                 </button>
-                {/* Duplicar es «llevar esto a otro curso». En Infantil no hay otro
-                    curso al que llevarlo: la unidad ya es del ciclo entero. */}
-                {u.etapa === 'primaria' && (
-                  <button
-                    className="btn-suave shrink-0 px-3 text-xs"
-                    onClick={() => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
-                  >
-                    Duplicar
-                  </button>
-                )}
+                {/* Un solo punto de entrada a lo que se hace CON la unidad
+                    (duplicar, archivar, eliminar), en las dos etapas: el toque
+                    en la tarjeta ya está ocupado por editar su contenido. */}
+                <button
+                  className="btn-suave shrink-0 px-3"
+                  onClick={() => setAcciones(u)}
+                  aria-label={`Acciones de ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
+                >
+                  <MoreVertical size={18} aria-hidden />
+                </button>
               </div>
 
               {plan.length > 0 && (
@@ -435,6 +474,13 @@ function VistaUnidades() {
       <HojaEditarUnidad unidad={editando} onCerrar={() => setEditando(null)} />
       <HojaDuplicarUnidad unidad={duplicando} onCerrar={() => setDuplicando(null)} />
       <HojaLlevarAGrupo unidad={llevando} onCerrar={() => setLlevando(null)} />
+      <HojaAccionesUnidad
+        unidad={acciones}
+        onCerrar={() => setAcciones(null)}
+        onDuplicar={(u) => setDuplicando({ id: u.id, titulo: u.titulo, nivel: u.nivel })}
+        onEliminar={setEliminando}
+      />
+      <HojaEliminarUnidad unidad={eliminando} onCerrar={() => setEliminando(null)} />
     </>
   )
 }
@@ -547,6 +593,245 @@ function HojaLlevarAGrupo({
         >
           Colocar {plan.length} {plan.length === 1 ? 'sesión' : 'sesiones'}
         </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/**
+ * Lo que se puede hacer CON una unidad, frente a lo que se hace DENTRO de ella
+ * (que es el toque en la tarjeta). Un solo sitio, en las dos etapas: en la
+ * tarjeta ya no cabía un botón más sin convertirla en una botonera.
+ */
+function HojaAccionesUnidad({
+  unidad,
+  onCerrar,
+  onDuplicar,
+  onEliminar,
+}: {
+  unidad: UnidadDidactica | null
+  onCerrar: () => void
+  onDuplicar: (u: UnidadDidactica & { etapa: 'primaria' }) => void
+  onEliminar: (u: UnidadDidactica) => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const vocabulario = terminologia(unidad?.etapa ?? 'primaria')
+
+  async function archivar() {
+    if (!unidad) return
+    const archivada = !unidad.archivada
+    const deshacer = await archivarUnidad(unidad.id, archivada)
+    onCerrar()
+    mostrarAviso(
+      archivada ? `«${unidad.titulo}» archivada` : `«${unidad.titulo}» de vuelta en el listado`,
+      deshacer,
+    )
+  }
+
+  return (
+    <Hoja abierta={!!unidad} titulo={unidad?.titulo ?? ''} onCerrar={onCerrar}>
+      <div className="space-y-2">
+        {/* Duplicar es «llevar esto a otro curso». En Infantil no hay otro
+            curso al que llevarlo: la unidad ya es del ciclo entero. */}
+        {unidad?.etapa === 'primaria' && (
+          <button
+            className="btn-suave w-full justify-start"
+            onClick={() => {
+              onDuplicar(unidad)
+              onCerrar()
+            }}
+          >
+            <Copy size={20} aria-hidden />
+            Duplicar a otro curso
+          </button>
+        )}
+
+        <button className="btn-suave w-full justify-start" onClick={() => void archivar()}>
+          {unidad?.archivada ? (
+            <ArchiveRestore size={20} aria-hidden />
+          ) : (
+            <Archive size={20} aria-hidden />
+          )}
+          {unidad?.archivada ? 'Desarchivar' : 'Archivar'}
+        </button>
+        <p className="px-1 text-xs texto-suave">
+          Archivar la retira del listado sin borrar nada de lo que tiene dentro.
+        </p>
+
+        <button
+          className="btn-peligro w-full justify-start"
+          onClick={() => {
+            if (unidad) onEliminar(unidad)
+            onCerrar()
+          }}
+        >
+          <Trash2 size={20} aria-hidden />
+          Eliminar {vocabulario.unidadEnFrase}
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/**
+ * Borrado de una unidad, con el impacto real delante antes de preguntar.
+ *
+ * Dos caminos según lo que haya escrito: con una sola nota u observación puesta
+ * no hay botón de borrar —no hay papelera, sería pérdida irreversible— y la
+ * salida es archivar. Sin nada escrito, se borra, pero exigiendo escribir el
+ * título: es la única acción de la app que no se puede deshacer de un toque.
+ */
+function HojaEliminarUnidad({
+  unidad,
+  onCerrar,
+}: {
+  unidad: UnidadDidactica | null
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [confirmacion, setConfirmacion] = useState('')
+  const [impacto, setImpacto] = useState<ImpactoUnidad | null>(null)
+
+  useEffect(() => {
+    setConfirmacion('')
+    setImpacto(null)
+    if (!unidad) return
+    let vigente = true
+    void contarImpactoUnidad(unidad.id).then((i) => {
+      if (vigente) setImpacto(i)
+    })
+    return () => {
+      vigente = false
+    }
+  }, [unidad])
+
+  const vocabulario = terminologia(unidad?.etapa ?? 'primaria')
+  const bloqueado = (impacto?.valores ?? 0) > 0
+  const titulo = unidad?.titulo.trim().toLocaleLowerCase('es') ?? ''
+  const coincide = confirmacion.trim().toLocaleLowerCase('es') === titulo && titulo !== ''
+  const pesoEnJuego =
+    unidad?.etapa === 'primaria' && unidad.computa && unidad.pesoTrimestre > 0
+      ? unidad.pesoTrimestre
+      : 0
+  const instrumentos = impacto ? impacto.columnas - impacto.columnasInfantil : 0
+
+  async function archivar() {
+    if (!unidad) return
+    const deshacer = await archivarUnidad(unidad.id, true)
+    onCerrar()
+    mostrarAviso(`«${unidad.titulo}» archivada`, deshacer)
+  }
+
+  async function eliminar() {
+    if (!unidad) return
+    try {
+      const deshacer = await eliminarUnidad(unidad.id)
+      onCerrar()
+      mostrarAviso(`«${unidad.titulo}» eliminada`, deshacer)
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido eliminar')
+    }
+  }
+
+  return (
+    <Hoja abierta={!!unidad} titulo={`Eliminar ${vocabulario.unidadEnFrase}`} onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <p className="text-sm font-semibold">«{unidad?.titulo}»</p>
+
+        {!impacto && <p className="text-sm texto-suave">Contando lo que hay dentro…</p>}
+
+        {impacto && (
+          <>
+            <div className="tarjeta space-y-1 py-3 text-sm">
+              <p className="font-semibold">Se borra</p>
+              <ul className="texto-suave">
+                <li>
+                  {impacto.sesionesPlan}{' '}
+                  {impacto.sesionesPlan === 1 ? 'sesión planificada' : 'sesiones planificadas'}
+                </li>
+                <li>
+                  {instrumentos}{' '}
+                  {instrumentos === 1 ? 'instrumento del cuaderno' : 'instrumentos del cuaderno'}
+                  {impacto.filas > 0 && ` (${impacto.filas} filas)`}
+                </li>
+              </ul>
+            </div>
+
+            <div className="tarjeta space-y-1 py-3 text-sm">
+              <p className="font-semibold">Se conserva, sin unidad</p>
+              <ul className="texto-suave">
+                <li>
+                  {impacto.sesionesReales}{' '}
+                  {impacto.sesionesReales === 1
+                    ? 'sesión ya colocada en el calendario'
+                    : 'sesiones ya colocadas en el calendario'}
+                </li>
+                {impacto.columnasInfantil > 0 && (
+                  <li>
+                    {impacto.columnasInfantil}{' '}
+                    {impacto.columnasInfantil === 1
+                      ? 'columna de observación'
+                      : 'columnas de observación'}
+                  </li>
+                )}
+                {impacto.equipos > 0 && (
+                  <li>
+                    {impacto.equipos} {impacto.equipos === 1 ? 'agrupamiento' : 'agrupamientos'}
+                  </li>
+                )}
+                <li>Las rúbricas del banco y el alumnado, siempre.</li>
+              </ul>
+            </div>
+
+            {bloqueado ? (
+              <>
+                <div className="aviso-fuerte">
+                  <p className="font-semibold">
+                    Hay {impacto.valores}{' '}
+                    {impacto.valores === 1 ? 'dato registrado' : 'datos registrados'}
+                  </p>
+                  <p className="mt-1">
+                    No hay papelera: borrarla ahora sería perderlos para siempre. Archívala y
+                    desaparece del listado sin destruir nada.
+                  </p>
+                </div>
+                <button className="btn-primario w-full" onClick={() => void archivar()}>
+                  <Archive size={20} aria-hidden />
+                  Archivar en su lugar
+                </button>
+              </>
+            ) : (
+              <>
+                {pesoEnJuego > 0 && (
+                  <p className="text-sm texto-suave">
+                    Pesaba {pesoEnJuego} % de su trimestre: al borrarla, el reparto dejará de sumar
+                    100 y habrá que rehacerlo.
+                  </p>
+                )}
+                <div>
+                  <label className="etiqueta" htmlFor="ud-confirmar">
+                    Escribe «{unidad?.titulo}» para confirmar
+                  </label>
+                  <Campo
+                    id="ud-confirmar"
+                    className="campo"
+                    valor={confirmacion}
+                    onValor={setConfirmacion}
+                    placeholder={unidad?.titulo}
+                  />
+                </div>
+                <button
+                  className="btn-peligro w-full"
+                  disabled={!coincide}
+                  onClick={() => void eliminar()}
+                >
+                  <Trash2 size={20} aria-hidden />
+                  Eliminar definitivamente
+                </button>
+              </>
+            )}
+          </>
+        )}
       </div>
     </Hoja>
   )
