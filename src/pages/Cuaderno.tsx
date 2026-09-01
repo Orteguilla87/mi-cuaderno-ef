@@ -6,6 +6,8 @@ import {
   ClipboardX,
   Columns3,
   Copy,
+  Eye,
+  EyeOff,
   Minus,
   Plus,
   Scale,
@@ -51,6 +53,7 @@ import type {
   BandaSobre,
   CalificacionOficial,
   Columna,
+  EtiquetaAlumno,
   FilaInstrumento,
   FormatoNombre,
   Grupo,
@@ -65,6 +68,9 @@ import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar } from '../lib/router'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
+import { variablesColor } from '../components/SelectorColor'
+import { etiquetasDe, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
+import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
 
 /**
@@ -80,6 +86,10 @@ const ANCHO_COLUMNA_ALUMNO_PX: Record<AnchoColumnaAlumno, number> = {
 
 /** `grupoId`: llegada directa desde otra pantalla (p. ej. el icono de grupo en Hoy). */
 export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {}) {
+  // Preferencia de este dispositivo, fuera de la sincronización: un toque para
+  // que los puntos de etiqueta desaparezcan si alguien se acerca a la pantalla.
+  const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
+  const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const copiadas = usePortapapelesColumnas((s) => s.copiadas)
   const copiarColumnas = usePortapapelesColumnas((s) => s.copiar)
@@ -370,6 +380,11 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
                   ]
                 : []),
               { etiqueta: 'Vista de la rejilla', Icono: Columns3, onClick: () => setVistaAbierta(true) },
+              {
+                etiqueta: etiquetasVisibles ? 'Ocultar etiquetas' : 'Mostrar etiquetas',
+                Icono: etiquetasVisibles ? EyeOff : Eye,
+                onClick: alternarEtiquetas,
+              },
             ]}
           />
         </div>
@@ -602,6 +617,49 @@ function MenuAcciones({
 }
 
 /**
+ * El punto de color de las etiquetas de un alumno.
+ *
+ * VIVE AQUÍ DENTRO A PROPÓSITO, y no en `src/components/`: la regla es que las
+ * etiquetas de alumnado solo se pintan en el Cuaderno —nunca en el pase de
+ * lista, ni en las herramientas de aula, ni en nada proyectable—, y esa
+ * condición tiene que ser física, no una prop opcional que otra vista pueda
+ * activar por descuido. `lib/etiquetasAlumno.test.ts` comprueba que ninguna
+ * otra fuente lo menciona.
+ *
+ * Es solo el punto: el nombre va en `title` y en `aria-label`, y al pulsarlo
+ * sale en el aviso de abajo. Un lector de pantalla no pierde nada; lo que se
+ * pierde es distinguir dos colores parecidos de un vistazo, y por eso
+ * `paleta.test.ts` verifica la paleta bajo protanopia y deuteranopia.
+ */
+function PuntoEtiquetas({
+  alumno,
+  catalogo,
+}: {
+  alumno: Alumno
+  catalogo: EtiquetaAlumno[]
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const puestas = etiquetasDe(alumno, catalogo)
+  if (puestas.length === 0) return null
+
+  return (
+    <span className="flex shrink-0 items-center gap-0.5">
+      {puestas.map((e) => (
+        <button
+          key={e.id}
+          type="button"
+          onClick={() => mostrarAviso(e.nombre)}
+          title={e.nombre}
+          aria-label={`Etiqueta ${e.nombre}`}
+          style={variablesColor(e.colorId)}
+          className="color-dato h-2.5 w-2.5 shrink-0 rounded-full"
+        />
+      ))}
+    </span>
+  )
+}
+
+/**
  * Cabecera de una columna. Toque → configurar; pulsación larga → aplicar un
  * valor a todo el grupo (solo en los tipos que lo admiten). Es su propio
  * componente porque la pulsación larga es un hook y no puede vivir en un `.map`.
@@ -690,6 +748,10 @@ function Rejilla({
   } | null>(null)
   const config = useConfig()
   const anchoColumnaAlumno = ANCHO_COLUMNA_ALUMNO_PX[config.anchoColumnaAlumno]
+  // El catálogo se lee aquí, no en la celda: son 25 filas y una consulta por
+  // fila sobraría entera.
+  const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
+  const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
 
   return (
     // En escritorio la rejilla acota su propia altura y hace scroll interno:
@@ -735,6 +797,7 @@ function Rejilla({
                 style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               >
                 <div className="flex items-center gap-1">
+                  {etiquetasVisibles && <PuntoEtiquetas alumno={a} catalogo={catalogoEtiquetas} />}
                   <button
                     className="min-w-0 flex-1 truncate text-left underline-offset-2 active:underline"
                     onClick={() => navegar(`/alumnos/${a.id}`)}

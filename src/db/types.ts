@@ -85,12 +85,44 @@ export interface Alumno {
   /** Pautas prácticas de apoyo. NUNCA se exporta en informes; solo en backup cifrado. */
   apoyos?: string
   notasPrivadas?: string
+  /**
+   * Etiquetas de `EtiquetaAlumno`, por id. DATO DE CATEGORÍA ESPECIAL: mismo
+   * trato que `apoyos` —nunca en informes, exportaciones ni agente de voz; solo
+   * dentro del backup cifrado—, y además solo se pintan en el Cuaderno.
+   *
+   * Opcional de verdad: un alumno sin etiquetas no tiene el campo, no tiene un
+   * array vacío. Indexado como multiEntry (`*etiquetas`).
+   */
+  etiquetas?: string[]
   genero?: 'chico' | 'chica' | null
   /**
    * Nivel motriz 1–5 para el generador de equipos. PRIVADO: mismo tratamiento
    * que `apoyos` — nunca en informes, exportaciones ni modo pizarra.
    */
   nivelMotriz?: 1 | 2 | 3 | 4 | 5 | null
+}
+
+/**
+ * Etiqueta de alumnado: TDAH, ACNEE, Compensatoria, lesionado…
+ *
+ * REGLA DURA: es un dato de categoría especial (salud, necesidades educativas).
+ * Hereda entera la protección de `Alumno.apoyos` —nunca sale del dispositivo
+ * salvo dentro del blob cifrado— y añade la suya: solo se pinta en la vista
+ * «Cuaderno», que nunca se enseña al alumnado ni se proyecta.
+ */
+export interface EtiquetaAlumno {
+  id: Id
+  /** «TDAH», «ACNEE», «Lesionado». */
+  nombre: string
+  /**
+   * 1–3 caracteres. Hoy no se pinta —el Cuaderno enseña solo el punto de
+   * color—, pero se guarda desde el principio: es lo que permitirá pasar a
+   * «punto + letras» sin migrar nada si el punto solo se queda corto.
+   */
+  abreviatura: string
+  /** Identificador de `lib/paleta.ts`. NUNCA un hex. */
+  colorId: string
+  creadoEn: number
 }
 
 export type TipoVinculo = 'separar' | 'juntar'

@@ -8,6 +8,7 @@ import {
   MessageSquareText,
   Package,
   Settings,
+  Tags,
   Table2,
   Target,
   Timer,
@@ -100,6 +101,13 @@ export const ENTRADAS_MAS: EntradaMas[] = [
     titulo: 'Informes',
     descripcion: 'PDF, XLSX y CSV para pasar a Raíces',
     Icono: FileText,
+    disponible: true,
+  },
+  {
+    ruta: '/etiquetas-alumnado',
+    titulo: 'Etiquetas de alumnado',
+    descripcion: 'Puntos de color en el Cuaderno; nunca salen del dispositivo',
+    Icono: Tags,
     disponible: true,
   },
   {

@@ -15,6 +15,7 @@ import type {
   Config,
   CursoEscolar,
   Equipo,
+  EtiquetaAlumno,
   EtiquetaMaterial,
   EvalFinal,
   EvalTrimestral,
@@ -72,6 +73,7 @@ class CuadernoDB extends Dexie {
   ciclosAleatorios!: EntityTable<CicloAleatorio, 'id'>
   materiales!: EntityTable<Material, 'id'>
   etiquetasMaterial!: EntityTable<EtiquetaMaterial, 'id'>
+  etiquetasAlumno!: EntityTable<EtiquetaAlumno, 'id'>
   config!: EntityTable<Config, 'id'>
   accionesAgente!: EntityTable<AccionAgente, 'id'>
 
@@ -464,6 +466,22 @@ class CuadernoDB extends Dexie {
           if (Array.isArray(c.coloresPetos)) c.coloresPetosIds ??= c.coloresPetos.map(normalizarColor)
         })
     })
+
+    /**
+     * v22 — Bloque 3. Etiquetas de alumnado (TDAH, ACNEE, lesionado…).
+     *
+     * Puramente aditiva: una tabla nueva y un índice multiEntry en `alumnos`
+     * para poder preguntar por etiqueta. Ningún dato existente se transforma,
+     * así que no necesita espejo en `backup.ts` (ver su cabecera).
+     *
+     * `Alumno.etiquetas` es opcional de verdad: un alumno sin etiquetas no
+     * tiene el campo. IndexedDB no indexa los ausentes, que es justo lo que se
+     * quiere —solo entran en el índice los que llevan alguna—.
+     */
+    this.version(22).stores({
+      etiquetasAlumno: 'id, nombre',
+      alumnos: 'id, grupoId, apellidos, activo, [grupoId+activo], *etiquetas',
+    })
   }
 }
 
@@ -472,7 +490,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 21
+export const ESQUEMA_ACTUAL = 22
 
 export const db = new CuadernoDB()
 
