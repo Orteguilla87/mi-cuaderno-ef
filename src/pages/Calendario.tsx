@@ -11,6 +11,7 @@ import type { CursoEscolar } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, deISO, formatoCorto, formatoLargo, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
+import { variablesColor } from '../components/SelectorColor'
 
 const INICIALES_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'] as const
 
@@ -265,8 +266,8 @@ function PanelDia({
                 className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
               >
                 <span
-                  className="h-10 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: grupo.color }}
+                  className="color-dato h-10 w-2 shrink-0 rounded-full"
+                  style={variablesColor(grupo.colorId ?? grupo.color)}
                   aria-hidden
                 />
                 <span className="min-w-0 flex-1">
@@ -374,8 +375,8 @@ function TarjetaHueco({ hueco }: { hueco: HuecoCalendario }) {
       className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
     >
       <span
-        className="h-10 w-2 shrink-0 rounded-full"
-        style={{ backgroundColor: grupo.color }}
+        className="color-dato h-10 w-2 shrink-0 rounded-full"
+        style={variablesColor(grupo.colorId ?? grupo.color)}
         aria-hidden
       />
       <span className="min-w-0 flex-1">

@@ -1,7 +1,7 @@
 import { Minus, Plus, RotateCcw, X } from 'lucide-react'
 import { useState } from 'react'
 import { Campo } from './Campo'
-import { useConfig } from '../db/config'
+import { coloresPetos, useConfig } from '../db/config'
 import { useCapaAbierta } from '../lib/capas'
 
 const MIN_EQUIPOS = 2
@@ -24,8 +24,9 @@ function equiposIniciales(n: number): EquipoMarcador[] {
  */
 export function Marcador({ onCerrar }: { onCerrar: () => void }) {
   const config = useConfig()
-  const colores =
-    config.coloresPetos.length > 0 ? config.coloresPetos : ['#CE184B', '#006A80', '#B48C00', '#ABB200']
+  // El marcador se proyecta a pantalla completa sobre fondo oscuro, así que
+  // usa el valor oscuro de cada color de la paleta, no el claro.
+  const colores = coloresPetos(config).map((c) => c.oscuro)
   const [equipos, setEquipos] = useState<EquipoMarcador[]>(() => equiposIniciales(3))
   useCapaAbierta(true)
 

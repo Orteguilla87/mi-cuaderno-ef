@@ -35,6 +35,7 @@ import { textoMaterial, type DiaMaterial } from '../lib/recursosTexto'
 import { navegar } from '../lib/router'
 import { useFechaActiva } from '../store/fechaActiva'
 import { useUI } from '../store/ui'
+import { variablesColor } from '../components/SelectorColor'
 
 /**
  * «Preparar el material»: junta lo anotado en `recursosNecesarios` de las
@@ -558,8 +559,8 @@ function TarjetaSesionSemana({
           aria-expanded={abierta}
         >
           <span
-            className="h-10 w-2 shrink-0 rounded-full"
-            style={{ backgroundColor: grupo.color }}
+            className="color-dato h-10 w-2 shrink-0 rounded-full"
+            style={variablesColor(grupo.colorId ?? grupo.color)}
             aria-hidden
           />
           <span className="min-w-0 flex-1">
@@ -658,8 +659,8 @@ function TarjetaClase({
           aria-expanded={abierta}
         >
           <span
-            className="h-12 w-2 shrink-0 rounded-full"
-            style={{ backgroundColor: grupo.color }}
+            className="color-dato h-12 w-2 shrink-0 rounded-full"
+            style={variablesColor(grupo.colorId ?? grupo.color)}
             aria-hidden
           />
 

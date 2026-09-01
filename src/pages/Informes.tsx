@@ -17,6 +17,7 @@ import {
 } from '../lib/informes'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
+import { variablesColor } from '../components/SelectorColor'
 
 export function Informes() {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -85,8 +86,8 @@ export function Informes() {
                   }
                 >
                   <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: g.color }}
+                    className="color-dato h-2.5 w-2.5 rounded-full"
+                    style={variablesColor(g.colorId ?? g.color)}
                     aria-hidden
                   />
                   {g.nombre}

@@ -8,6 +8,7 @@ import { Marcador } from '../components/Marcador'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import { gruposVisibles } from '../db/grupos'
 import { navegar } from '../lib/router'
+import { variablesColor } from '../components/SelectorColor'
 
 type Id = 'equipos' | 'marcador' | 'aleatorio'
 
@@ -128,8 +129,8 @@ function HojaElegirGrupo({
                 onClick={() => onElegir(g.id)}
               >
                 <span
-                  className="h-10 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: g.color }}
+                  className="color-dato h-10 w-2 shrink-0 rounded-full"
+                  style={variablesColor(g.colorId ?? g.color)}
                   aria-hidden
                 />
                 <span className="flex items-center gap-2">

@@ -18,6 +18,7 @@ import { GripVertical, Users } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { SelectorColor, variablesColor } from '../components/SelectorColor'
 import { Campo } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
@@ -27,15 +28,10 @@ import { crearGrupo, gruposVisiblesDelCurso } from '../db/grupos'
 import type { Etapa, FranjaHorario, Grupo } from '../db/types'
 import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, nivelesDe, rotuloNivel, textoNivel } from '../lib/etapas'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
+import { COLOR_POR_DEFECTO, colorPorId } from '../lib/paleta'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 
-/**
- * Colores de grupo: solo la paleta de §3.1 y derivados por oscurecido. Nada de
- * familias ajenas — con 9 grupos hacen falta 6 tonos distinguibles, y estos lo
- * son sin romper la identidad de la app.
- */
-const COLORES = ['#006A80', '#CE184B', '#ABB200', '#9AC3CC', '#00505F', '#7F8500']
 const DIAS = ['L', 'M', 'X', 'J', 'V'] as const
 
 export function Grupos() {
@@ -162,8 +158,8 @@ function GrupoTarjeta({ grupo: g, alumnos }: { grupo: Grupo; alumnos: number }) 
         className="flex min-w-0 flex-1 items-center gap-3 py-4 pr-4 text-left"
       >
         <span
-          className="h-12 w-2 shrink-0 rounded-full"
-          style={{ backgroundColor: g.color }}
+          className="color-dato h-12 w-2 shrink-0 rounded-full"
+          style={variablesColor(g.colorId ?? g.color)}
           aria-hidden
         />
         <span className="min-w-0 flex-1">
@@ -198,7 +194,7 @@ function HojaNuevoGrupo({
   const [nombre, setNombre] = useState('')
   const [etapa, setEtapa] = useState<Etapa>(ETAPA_POR_DEFECTO)
   const [nivel, setNivel] = useState(nivelesDe(ETAPA_POR_DEFECTO)[0])
-  const [color, setColor] = useState(COLORES[0])
+  const [colorId, setColorId] = useState(COLOR_POR_DEFECTO)
   const [horario, setHorario] = useState<FranjaHorario[]>([])
 
   const niveles = nivelesDe(etapa)
@@ -216,7 +212,8 @@ function HojaNuevoGrupo({
       nombre: nombre.trim(),
       etapa,
       nivel,
-      color,
+      color: colorPorId(colorId)?.claro ?? '',
+      colorId,
       orden,
       horario,
     })
@@ -283,21 +280,10 @@ function HojaNuevoGrupo({
         </div>
 
         <div>
-          <span className="etiqueta">Color</span>
-          <div className="flex gap-2">
-            {COLORES.map((c) => (
-              <button
-                key={c}
-                onClick={() => setColor(c)}
-                aria-label={`Color ${c}`}
-                className={
-                  'h-12 w-12 rounded-full border-4 ' +
-                  (color === c ? 'border-tinta dark:border-white' : 'border-transparent')
-                }
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
+          <span className="etiqueta" id="etiqueta-color-grupo">
+            Color
+          </span>
+          <SelectorColor valor={colorId} onValor={setColorId} etiqueta="Color del grupo" />
         </div>
 
         <EditorHorario horario={horario} onCambio={setHorario} />

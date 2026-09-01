@@ -61,7 +61,16 @@ export interface Grupo {
   nombre: string // "3ºB", "Infantil 4A"
   etapa: Etapa
   nivel: number // primaria 1..6 · infantil 3..5 (edad)
+  /**
+   * Hex heredado de antes de que hubiera paleta (`lib/paleta.ts`). Se conserva
+   * para no perder el valor original, pero lo que se pinta es `colorId`.
+   */
   color: string // hex
+  /**
+   * Identificador de `lib/paleta.ts`. Se guarda el id y NUNCA el hex, para
+   * poder reajustar un tono de la paleta sin migrar un solo registro.
+   */
+  colorId?: string
   orden: number
   horario: FranjaHorario[]
 }
@@ -109,7 +118,10 @@ export interface ConfigGeneracionEquipos {
 
 export interface EquipoGenerado {
   nombre: string
+  /** Hex heredado. Lo que se pinta es `colorId`. */
   color: string
+  /** Identificador de `lib/paleta.ts`. */
+  colorId?: string
   miembros: Id[]
 }
 
@@ -707,8 +719,10 @@ export interface Config {
   bandaSobre: BandaSobre
   /** Etiquetas de un toque en el registro de observaciones (§5 M4). */
   quickTagsObservacion: string[]
-  /** Colores de peto del generador de equipos, en orden de asignación. */
+  /** Colores de peto del generador de equipos, en orden de asignación (hex heredado). */
   coloresPetos: string[]
+  /** Los mismos, como identificadores de `lib/paleta.ts`. Es lo que se pinta. */
+  coloresPetosIds?: string[]
   pin?: PinGuardado
   apiKey?: string
   modeloAgente: string

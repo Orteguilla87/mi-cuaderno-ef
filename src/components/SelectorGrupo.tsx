@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Grupo } from '../db/types'
 import { BadgeEtapa } from './Badge'
+import { variablesColor } from './SelectorColor'
 
 /**
  * Desplegable de grupo (§ Bloque 6.2): sustituye a las píldoras sueltas, que en
@@ -49,8 +50,8 @@ export function SelectorGrupo({
       >
         {grupo && (
           <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: grupo.color }}
+            className="color-dato h-2.5 w-2.5 shrink-0 rounded-full"
+            style={variablesColor(grupo.colorId ?? grupo.color)}
             aria-hidden
           />
         )}
@@ -89,8 +90,8 @@ export function SelectorGrupo({
                 }
               >
                 <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: g.color }}
+                  className="color-dato h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={variablesColor(g.colorId ?? g.color)}
                   aria-hidden
                 />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold">{g.nombre}</span>

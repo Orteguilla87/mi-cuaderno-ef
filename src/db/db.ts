@@ -2,6 +2,7 @@ import Dexie, { type EntityTable, type Table } from 'dexie'
 import { CALENDARIO_CAM_2026_27 } from '../lib/calendarioEscolar'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/migracion15'
+import { normalizarColor } from '../lib/paleta'
 import type {
   AccionAgente,
   Alumno,
@@ -439,6 +440,30 @@ class CuadernoDB extends Dexie {
             delete u.pesoTrimestre
           })
       })
+
+    /**
+     * v21 — Bloque 2. El color que elige el usuario deja de guardarse como hex
+     * y pasa a guardarse como IDENTIFICADOR de la paleta (`lib/paleta.ts`), para
+     * poder reajustar un tono sin migrar un solo registro.
+     *
+     * El hex antiguo se conserva: `colorId` se AÑADE, no sustituye. Con `??=`
+     * la migración es idempotente y no pisa una elección posterior, y
+     * `normalizarColor` es determinista, así que dos ejecuciones dan lo mismo.
+     */
+    this.version(21).upgrade(async (tx) => {
+      await tx
+        .table('grupos')
+        .toCollection()
+        .modify((g) => {
+          g.colorId ??= normalizarColor(g.color)
+        })
+      await tx
+        .table('config')
+        .toCollection()
+        .modify((c) => {
+          if (Array.isArray(c.coloresPetos)) c.coloresPetosIds ??= c.coloresPetos.map(normalizarColor)
+        })
+    })
   }
 }
 
@@ -447,7 +472,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 20
+export const ESQUEMA_ACTUAL = 21
 
 export const db = new CuadernoDB()
 

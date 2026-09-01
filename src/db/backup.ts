@@ -12,6 +12,7 @@ import { guardarConfig } from './config'
 import type { Config } from './types'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/migracion15'
+import { normalizarColor } from '../lib/paleta'
 import {
   abrir,
   empaquetar,
@@ -164,6 +165,18 @@ export const MIGRACIONES: Migracion[] = [
         delete u.nivel
         delete u.pesoTrimestre
       }
+    },
+  },
+  {
+    // Espejo de db.ts v21: el color elegido pasa a guardarse como identificador
+    // de `lib/paleta.ts`. Sin este espejo, una copia anterior restauraría grupos
+    // sin `colorId` y todos se pintarían con el color por defecto.
+    hasta: 21,
+    aplicar: (t) => {
+      for (const g of filas(t, 'grupos')) g.colorId ??= normalizarColor(g.color as string)
+      for (const c of filas(t, 'config'))
+        if (Array.isArray(c.coloresPetos))
+          c.coloresPetosIds ??= (c.coloresPetos as string[]).map(normalizarColor)
     },
   },
 ]

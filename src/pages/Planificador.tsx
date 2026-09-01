@@ -63,6 +63,7 @@ import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 import { useVistaPlanificador, type VistaPlanificador } from '../store/vistaPlanificador'
 import { PlanGrupo } from './PlanGrupo'
+import { variablesColor } from '../components/SelectorColor'
 
 /** Etiqueta corta del motivo por el que un día no es lectivo (misma lógica que Hoy/Calendario). */
 function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): string {
@@ -240,8 +241,8 @@ function VistaSemana({
                         onClick={() => void abrir(h)}
                       >
                         <span
-                          className="h-10 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: h.grupo.color }}
+                          className="color-dato h-10 w-2 shrink-0 rounded-full"
+                          style={variablesColor(h.grupo.colorId ?? h.grupo.color)}
                           aria-hidden
                         />
                         <span className="min-w-0 flex-1">

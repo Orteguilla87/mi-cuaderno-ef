@@ -28,7 +28,7 @@ import {
   restaurarBackup,
   tocaAvisarDeBackup,
 } from '../db/backup'
-import { CONFIG_POR_DEFECTO, guardarConfig, useConfig } from '../db/config'
+import { CONFIG_POR_DEFECTO, coloresPetos, guardarConfig, useConfig } from '../db/config'
 import { db } from '../db/db'
 import { leerCursoActivo } from '../db/curso'
 import { comprobarPin, definirPin, quitarPin } from '../db/pin'
@@ -51,6 +51,8 @@ import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN, pinValido } from '../lib/pin'
 import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
 import { contarGruposOcultos } from '../db/grupos'
+import { SelectorColor, variablesColor } from '../components/SelectorColor'
+import { colorPorId } from '../lib/paleta'
 import { ETAPA_UNICA } from '../lib/etapas'
 
 /**
@@ -116,7 +118,7 @@ export function Ajustes() {
           titulo="Generador de equipos"
           ayuda="Colores de peto por defecto, en el orden en que se asignan a los equipos."
         >
-          <ColoresPetos coloresPetos={config.coloresPetos} />
+          <ColoresPetos config={config} />
         </Seccion>
 
         <Seccion
@@ -372,31 +374,64 @@ function EtiquetasObservacion({ etiquetas }: { etiquetas: string[] }) {
   )
 }
 
-function ColoresPetos({ coloresPetos }: { coloresPetos: string[] }) {
-  function cambiar(i: number, valor: string) {
-    const nuevo = [...coloresPetos]
-    nuevo[i] = valor
-    void guardarConfig({ coloresPetos: nuevo })
+/**
+ * Los cuatro petos, elegidos de la paleta cerrada de `lib/paleta.ts` y no de un
+ * selector libre de color: así cada peto tiene nombre («Carmín», «Turquesa») en
+ * vez de un hexadecimal que no le dice nada a nadie, y el contraste está
+ * comprobado contra los dos fondos de la app.
+ *
+ * Se guarda el identificador; el hex antiguo se conserva al lado para no perder
+ * el valor original de una elección anterior.
+ */
+function ColoresPetos({ config }: { config: ReturnType<typeof useConfig> }) {
+  const petos = coloresPetos(config)
+  const [editando, setEditando] = useState<number | null>(null)
+
+  function cambiar(i: number, id: string) {
+    const ids = petos.map((c) => c.id)
+    ids[i] = id
+    void guardarConfig({
+      coloresPetosIds: ids,
+      coloresPetos: ids.map((x) => colorPorId(x)?.claro ?? ''),
+    })
+    setEditando(null)
   }
 
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-4 gap-2">
-        {coloresPetos.map((c, i) => (
-          <label key={i} className="flex flex-col items-center gap-1">
-            <input
-              type="color"
-              value={c}
-              onChange={(e) => cambiar(i, e.target.value)}
-              className="h-12 w-full cursor-pointer rounded-xl border border-borde dark:border-noche-borde"
-              aria-label={`Color de peto ${i + 1}`}
-            />
-          </label>
+        {petos.map((c, i) => (
+          <button
+            key={i}
+            onClick={() => setEditando(editando === i ? null : i)}
+            aria-expanded={editando === i}
+            aria-label={`Peto ${i + 1}: ${c.nombre}`}
+            title={c.nombre}
+            style={variablesColor(c.id)}
+            className={
+              'color-dato h-12 w-full rounded-xl transition active:scale-95 ' +
+              (editando === i
+                ? 'ring-2 ring-tinta ring-offset-2 ring-offset-superficie dark:ring-white dark:ring-offset-noche-superficie'
+                : '')
+            }
+          />
         ))}
       </div>
+      {editando !== null && (
+        <SelectorColor
+          valor={petos[editando].id}
+          onValor={(id) => cambiar(editando, id)}
+          etiqueta={`Color del peto ${editando + 1}`}
+        />
+      )}
       <button
         className="btn-fantasma"
-        onClick={() => void guardarConfig({ coloresPetos: CONFIG_POR_DEFECTO.coloresPetos })}
+        onClick={() =>
+          void guardarConfig({
+            coloresPetos: CONFIG_POR_DEFECTO.coloresPetos,
+            coloresPetosIds: CONFIG_POR_DEFECTO.coloresPetosIds,
+          })
+        }
       >
         Restaurar por defecto
       </button>

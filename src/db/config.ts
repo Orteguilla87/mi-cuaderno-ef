@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './db'
+import { colorPorId, normalizarColor, type ColorPaleta } from '../lib/paleta'
 import type { Config } from './types'
 
 export const CONFIG_POR_DEFECTO: Config = {
@@ -13,8 +14,10 @@ export const CONFIG_POR_DEFECTO: Config = {
   tema: 'sistema',
   quickTagsObservacion: ['esfuerzo', 'ayuda a otros', 'material', 'juego limpio', 'desconecta'],
   // Rojo (--accent), azul (--primary), amarillo (peto, único tono nuevo) y
-  // verde (--positive): colores reales de petos de gimnasio.
+  // verde (--positive): colores reales de petos de gimnasio. El hex se conserva
+  // por compatibilidad; lo que se pinta es `coloresPetosIds`.
   coloresPetos: ['#CE184B', '#006A80', '#B48C00', '#ABB200'],
+  coloresPetosIds: ['carmin-500', 'teal-500', 'oro-500', 'lima-300'],
   formatoNombre: 'apellidos-nombre',
   anchoColumnaAlumno: 'ancha',
 }
@@ -46,4 +49,16 @@ export function useConfig(): Config {
       return guardada ? { ...CONFIG_POR_DEFECTO, ...guardada } : CONFIG_POR_DEFECTO
     }, []) ?? CONFIG_POR_DEFECTO
   )
+}
+
+/**
+ * Los petos como colores de la paleta (`lib/paleta.ts`), venga la config de
+ * donde venga: de los ids nuevos, o de los hex de antes de que hubiera paleta.
+ */
+export function coloresPetos(config: Config): ColorPaleta[] {
+  const ids = config.coloresPetosIds ?? config.coloresPetos.map(normalizarColor)
+  const resueltos = ids.map((id) => colorPorId(id)).filter((c): c is ColorPaleta => c !== undefined)
+  return resueltos.length > 0
+    ? resueltos
+    : (CONFIG_POR_DEFECTO.coloresPetosIds ?? []).map((id) => colorPorId(id) as ColorPaleta)
 }

@@ -24,6 +24,7 @@ import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
 import { EditorHorario } from './Grupos'
+import { variablesColor } from '../components/SelectorColor'
 
 /**
  * Planificación de un grupo entero (§ petición del usuario): lo normal es
@@ -135,8 +136,8 @@ export function PlanGrupo() {
         <>
           <div className="tarjeta flex items-center gap-3 py-3">
             <span
-              className="h-10 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: grupo.color }}
+              className="color-dato h-10 w-2 shrink-0 rounded-full"
+              style={variablesColor(grupo.colorId ?? grupo.color)}
               aria-hidden
             />
             <div className="min-w-0 flex-1">

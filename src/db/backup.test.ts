@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { COLOR_POR_DEFECTO } from '../lib/paleta'
 import { db, ESQUEMA_ACTUAL } from './db'
 import {
   contarRegistros,
@@ -189,6 +190,9 @@ describe('import de un esquema anterior', () => {
     expect(migradas.grupos![0]).toEqual({
       id: 'g',
       horario: [{ diaSemana: 2, horaInicio: '10:15', horaFin: '11:00' }],
+      // v21: el grupo gana el identificador de color de la paleta. Sin `color`
+      // que convertir, cae en el color por defecto en vez de quedarse sin color.
+      colorId: COLOR_POR_DEFECTO,
     })
   })
 

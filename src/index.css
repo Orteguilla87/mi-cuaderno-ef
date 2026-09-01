@@ -262,6 +262,31 @@
     );
   }
 
+  /* ——— Color de dato (lib/paleta.ts) ———
+     El color que elige el usuario para un grupo, un peto o una etiqueta tiene
+     dos valores, uno por tema: ningún hex da 3:1 contra el fondo claro y contra
+     el oscuro a la vez. El componente escribe los dos como variables en el
+     `style` y es el CSS —no JavaScript— quien elige, así que el color cambia
+     con el tema sin que nada tenga que enterarse. */
+  .color-dato {
+    background-color: var(--color-claro);
+  }
+  .dark .color-dato {
+    background-color: var(--color-oscuro);
+  }
+  .color-dato-borde {
+    border-color: var(--color-claro);
+  }
+  .dark .color-dato-borde {
+    border-color: var(--color-oscuro);
+  }
+  .color-dato-texto {
+    color: var(--color-claro);
+  }
+  .dark .color-dato-texto {
+    color: var(--color-oscuro);
+  }
+
   /* ——— Píldoras / badges ——— */
   .pildora {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold

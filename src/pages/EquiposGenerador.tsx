@@ -11,12 +11,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
+import { variablesColor } from '../components/SelectorColor'
 import { Cabecera } from '../components/Cabecera'
 import { Campo } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { TituloSeccion } from '../components/TituloSeccion'
-import { CONFIG_POR_DEFECTO, useConfig } from '../db/config'
+import { coloresPetos, useConfig } from '../db/config'
 import { db } from '../db/db'
 import {
   alumnosGenerables,
@@ -169,13 +170,13 @@ export function EquiposGenerador({ grupoId, sesionId }: { grupoId: string; sesio
       historial,
     })
 
-    // Si el usuario ha vaciado los petos en Ajustes, se cae a los mismos dos
-    // colores por defecto en vez de duplicar el hex aparte.
-    const colores =
-      config.coloresPetos.length > 0 ? config.coloresPetos : CONFIG_POR_DEFECTO.coloresPetos.slice(0, 2)
+    // Si el usuario ha vaciado los petos en Ajustes, `coloresPetos` cae a los
+    // de fábrica en vez de duplicar el hex aparte.
+    const colores = coloresPetos(config)
     const nuevos: EquipoGenerado[] = resultado.equipos.map((miembros, i) => ({
       nombre: `Equipo ${i + 1}`,
-      color: colores[i % colores.length],
+      color: colores[i % colores.length].claro,
+      colorId: colores[i % colores.length].id,
       miembros,
     }))
 
@@ -696,12 +697,16 @@ function ResultadoPaso({
 
       <div className="grid grid-cols-2 gap-3">
         {equipos.map((e, i) => (
-          <div key={i} className="tarjeta py-3" style={{ borderTopColor: e.color, borderTopWidth: 4 }}>
+          <div
+            key={i}
+            className="tarjeta color-dato-borde py-3"
+            style={{ ...variablesColor(e.colorId ?? e.color), borderTopWidth: 4 }}
+          >
             <Campo
               className="campo mb-2 px-2 py-1 text-sm font-bold"
               valor={e.nombre}
               onValor={(v) => onRenombrar(i, v)}
-              style={{ color: e.color }}
+              style={variablesColor(e.colorId ?? e.color)}
               aria-label={`Nombre del equipo ${i + 1}`}
             />
             <ul className="space-y-1">
