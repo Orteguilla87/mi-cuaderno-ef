@@ -12,6 +12,7 @@ import { obtenerCursoActivo } from './db/curso'
 import { sembrarInventario } from './db/inventario'
 import { arrancar as arrancarSincro } from './db/sincro'
 import { MS_INACTIVIDAD } from './lib/pin'
+import { INFANTIL_HABILITADO } from './lib/etapas'
 import { segmentos, useRuta } from './lib/router'
 import { useBloqueo } from './store/bloqueo'
 import { useUI } from './store/ui'
@@ -92,8 +93,11 @@ function Contenido({ ruta }: { ruta: string }) {
       return param ? <PaseLista grupoId={param} fecha={param2} /> : <Grupos />
     case 'cuaderno':
       return <Cuaderno grupoId={param} />
+    // Con Infantil apagado (lib/etapas.ts) la ruta sigue existiendo pero no
+    // lleva a ninguna parte: la página y sus datos están intactos, solo deja de
+    // ser alcanzable. Encender el interruptor la devuelve.
     case 'infantil':
-      return param ? <Infantil grupoId={param} /> : <Grupos />
+      return INFANTIL_HABILITADO && param ? <Infantil grupoId={param} /> : <Grupos />
     case 'rubricas':
       return <Rubricas />
     // /planificador[/importar]

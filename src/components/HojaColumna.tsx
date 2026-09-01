@@ -38,6 +38,7 @@ import { useUI } from '../store/ui'
 import { Hoja } from './Hoja'
 import { HojaConfirmar } from './HojaConfirmar'
 import { HojaEditarRubrica } from '../pages/Rubricas'
+import { ETAPA_UNICA } from '../lib/etapas'
 
 /**
  * Alta y configuración de una columna. `estado` es la columna a editar, la
@@ -273,7 +274,7 @@ export function HojaColumna({
                   </button>
                 ))}
               </div>
-              {grupo.etapa === 'infantil' && (
+              {grupo.etapa === 'infantil' && ETAPA_UNICA === null && (
                 <p className="mt-2 text-xs texto-suave">
                   En Infantil no se ofrecen tipos numéricos: la evaluación es cualitativa.
                 </p>

@@ -6,6 +6,7 @@ import { EstadoVacio } from '../components/EstadoVacio'
 import { LineaPlegable } from '../components/LineaPlegable'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { ciclosConGrupos, coberturaDelCiclo, type CoberturaCriterio } from '../db/cobertura'
+import { ETAPA_UNICA } from '../lib/etapas'
 import { db } from '../db/db'
 import { ordinalCiclo } from '../lib/ciclos'
 import { navegar } from '../lib/router'
@@ -41,7 +42,7 @@ export function Cobertura() {
         <div className="p-4">
           <EstadoVacio
             Icono={Target}
-            titulo="Todavía no hay grupos de Primaria"
+            titulo={ETAPA_UNICA ? 'Todavía no hay grupos' : 'Todavía no hay grupos de Primaria'}
             descripcion="La cobertura se calcula sobre los criterios del ciclo de cada grupo."
             accion={
               <button className="btn-primario w-full" onClick={() => navegar('/grupos')}>

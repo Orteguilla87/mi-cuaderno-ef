@@ -50,6 +50,8 @@ import { errorIdSincro, firebaseConfigurado, nuevoIdSincro } from '../lib/fireba
 import { LONGITUD_MAX_PIN, LONGITUD_MIN_PIN, pinValido } from '../lib/pin'
 import { useSincro } from '../store/sincro'
 import { useUI } from '../store/ui'
+import { contarGruposOcultos } from '../db/grupos'
+import { ETAPA_UNICA } from '../lib/etapas'
 
 /**
  * Interruptor de la sección «Servidor WebDAV» (Bloque 5). La sincronización
@@ -119,7 +121,11 @@ export function Ajustes() {
 
         <Seccion
           titulo="Evaluación"
-          ayuda="Se aplica a Primaria. Infantil usa solo escala cualitativa."
+          ayuda={
+            ETAPA_UNICA === 'primaria'
+              ? undefined
+              : 'Se aplica a Primaria. Infantil usa solo escala cualitativa.'
+          }
         >
           <div>
             <span className="etiqueta">Media de la nota final</span>
@@ -568,11 +574,13 @@ function Estadisticas() {
     alumnos: await db.alumnos.filter((a) => a.activo).count(),
     asistencias: await db.asistencias.count(),
     observaciones: await db.observaciones.count(),
+    ocultos: await contarGruposOcultos(),
   }))
 
   if (!datos) return null
 
   return (
+    <>
     <dl className="grid grid-cols-2 gap-2 text-sm">
       {[
         ['Grupos', datos.grupos],
@@ -586,6 +594,18 @@ function Estadisticas() {
         </div>
       ))}
     </dl>
+    {/* Los grupos de una etapa apagada (lib/etapas.ts) dejan de listarse, pero
+        no se borran: siguen en la base y en la copia cifrada. Se dice aquí para
+        que nadie los dé por perdidos. */}
+    {datos.ocultos > 0 && (
+      <p className="mt-2 text-xs texto-suave">
+        {datos.ocultos === 1
+          ? 'Hay 1 grupo guardado de una etapa que ahora está oculta.'
+          : `Hay ${datos.ocultos} grupos guardados de una etapa que ahora está oculta.`}{' '}
+        No se listan en la app, pero sus datos siguen intactos y entran en la copia de seguridad.
+      </p>
+    )}
+    </>
   )
 }
 

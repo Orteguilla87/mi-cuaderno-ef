@@ -36,7 +36,10 @@ export const PESTANAS: Pestana[] = [
     ruta: '/grupos',
     etiqueta: 'Grupos',
     Icono: Users,
-    incluye: ['alumnos', 'asistencia', 'observaciones', 'infantil'],
+    // 'infantil' sale de la lista mientras la etapa esté apagada (lib/etapas.ts).
+    // Devolverlo aquí es todo lo que hace falta para que la pestaña vuelva a
+    // marcarse activa en el registro de Infantil.
+    incluye: ['alumnos', 'asistencia', 'observaciones'],
   },
   {
     ruta: '/planificador',

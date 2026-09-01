@@ -12,6 +12,7 @@ import {
 import { interpretarConApi, resolverTokens } from '../db/agenteApi'
 import { useConfig } from '../db/config'
 import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import { resumirAsistencia } from '../db/asistencia'
 import { buscarAlumnoEnTexto, construirMapaTokens } from '../lib/pseudonimizacion'
 import { etiquetaDia } from '../lib/fechas'
@@ -68,7 +69,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
   const [procesando, setProcesando] = useState(false)
 
   const alumnos = useLiveQuery(async () => (await db.alumnos.toArray()).filter((a) => a.activo), []) ?? []
-  const grupos = useLiveQuery(() => db.grupos.toArray(), []) ?? []
+  const grupos = useLiveQuery(() => gruposVisibles(), []) ?? []
 
   function cerrar() {
     setFase({ paso: 'dictado', texto: '' })

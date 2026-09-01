@@ -14,6 +14,7 @@ import {
   type ImportacionParseada,
   type SesionParseada,
 } from '../lib/importarTexto'
+import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, nivelesDe } from '../lib/etapas'
 import { terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -44,8 +45,8 @@ export function ImportarUnidad() {
   const [analisis, setAnalisis] = useState<ImportacionParseada | null>(null)
   const [sesiones, setSesiones] = useState<SesionParseada[]>([])
   const [tituloUnidad, setTituloUnidad] = useState('')
-  const [etapa, setEtapa] = useState<Etapa>('primaria')
-  const [nivel, setNivel] = useState(1)
+  const [etapa, setEtapa] = useState<Etapa>(ETAPA_POR_DEFECTO)
+  const [nivel, setNivel] = useState(nivelesDe(ETAPA_POR_DEFECTO)[0])
   const [guardando, setGuardando] = useState(false)
 
   const materiales = useLiveQuery(() => db.materiales.toArray(), [])
@@ -231,27 +232,29 @@ export function ImportarUnidad() {
                   />
                 </div>
 
-                <div>
-                  <span className="etiqueta">Etapa</span>
-                  <div className="flex gap-2">
-                    {(['primaria', 'infantil'] as const).map((e) => (
-                      <button
-                        key={e}
-                        onClick={() => setEtapa(e)}
-                        aria-pressed={etapa === e}
-                        className={(etapa === e ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
-                      >
-                        {e === 'primaria' ? 'Primaria' : 'Infantil'}
-                      </button>
-                    ))}
+                {ETAPA_UNICA === null && (
+                  <div>
+                    <span className="etiqueta">Etapa</span>
+                    <div className="flex gap-2">
+                      {ETAPAS_DISPONIBLES.map((e) => (
+                        <button
+                          key={e}
+                          onClick={() => setEtapa(e)}
+                          aria-pressed={etapa === e}
+                          className={(etapa === e ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
+                        >
+                          {e === 'primaria' ? 'Primaria' : 'Infantil'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {etapa === 'primaria' ? (
                   <div>
                     <span className="etiqueta">Nivel</span>
                     <div className="flex flex-wrap gap-2">
-                      {[1, 2, 3, 4, 5, 6].map((n) => (
+                      {nivelesDe('primaria').map((n) => (
                         <button
                           key={n}
                           onClick={() => setNivel(n)}

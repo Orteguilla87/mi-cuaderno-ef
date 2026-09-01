@@ -6,6 +6,7 @@ import { CampoArea } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import { buscarObservaciones } from '../db/observaciones'
 import type { Trimestre } from '../db/types'
 import {
@@ -25,8 +26,7 @@ export function Informes() {
   const [generando, setGenerando] = useState<string | null>(null)
 
   const grupos = useLiveQuery(async () => {
-    const lista = await db.grupos.toArray()
-    return lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
+    return gruposVisibles()
   }, [])
   const grupo = grupos?.find((g) => g.id === grupoId) ?? grupos?.[0] ?? null
 

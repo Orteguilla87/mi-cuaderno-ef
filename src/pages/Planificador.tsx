@@ -57,6 +57,7 @@ import { huecosDe, type HuecoCalendario } from '../db/sesiones'
 import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
+import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, etapaVisible, nivelesDe } from '../lib/etapas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -277,10 +278,16 @@ function VistaSemana({
 /** Filtro del listado. `todas` es el estado de partida: no esconde nada. */
 type FiltroEtapa = 'todas' | Etapa
 
+const ETIQUETA_ETAPA: Record<Etapa, string> = { primaria: 'Primaria', infantil: 'Infantil' }
+
+/**
+ * Con una sola etapa disponible (lib/etapas.ts) no hay nada que filtrar y el
+ * grupo de botones no se pinta. La lista se construye de las etapas
+ * disponibles, así que vuelve sola al encender el interruptor.
+ */
 const FILTROS: { valor: FiltroEtapa; etiqueta: string }[] = [
   { valor: 'todas', etiqueta: 'Todas' },
-  { valor: 'primaria', etiqueta: 'Primaria' },
-  { valor: 'infantil', etiqueta: 'Infantil' },
+  ...ETAPAS_DISPONIBLES.map((e) => ({ valor: e as FiltroEtapa, etiqueta: ETIQUETA_ETAPA[e] })),
 ]
 
 function VistaUnidades() {
@@ -324,7 +331,10 @@ function VistaUnidades() {
     return mapa
   }, [])
 
-  const porEtapa = (unidades ?? []).filter((u) => filtro === 'todas' || u.etapa === filtro)
+  // Las unidades de una etapa oculta no se listan; siguen enteras en la base.
+  const porEtapa = (unidades ?? []).filter(
+    (u) => etapaVisible(u.etapa) && (filtro === 'todas' || u.etapa === filtro),
+  )
   // Archivar no borra: la unidad sigue ahí, solo deja de estorbar en el listado.
   const archivadas = porEtapa.filter((u) => u.archivada).length
   const visibles = porEtapa.filter((u) => (verArchivadas ? u.archivada : !u.archivada))
@@ -344,6 +354,7 @@ function VistaUnidades() {
         Importar pegando texto
       </button>
 
+      {ETAPA_UNICA === null && (
       <div role="group" aria-label="Filtrar por etapa" className="flex gap-2">
         {FILTROS.map((f) => (
           <button
@@ -356,6 +367,7 @@ function VistaUnidades() {
           </button>
         ))}
       </div>
+      )}
 
       {(archivadas > 0 || verArchivadas) && (
         <button
@@ -1782,8 +1794,8 @@ function HojaMoverUnidad({
 function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => void }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [titulo, setTitulo] = useState('')
-  const [etapa, setEtapa] = useState<Etapa>('primaria')
-  const [nivel, setNivel] = useState(1)
+  const [etapa, setEtapa] = useState<Etapa>(ETAPA_POR_DEFECTO)
+  const [nivel, setNivel] = useState(nivelesDe(ETAPA_POR_DEFECTO)[0])
   const [trimestre, setTrimestre] = useState<1 | 2 | 3 | null>(1)
   const [computa, setComputa] = useState(true)
   const [criterios, setCriterios] = useState<string[]>([])
@@ -1827,30 +1839,32 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
           />
         </div>
 
-        <div>
-          <span className="etiqueta">Etapa</span>
-          <div className="flex gap-2">
-            {(['primaria', 'infantil'] as const).map((e) => (
-              <button
-                key={e}
-                onClick={() => setEtapa(e)}
-                aria-pressed={etapa === e}
-                className={(etapa === e ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
-              >
-                {e === 'primaria' ? 'Primaria' : 'Infantil'}
-              </button>
-            ))}
+        {ETAPA_UNICA === null && (
+          <div>
+            <span className="etiqueta">Etapa</span>
+            <div className="flex gap-2">
+              {ETAPAS_DISPONIBLES.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => setEtapa(e)}
+                  aria-pressed={etapa === e}
+                  className={(etapa === e ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
+                >
+                  {ETIQUETA_ETAPA[e]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs texto-suave">
+              No se puede cambiar después: los criterios son de un decreto distinto en cada etapa.
+            </p>
           </div>
-          <p className="mt-1 text-xs texto-suave">
-            No se puede cambiar después: los criterios son de un decreto distinto en cada etapa.
-          </p>
-        </div>
+        )}
 
         {etapa === 'primaria' ? (
           <div>
             <span className="etiqueta">Nivel</span>
             <div className="flex flex-wrap gap-2">
-              {[1, 2, 3, 4, 5, 6].map((n) => (
+              {nivelesDe('primaria').map((n) => (
                 <button
                   key={n}
                   onClick={() => setNivel(n)}

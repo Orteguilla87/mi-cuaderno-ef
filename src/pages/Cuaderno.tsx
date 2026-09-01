@@ -41,6 +41,7 @@ import {
 } from '../db/cuaderno'
 import { guardarConfig, useConfig } from '../db/config'
 import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import { calificarGrupo } from '../db/notas'
 import { filasPorColumna } from '../db/filas'
 import { notaInstrumento, notaOficial, type MotivoExclusion, type ResultadoTrimestre } from '../lib/notas'
@@ -105,8 +106,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   const [vistaAbierta, setVistaAbierta] = useState(false)
 
   const grupos = useLiveQuery(async () => {
-    const lista = await db.grupos.toArray()
-    return lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
+    return gruposVisibles()
   }, [])
 
   const grupo = grupos?.find((g) => g.id === grupoId) ?? grupos?.[0] ?? null

@@ -21,9 +21,11 @@ import { Cabecera } from '../components/Cabecera'
 import { Campo } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
-import { db, nuevoId } from '../db/db'
+import { db } from '../db/db'
 import { leerCursoActivo, obtenerCursoActivo } from '../db/curso'
+import { crearGrupo, gruposVisiblesDelCurso } from '../db/grupos'
 import type { Etapa, FranjaHorario, Grupo } from '../db/types'
+import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, nivelesDe, rotuloNivel, textoNivel } from '../lib/etapas'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -43,8 +45,7 @@ export function Grupos() {
   const grupos = useLiveQuery(async () => {
     const curso = await leerCursoActivo()
     if (!curso) return [] // el curso lo crea App al arrancar; llega en el siguiente tick
-    const lista = await db.grupos.where('cursoEscolarId').equals(curso.id).toArray()
-    return lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
+    return gruposVisiblesDelCurso(curso.id)
   }, [])
 
   const conteos = useLiveQuery(async () => {
@@ -195,23 +196,22 @@ function HojaNuevoGrupo({
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [nombre, setNombre] = useState('')
-  const [etapa, setEtapa] = useState<Etapa>('primaria')
-  const [nivel, setNivel] = useState(1)
+  const [etapa, setEtapa] = useState<Etapa>(ETAPA_POR_DEFECTO)
+  const [nivel, setNivel] = useState(nivelesDe(ETAPA_POR_DEFECTO)[0])
   const [color, setColor] = useState(COLORES[0])
   const [horario, setHorario] = useState<FranjaHorario[]>([])
 
-  const niveles = etapa === 'primaria' ? [1, 2, 3, 4, 5, 6] : [3, 4, 5]
+  const niveles = nivelesDe(etapa)
 
   function cambiarEtapa(nueva: Etapa) {
     setEtapa(nueva)
-    setNivel(nueva === 'primaria' ? 1 : 3)
+    setNivel(nivelesDe(nueva)[0])
   }
 
   async function guardar() {
     if (!nombre.trim()) return
     const curso = await obtenerCursoActivo()
-    const grupo: Grupo = {
-      id: nuevoId(),
+    const grupo = await crearGrupo({
       cursoEscolarId: curso.id,
       nombre: nombre.trim(),
       etapa,
@@ -219,8 +219,7 @@ function HojaNuevoGrupo({
       color,
       orden,
       horario,
-    }
-    await db.grupos.add(grupo)
+    })
     onCerrar()
     setNombre('')
     setHorario([])
@@ -247,23 +246,27 @@ function HojaNuevoGrupo({
           />
         </div>
 
-        <div>
-          <span className="etiqueta">Etapa</span>
-          <div className="grid grid-cols-2 gap-2">
-            {(['primaria', 'infantil'] as const).map((e) => (
-              <button
-                key={e}
-                onClick={() => cambiarEtapa(e)}
-                className={etapa === e ? 'btn-primario' : 'btn-suave'}
-              >
-                {e === 'primaria' ? 'Primaria' : 'Infantil'}
-              </button>
-            ))}
+        {/* Con una sola etapa disponible no hay nada que elegir, y la app no
+            habla de «etapa» al usuario (lib/etapas.ts). */}
+        {ETAPA_UNICA === null && (
+          <div>
+            <span className="etiqueta">Etapa</span>
+            <div className="grid grid-cols-2 gap-2">
+              {ETAPAS_DISPONIBLES.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => cambiarEtapa(e)}
+                  className={etapa === e ? 'btn-primario' : 'btn-suave'}
+                >
+                  {e === 'primaria' ? 'Primaria' : 'Infantil'}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div>
-          <span className="etiqueta">{etapa === 'primaria' ? 'Curso' : 'Edad'}</span>
+          <span className="etiqueta">{rotuloNivel(etapa)}</span>
           <div className="flex flex-wrap gap-2">
             {niveles.map((n) => (
               <button
@@ -273,7 +276,7 @@ function HojaNuevoGrupo({
                   (nivel === n ? 'btn-primario' : 'btn-suave') + ' min-w-tap flex-1 px-0'
                 }
               >
-                {etapa === 'primaria' ? `${n}º` : `${n} años`}
+                {textoNivel(etapa, n)}
               </button>
             ))}
           </div>

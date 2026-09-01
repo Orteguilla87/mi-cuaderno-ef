@@ -6,7 +6,7 @@ import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
 import { Marcador } from '../components/Marcador'
 import { SorteoAlumno } from '../components/SorteoAlumno'
-import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import { navegar } from '../lib/router'
 
 type Id = 'equipos' | 'marcador' | 'aleatorio'
@@ -112,8 +112,7 @@ function HojaElegirGrupo({
   onElegir: (grupoId: string) => void
 }) {
   const grupos = useLiveQuery(async () => {
-    const lista = await db.grupos.toArray()
-    return lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
+    return gruposVisibles()
   }, [])
 
   return (

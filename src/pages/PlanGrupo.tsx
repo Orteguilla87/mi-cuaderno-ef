@@ -6,6 +6,7 @@ import { Hoja } from '../components/Hoja'
 import { HojaConfirmar } from '../components/HojaConfirmar'
 import { SelectorGrupo } from '../components/SelectorGrupo'
 import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import {
   copiarPlanificacion,
   crearSesion,
@@ -39,8 +40,7 @@ export function PlanGrupo() {
   const [confirmandoVaciar, setConfirmandoVaciar] = useState(false)
 
   const grupos = useLiveQuery(async () => {
-    const lista = await db.grupos.toArray()
-    return lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
+    return gruposVisibles()
   }, [])
 
   // Sin grupo elegido, o con uno que ya no existe (borrado, u orfandad del

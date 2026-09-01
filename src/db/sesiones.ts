@@ -24,6 +24,7 @@
 import { estadoDia, esDiaLectivo, type EstadoDia } from '../lib/calendarioEscolar'
 import { diaLectivo, sumarDias } from '../lib/fechas'
 import { db } from './db'
+import { gruposVisibles } from './grupos'
 import { fechasDeClase } from './planificador'
 import type { Grupo, Sesion } from './types'
 
@@ -60,7 +61,9 @@ export async function getSesiones({ desde, hasta, grupoId }: RangoGrupo): Promis
   if (grupoId) sesiones = sesiones.filter((s) => s.grupoId === grupoId)
   if (curso) sesiones = sesiones.filter((s) => esDiaLectivo(s.fecha, curso))
 
-  const grupos = await db.grupos.toArray()
+  // `gruposVisibles` y no `db.grupos`: con una etapa oculta (lib/etapas.ts) sus
+  // sesiones desaparecen de Hoy y del calendario sin que se borre nada.
+  const grupos = await gruposVisibles()
   const gruposPorId = new Map(grupos.map((g) => [g.id, g]))
 
   const resultado: SesionConGrupo[] = []
@@ -105,7 +108,7 @@ export interface HuecoCalendario {
  */
 export async function huecosDe({ desde, hasta, grupoId }: RangoGrupo): Promise<HuecoCalendario[]> {
   const curso = await cursoActivo()
-  let grupos = await db.grupos.toArray()
+  let grupos = await gruposVisibles()
   if (grupoId) grupos = grupos.filter((g) => g.id === grupoId)
 
   const sesiones = await db.sesiones.where('fecha').between(desde, hasta, true, true).toArray()
@@ -165,11 +168,19 @@ export interface SesionNoLectiva {
 export async function sesionesEnDiasNoLectivos(): Promise<SesionNoLectiva[]> {
   const curso = await cursoActivo()
   if (!curso) return []
-  const [sesiones, grupos] = await Promise.all([db.sesiones.toArray(), db.grupos.toArray()])
+  const [sesiones, grupos, todos] = await Promise.all([
+    db.sesiones.toArray(),
+    gruposVisibles(),
+    db.grupos.toArray(),
+  ])
   const gruposPorId = new Map(grupos.map((g) => [g.id, g]))
+  // Un grupo oculto no es un grupo borrado: sus sesiones no se listan como
+  // huérfanas, simplemente no se listan.
+  const ocultos = new Set(todos.filter((g) => !gruposPorId.has(g.id)).map((g) => g.id))
 
   const resultado: SesionNoLectiva[] = []
   for (const sesion of sesiones) {
+    if (ocultos.has(sesion.grupoId)) continue
     const estado = estadoDia(sesion.fecha, curso)
     if (estado.tipo === 'lectivo') continue
     resultado.push({ sesion, grupo: gruposPorId.get(sesion.grupoId), estado })

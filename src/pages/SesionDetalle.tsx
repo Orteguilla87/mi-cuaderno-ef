@@ -9,6 +9,7 @@ import { Recursos } from '../components/Recursos'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
 import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import {
   duplicarSesion,
   editarSesion,
@@ -316,7 +317,7 @@ function HojaDuplicar({
   onCerrar: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
-  const grupos = useLiveQuery(() => db.grupos.toArray(), [])
+  const grupos = useLiveQuery(() => gruposVisibles(), [])
   const [grupoId, setGrupoId] = useState(sesion.grupoId)
   const [fecha, setFecha] = useState(sesion.fecha)
 

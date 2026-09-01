@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Campo } from '../components/Campo'
 import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import { buscarObservaciones } from '../db/observaciones'
 import type { SignoObservacion, TipoObservacion } from '../db/types'
 import { etiquetaDia } from '../lib/fechas'
@@ -24,7 +25,7 @@ export function Observaciones({ grupoId, alumnoId }: { grupoId?: string; alumnoI
   const [signo, setSigno] = useState<SignoObservacion | 'todos'>('todos')
   const [texto, setTexto] = useState('')
 
-  const grupos = useLiveQuery(() => db.grupos.toArray(), [])
+  const grupos = useLiveQuery(() => gruposVisibles(), [])
   const alumnos = useLiveQuery(() => db.alumnos.toArray(), [])
 
   const lista = useLiveQuery(
