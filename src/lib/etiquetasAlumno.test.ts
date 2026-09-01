@@ -118,6 +118,55 @@ describe('las etiquetas nunca salen del dispositivo', () => {
     expect(culpables).toEqual([])
   })
 
+  /**
+   * El repaso de arriba solo vale si la lista está completa, y una lista escrita
+   * a mano envejece: el día que alguien añada un export nuevo, nadie se
+   * acordará de venir aquí. Así que se busca en TODA la fuente quién puede
+   * sacar algo del dispositivo —escribir un fichero, copiar al portapapeles o
+   * llamar a la red— y se exige que cada uno esté clasificado.
+   */
+  it('la lista de salidas está completa: no hay ninguna sin clasificar', () => {
+    const SACAN_ALGO =
+      /XLSX\.writeFile|doc\.save\(|descargarArchivo\(|clipboard\.writeText|\bfetch\(|setDoc\(/
+
+    /**
+     * Las salidas que SÍ pueden llevar datos sensibles, porque lo que sacan va
+     * cifrado de extremo a extremo antes de salir (M9, §10 y §11).
+     */
+    const CIFRADAS = ['db/backup.ts', 'lib/backup.ts', 'db/sincro.ts', 'lib/webdav.ts']
+
+    const todas = [
+      ...fuentes(join(RAIZ, 'lib'), ['.ts', '.tsx']),
+      ...fuentes(join(RAIZ, 'db'), ['.ts']),
+      ...fuentes(join(RAIZ, 'pages'), ['.tsx']),
+      ...fuentes(join(RAIZ, 'components'), ['.tsx']),
+    ]
+    const relativa = (r: string) => r.slice(RAIZ.length + 1).replace(/\\/g, '/')
+    const clasificadas = new Set([
+      ...SALIDAS.map(relativa),
+      ...CIFRADAS,
+      // Vistas que disparan una salida: el bloque «solo se pintan en el
+      // Cuaderno» ya comprueba que no nombran ninguna etiqueta.
+      'pages/Informes.tsx',
+      'pages/Hoy.tsx',
+    ])
+
+    const detectadas = todas
+      .filter((r) => SACAN_ALGO.test(sinComentarios(readFileSync(r, 'utf-8'))))
+      .map(relativa)
+
+    // Guardia contra un test vacío: si el patrón deja de encontrar nada, este
+    // repaso pasaría siempre sin mirar a nadie.
+    expect(detectadas.length).toBeGreaterThanOrEqual(6)
+
+    const sinClasificar = detectadas.filter((r) => !clasificadas.has(r))
+
+    expect(
+      sinClasificar,
+      'salida nueva sin clasificar: añádela a SALIDAS y comprueba que no lleva etiquetas',
+    ).toEqual([])
+  })
+
   it('la pizarra y el marcador no reciben ni el alumno entero', () => {
     // Bloqueo estructural: si no llega como prop, no se puede filtrar.
     const pizarra = readFileSync(join(RAIZ, 'components', 'Pizarra.tsx'), 'utf-8')

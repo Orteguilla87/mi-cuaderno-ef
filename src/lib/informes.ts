@@ -9,8 +9,31 @@ import { descargarArchivo } from './descargar'
 import { formatoLargo } from './fechas'
 
 /**
- * Generación de informes (§5 M7). Todo en local, sin red. `apoyos` de Alumno
- * NUNCA se lee aquí ni se incluye en ningún export (§1.6/§9).
+ * Generación de informes (§5 M7). Todo en local, sin red.
+ *
+ * ——— Lo que NUNCA sale por aquí ———
+ *
+ * `apoyos`, `notasPrivadas`, `nivelMotriz` y las etiquetas de alumnado
+ * (`db/etiquetasAlumno.ts`). Son datos de categoría especial y su única salida
+ * permitida es la copia cifrada (§1.6/§9).
+ *
+ * El bloqueo es estructural, no un filtro: `nombreAlumno()` solo lee `nombre` y
+ * `apellidos`, y ninguna de las cuatro salidas de este módulo llega a tocar el
+ * resto del alumno. `generarPlanDelDia` va más lejos y ni siquiera recibe
+ * alumnado.
+ *
+ * Las cuatro salidas, repasadas una a una:
+ *   · `generarActaGrupo`        PDF  — nombre, % asistencia, faltas, retrasos,
+ *                                      justificadas y sin chándal. Nada más.
+ *   · `generarInformeIndividual` PDF — nombre, asistencia, observaciones y
+ *                                      valores del cuaderno normalizados.
+ *   · `exportarNotasXLSX`       XLSX — nombre y una columna por instrumento.
+ *   · `exportarAsistenciaCSV`   CSV  — nombre, fecha, estado, chándal y la
+ *                                      observación de esa asistencia.
+ *
+ * `lib/etiquetasAlumno.test.ts` lo vigila de dos maneras: revisando esta fuente
+ * y exportando de verdad el XLSX con un alumno etiquetado para buscar dentro.
+ * Además falla si aparece una salida nueva sin clasificar en ningún sitio.
  */
 
 function nombreArchivo(base: string, ext: string): string {
