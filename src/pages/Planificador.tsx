@@ -1064,9 +1064,18 @@ function HojaAccionesUnidad({
  *
  * Dos caminos según lo que haya escrito: con una sola nota u observación puesta
  * no hay botón de borrar —no hay papelera, sería pérdida irreversible— y la
- * salida es archivar. Sin nada escrito, se borra, pero exigiendo escribir el
- * título: es la única acción de la app que no se puede deshacer de un toque.
+ * salida es archivar. Sin nada escrito, se borra, pero escribiendo «Eliminar»:
+ * es la única acción de la app que no se puede deshacer de un toque, así que
+ * pide algo más que un toque.
+ *
+ * Antes pedía el título entero de la unidad. Lo que protege de verdad el
+ * trabajo escrito es el camino de arriba —con datos registrados no hay botón—,
+ * no la longitud de lo que se teclea; y teclear «Circuitos y habilidades
+ * gimnásticas» en el móvil, de pie en el porche, era un peaje sin dueño.
  */
+/** Lo que hay que teclear para borrar. En minúscula: la comparación no distingue. */
+const PALABRA_BORRAR = 'eliminar'
+
 function HojaEliminarUnidad({
   unidad,
   onCerrar,
@@ -1093,8 +1102,7 @@ function HojaEliminarUnidad({
 
   const vocabulario = terminologia(unidad?.etapa ?? 'primaria')
   const bloqueado = (impacto?.valores ?? 0) > 0
-  const titulo = unidad?.titulo.trim().toLocaleLowerCase('es') ?? ''
-  const coincide = confirmacion.trim().toLocaleLowerCase('es') === titulo && titulo !== ''
+  const coincide = confirmacion.trim().toLocaleLowerCase('es') === PALABRA_BORRAR
   const pesoEnJuego =
     unidad?.etapa === 'primaria' && unidad.computa
       ? Math.max(0, ...Object.values(unidad.pesosPorNivel))
@@ -1196,14 +1204,15 @@ function HojaEliminarUnidad({
                 )}
                 <div>
                   <label className="etiqueta" htmlFor="ud-confirmar">
-                    Escribe «{unidad?.titulo}» para confirmar
+                    Escribe «Eliminar» para confirmar
                   </label>
                   <Campo
                     id="ud-confirmar"
                     className="campo"
                     valor={confirmacion}
                     onValor={setConfirmacion}
-                    placeholder={unidad?.titulo}
+                    placeholder="Eliminar"
+                    autoCapitalize="none"
                   />
                 </div>
                 <button
