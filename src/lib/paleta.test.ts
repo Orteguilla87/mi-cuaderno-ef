@@ -9,6 +9,7 @@ import {
   distancia,
   idMasCercano,
   normalizarColor,
+  tintaSobre,
 } from './paleta'
 
 /**
@@ -109,6 +110,27 @@ describe('contraste sobre los dos fondos de la app', () => {
       expect(flojos, `sobre ${fondo}`).toEqual([])
     })
   }
+})
+
+describe('lo que se dibuja encima de una muestra', () => {
+  /**
+   * La marca de «elegido» del selector iba en blanco fijo, y sobre `arena-300`
+   * —#F3F3EC en tema oscuro— era blanco sobre blanco: elegías un color y no
+   * veías cuál habías elegido. `tintaSobre` lo decide por contraste.
+   */
+  for (const { tema } of TEMAS) {
+    it(`la marca se lee sobre cualquier muestra (tema ${tema})`, () => {
+      const flojos = PALETA.filter(
+        (c) => contraste(tintaSobre(c[tema]), c[tema]) < CONTRASTE_MINIMO,
+      ).map((c) => `${c.id} (${contraste(tintaSobre(c[tema]), c[tema]).toFixed(2)}:1)`)
+      expect(flojos).toEqual([])
+    })
+  }
+
+  it('elige tinta sobre los claros y blanco sobre los oscuros', () => {
+    expect(tintaSobre('#F3F3EC')).toBe('#16333A')
+    expect(tintaSobre('#006A80')).toBe('#FFFFFF')
+  })
 })
 
 describe('daltonismo rojo-verde', () => {

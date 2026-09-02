@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react'
 import type { CSSProperties } from 'react'
-import { PALETA, colorPorId } from '../lib/paleta'
+import { PALETA, colorPorId, tintaSobre } from '../lib/paleta'
 
 /**
  * Elegir un color de dato (`lib/paleta.ts`): grupo, peto, etiqueta de alumnado.
@@ -75,7 +75,7 @@ export function SelectorColor({
                 : 'active:scale-95')
             }
           >
-            {elegido && <Check size={20} strokeWidth={3} className="text-white" aria-hidden />}
+            {elegido && <Check size={20} strokeWidth={3} className="color-dato-marca" aria-hidden />}
           </button>
         )
       })}
@@ -84,14 +84,21 @@ export function SelectorColor({
 }
 
 /**
- * Las dos variables que consumen las clases `.color-dato*` de `index.css`. Se
+ * Las variables que consumen las clases `.color-dato*` de `index.css`. Se
  * exporta porque cualquier sitio que pinte un color de dato —la banda de un
  * grupo, el punto de una etiqueta— necesita exactamente esto.
+ *
+ * `--marca-*` es el color de lo que se dibuje ENCIMA de la muestra: la marca
+ * de «elegido», por ejemplo. Se calcula por contraste y no se fija a blanco,
+ * porque sobre `arena-300` —que en tema oscuro vale #F3F3EC— una marca blanca
+ * sencillamente no se ve.
  */
 export function variablesColor(id: string | undefined): CSSProperties {
   const color = colorPorId(id) ?? PALETA[0]
   return {
     ['--color-claro' as string]: color.claro,
     ['--color-oscuro' as string]: color.oscuro,
+    ['--marca-claro' as string]: tintaSobre(color.claro),
+    ['--marca-oscuro' as string]: tintaSobre(color.oscuro),
   } as CSSProperties
 }

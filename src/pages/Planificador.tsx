@@ -86,9 +86,14 @@ function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): str
 const SUBTITULOS: Record<VistaPlanificador, string> = {
   grupo: 'Programación por grupo',
   semana: '',
-  // Sin etapa que consultar en la cabecera —el listado las mezcla—, se usa el
-  // término neutro; el rótulo por etapa aparece dentro de cada elemento.
-  unidades: 'Unidades y situaciones de aprendizaje',
+  // Con las dos etapas activas el listado las mezcla y no hay etapa que
+  // consultar en la cabecera, así que se nombran las dos. Con una sola
+  // (lib/etapas.ts) se usa su término y punto: nombrar aquí la etapa apagada
+  // sería hablarle al usuario de algo que no existe en su app.
+  unidades:
+    ETAPA_UNICA !== null
+      ? terminologia(ETAPA_UNICA).unidadPlural
+      : 'Unidades y situaciones de aprendizaje',
 }
 
 export function Planificador() {

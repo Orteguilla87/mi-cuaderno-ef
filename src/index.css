@@ -286,6 +286,13 @@
   .dark .color-dato-texto {
     color: var(--color-oscuro);
   }
+  /* Lo que se dibuja ENCIMA de la muestra: blanco o tinta, el que se lea. */
+  .color-dato-marca {
+    color: var(--marca-claro);
+  }
+  .dark .color-dato-marca {
+    color: var(--marca-oscuro);
+  }
 
   /* ——— Píldoras / badges ——— */
   .pildora {

@@ -703,7 +703,9 @@ function ResultadoPaso({
             style={{ ...variablesColor(e.colorId ?? e.color), borderTopWidth: 4 }}
           >
             <Campo
-              className="campo mb-2 px-2 py-1 text-sm font-bold"
+              // `color-dato-texto`: el nombre del equipo va en el color de su
+              // peto. Sin la clase, las variables del `style` no las lee nadie.
+              className="campo color-dato-texto mb-2 px-2 py-1 text-sm font-bold"
               valor={e.nombre}
               onValor={(v) => onRenombrar(i, v)}
               style={variablesColor(e.colorId ?? e.color)}

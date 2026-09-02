@@ -115,6 +115,17 @@ export function contraste(a: string, b: string): number {
   return (alta + 0.05) / (baja + 0.05)
 }
 
+/**
+ * El color de lo que se dibuje ENCIMA de una muestra —la marca de «elegido», un
+ * icono—: blanco o tinta, el que más contraste dé. Nunca blanco por costumbre:
+ * sobre `arena-300`, que en tema oscuro vale #F3F3EC, una marca blanca no se ve.
+ */
+export function tintaSobre(fondo: string): string {
+  const TINTA = '#16333A'
+  const BLANCO = '#FFFFFF'
+  return contraste(BLANCO, fondo) >= contraste(TINTA, fondo) ? BLANCO : TINTA
+}
+
 /** CIE Lab desde sRGB lineal, para medir distancia perceptual. */
 export function aLab(hex: string): [number, number, number] {
   const [r, g, b] = aRgb(hex).map(lineal)
