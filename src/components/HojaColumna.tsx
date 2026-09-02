@@ -3,7 +3,7 @@ import { Check, ChevronLeft, ChevronRight, Copy, Plus, Trash2, Users } from 'luc
 import { useEffect, useState } from 'react'
 import { Campo } from './Campo'
 import { cicloDeCurso, criteriosDeGrupo } from '../db/criterios'
-import { cicloDeUnidad, ordinalCiclo } from '../lib/ciclos'
+import { cicloDeUnidad, idCriterioPrimaria, ordinalCiclo } from '../lib/ciclos'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import {
   crearColumna,
@@ -595,6 +595,25 @@ function EditorFilas({
   const cicloGrupo = cicloDeCurso(grupo.nivel)
   const chocanLosCiclos = cicloUnidad !== null && cicloUnidad !== cicloGrupo
 
+  /**
+   * Criterio del decreto que le CORRESPONDERÍA a una fila según el código que
+   * traía su indicador al importar la rúbrica («2.2.a · …» → `2.2`).
+   *
+   * Se resuelve aquí y no en el banco de rúbricas porque «2.2» es un criterio
+   * distinto en cada ciclo: solo la columna sabe de qué grupo se trata. Y se
+   * SUGIERE, no se asigna: la rúbrica puede venir de otro ciclo, y una
+   * asignación en silencio a partir de un código pegado es exactamente lo que
+   * no se puede hacer con un criterio oficial.
+   */
+  const criteriosRubrica = new Map((rubrica?.criterios ?? []).map((c) => [c.id, c]))
+  const sugerido = (fila: FilaInstrumento): Criterio | undefined => {
+    if (fila.criterioId) return undefined
+    const codigo = fila.criterioRubricaId
+      ? criteriosRubrica.get(fila.criterioRubricaId)?.codigo
+      : undefined
+    return codigo ? porId.get(idCriterioPrimaria(cicloGrupo, codigo)) : undefined
+  }
+
   async function elegir(filaId: string, criterioId: string | null) {
     const { anadidoALaUnidad, deshacer } = await asignarCriterio(filaId, criterioId)
     if (anadidoALaUnidad && criterioId) {
@@ -626,6 +645,7 @@ function EditorFilas({
               variasFilas={filas.length > 1}
               deLaUnidad={deLaUnidad}
               delCiclo={delCiclo}
+              sugerido={sugerido(fila)}
               onElegir={(criterioId) => void elegir(fila.id, criterioId)}
             />
           ))}
@@ -719,6 +739,7 @@ function FilaEditable({
   variasFilas,
   deLaUnidad,
   delCiclo,
+  sugerido,
   onElegir,
 }: {
   fila: FilaInstrumento
@@ -726,6 +747,8 @@ function FilaEditable({
   variasFilas: boolean
   deLaUnidad: Criterio[]
   delCiclo: Criterio[]
+  /** Criterio que sugiere el código importado con la rúbrica, sin asignar. */
+  sugerido?: Criterio
   onElegir: (criterioId: string | null) => void
 }) {
   const [descriptor, setDescriptor] = useState(fila.descriptor)
@@ -743,6 +766,22 @@ function FilaEditable({
         />
       ) : (
         <p className="font-semibold">{fila.descriptor}</p>
+      )}
+
+      {sugerido && (
+        <button
+          className="flex w-full items-start gap-2 rounded-xl border-2 border-dashed border-primario/50 p-2 text-left text-xs
+                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
+          onClick={() => onElegir(sugerido.id)}
+        >
+          <span className="pildora bg-agua-claro px-1.5 py-0.5 text-[11px] font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+            {sugerido.codigo}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">Sugerido por la rúbrica: toca para asignar</span>
+            <span className="block texto-suave">{sugerido.texto}</span>
+          </span>
+        </button>
       )}
 
       <SelectorCriterioUnico

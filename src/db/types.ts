@@ -537,6 +537,18 @@ export interface CriterioRubrica {
   pesoPct: number
   /** Descriptor de este criterio en cada nivel: nivelId → texto. */
   descripciones?: Record<string, string>
+  /**
+   * Código del criterio del decreto SIN ciclo («2.2»), tal como venía en la
+   * referencia del indicador importado («2.2.a · …»).
+   *
+   * No es el vínculo: el vínculo es `FilaInstrumento.criterioId` y vive en la
+   * columna, porque el mismo «2.2» es un criterio distinto en cada ciclo. Esto
+   * es solo la pista con la que la columna SUGIERE el criterio una vez sabe de
+   * qué curso es el grupo. Nunca se liga nada en silencio a partir de aquí.
+   */
+  codigo?: string
+  /** Letra del indicador dentro del criterio («a» en «2.2.a»), informativa. */
+  letra?: string
 }
 
 /** Rúbrica reutilizable entre columnas y grupos (banco propio). */
