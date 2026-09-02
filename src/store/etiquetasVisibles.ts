@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 /**
- * Si el Cuaderno pinta los puntos de etiqueta de alumnado.
+ * Si las vistas de gestión —el Cuaderno y la ficha del grupo— pintan los puntos
+ * de etiqueta de alumnado.
+ *
+ * Es UNO para las dos: lo que se decide aquí es «alguien puede acercarse a esta
+ * pantalla», y eso no cambia según en qué vista se esté.
  *
  * Preferencia DE DISPOSITIVO, y a propósito fuera de la sincronización: vive en
  * `localStorage` y no en `Config`, por el mismo motivo que documenta

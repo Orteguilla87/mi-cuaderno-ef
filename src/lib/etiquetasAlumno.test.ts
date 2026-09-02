@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 /**
  * Las dos reglas duras de las etiquetas de alumnado, vigiladas sobre la fuente.
  *
- *  1. Solo se pintan en el Cuaderno.
+ *  1. Solo se pintan en las vistas de gestión del maestro.
  *  2. No salen del dispositivo salvo dentro del blob cifrado.
  *
  * Se revisa el código y no la pantalla por el mismo motivo que en
@@ -45,15 +45,25 @@ function rastro(codigo: string): string | undefined {
   return (limpio.match(RASTRO) ?? limpio.match(RASTRO_CAMPO))?.[0]
 }
 
-describe('las etiquetas solo se pintan en el Cuaderno', () => {
+describe('las etiquetas solo se pintan en las vistas de gestión', () => {
   const vistas = [...fuentes(join(RAIZ, 'pages'), ['.tsx']), ...fuentes(join(RAIZ, 'components'), ['.tsx'])]
 
   /**
-   * Las dos únicas vistas que pueden nombrarlas: el Cuaderno, que pinta el
-   * punto, y la ficha del alumno junto con su pantalla de gestión, donde se
-   * ponen y se quitan. Ninguna de las tres se proyecta ni se enseña a nadie.
+   * Las únicas vistas que pueden nombrarlas: el Cuaderno y la ficha del grupo,
+   * que pintan el punto, y la ficha del alumno junto con su pantalla de
+   * gestión, donde se ponen y se quitan. Ninguna se proyecta ni se enseña a
+   * nadie: son las pantallas de trabajo del maestro. El pase de lista, las
+   * herramientas de aula, Hoy, el planificador y el calendario siguen fuera.
    */
-  const PERMITIDAS = ['Cuaderno.tsx', 'AlumnoDetalle.tsx', 'EtiquetasAlumno.tsx']
+  const PERMITIDAS = [
+    'Cuaderno.tsx',
+    'GrupoDetalle.tsx',
+    'AlumnoDetalle.tsx',
+    'EtiquetasAlumno.tsx',
+  ]
+
+  /** Las que pintan el punto, cada una con su copia. */
+  const PINTAN = ['Cuaderno.tsx', 'GrupoDetalle.tsx']
 
   it('encuentra las vistas que hay que revisar', () => {
     expect(vistas.length).toBeGreaterThan(20)
@@ -64,23 +74,22 @@ describe('las etiquetas solo se pintan en el Cuaderno', () => {
     const encontrado = rastro(readFileSync(ruta, 'utf-8'))
     expect(
       encontrado,
-      `«${encontrado}»: las etiquetas de alumnado solo se pintan en el Cuaderno`,
+      `«${encontrado}»: las etiquetas de alumnado solo se pintan en ${PERMITIDAS.join(', ')}`,
     ).toBeUndefined()
   })
 
-  it('el punto vive dentro de Cuaderno.tsx, no en un componente reutilizable', () => {
+  it('el punto no vive en ningún componente reutilizable', () => {
     // Si estuviera en `src/components/`, cualquier vista podría montarlo. La
-    // condición de contexto es física a propósito.
+    // condición de contexto es física a propósito, y por eso cada vista que lo
+    // pinta lleva su propia copia en vez de compartir una.
     const compartidos = fuentes(join(RAIZ, 'components'), ['.tsx'])
     expect(compartidos.filter((r) => readFileSync(r, 'utf-8').includes('PuntoEtiquetas'))).toEqual([])
-    expect(readFileSync(join(RAIZ, 'pages', 'Cuaderno.tsx'), 'utf-8')).toContain(
-      'function PuntoEtiquetas',
-    )
   })
 
-  it('el punto no se exporta: nadie de fuera puede montarlo', () => {
-    const cuaderno = readFileSync(join(RAIZ, 'pages', 'Cuaderno.tsx'), 'utf-8')
-    expect(cuaderno).not.toMatch(/export\s+(function|const)\s+PuntoEtiquetas/)
+  it.each(PINTAN)('%s tiene su propia copia del punto, y no la exporta', (vista) => {
+    const fuente = readFileSync(join(RAIZ, 'pages', vista), 'utf-8')
+    expect(fuente).toContain('function PuntoEtiquetas')
+    expect(fuente).not.toMatch(/export\s+(function|const)\s+PuntoEtiquetas/)
   })
 })
 

@@ -620,11 +620,12 @@ function MenuAcciones({
  * El punto de color de las etiquetas de un alumno.
  *
  * VIVE AQUÍ DENTRO A PROPÓSITO, y no en `src/components/`: la regla es que las
- * etiquetas de alumnado solo se pintan en el Cuaderno —nunca en el pase de
- * lista, ni en las herramientas de aula, ni en nada proyectable—, y esa
- * condición tiene que ser física, no una prop opcional que otra vista pueda
- * activar por descuido. `lib/etiquetasAlumno.test.ts` comprueba que ninguna
- * otra fuente lo menciona.
+ * etiquetas de alumnado solo se pintan en las vistas de gestión del maestro
+ * —nunca en el pase de lista, ni en las herramientas de aula, ni en nada
+ * proyectable—, y esa condición tiene que ser física, no una prop opcional que
+ * otra vista pueda activar por descuido. La ficha del grupo pinta el mismo
+ * punto con su propia copia, por ese mismo motivo.
+ * `lib/etiquetasAlumno.test.ts` comprueba quién puede mencionarlo.
  *
  * Es solo el punto: el nombre va en `title` y en `aria-label`, y al pulsarlo
  * sale en el aviso de abajo. Un lector de pantalla no pierde nada; lo que se

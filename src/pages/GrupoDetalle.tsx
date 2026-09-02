@@ -1,5 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ClipboardCheck, ClipboardList, MessageSquareText, Minus, Plus, Shuffle } from 'lucide-react'
+import {
+  ClipboardCheck,
+  ClipboardList,
+  Eye,
+  EyeOff,
+  MessageSquareText,
+  Minus,
+  Plus,
+  Shuffle,
+} from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -8,12 +17,15 @@ import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { HojaConfirmar } from '../components/HojaConfirmar'
 import { HojaObservacion } from '../components/HojaObservacion'
+import { variablesColor } from '../components/SelectorColor'
 import { db, nuevoId } from '../db/db'
+import { etiquetasDe, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
 import { contadoresPorAlumno } from '../db/observaciones'
 import type {
   Alumno,
   Asistencia,
   Calificacion,
+  EtiquetaAlumno,
   FranjaHorario,
   Grupo,
   Observacion,
@@ -21,6 +33,7 @@ import type {
 } from '../db/types'
 import { aliasPorDefecto, parsearAlumnos } from '../lib/importAlumnos'
 import { navegar } from '../lib/router'
+import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
 import { EditorHorario } from './Grupos'
 
@@ -33,7 +46,11 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
     signo: SignoObservacion
   } | null>(null)
 
+  const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
+  const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
+
   const grupo = useLiveQuery(() => db.grupos.get(grupoId), [grupoId])
+  const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
   const contadores = useLiveQuery(() => contadoresPorAlumno(grupoId), [grupoId])
   const alumnos = useLiveQuery(async () => {
     const lista = await db.alumnos.where('grupoId').equals(grupoId).toArray()
@@ -114,9 +131,21 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
           </span>
         }
         acciones={
-          <button className="btn-suave" onClick={() => setHoja('grupo')}>
-            Editar
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Mismo interruptor que el Cuaderno y el mismo estado: es una
+                preferencia del aparato («alguien puede acercarse»), no de la
+                pantalla, así que apagarlo en un sitio lo apaga en el otro. */}
+            <button
+              className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+              onClick={alternarEtiquetas}
+              aria-label={etiquetasVisibles ? 'Ocultar etiquetas' : 'Mostrar etiquetas'}
+            >
+              {etiquetasVisibles ? <EyeOff size={20} aria-hidden /> : <Eye size={20} aria-hidden />}
+            </button>
+            <button className="btn-suave" onClick={() => setHoja('grupo')}>
+              Editar
+            </button>
+          </div>
         }
       />
 
@@ -174,6 +203,9 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
             return (
               <li key={a.id}>
                 <div className="tarjeta flex items-center gap-2 py-2">
+                  {/* Fuera del botón de la ficha: un botón dentro de otro no es
+                      HTML válido, y el punto tiene su propio toque. */}
+                  {etiquetasVisibles && <PuntoEtiquetas alumno={a} catalogo={catalogoEtiquetas} />}
                   <button
                     onClick={() => navegar(`/alumnos/${a.id}`)}
                     className="min-w-0 flex-1 py-1 text-left"
@@ -269,6 +301,49 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
         onCerrar={() => setHoja('ninguna')}
       />
     </>
+  )
+}
+
+/**
+ * El punto de color de las etiquetas de un alumno.
+ *
+ * ESTÁ DUPLICADO A PROPÓSITO —hay otro igual dentro de `Cuaderno.tsx`— y no
+ * extraído a `src/components/`. La regla es que las etiquetas de alumnado solo
+ * se pintan en las vistas de gestión del maestro, nunca en el pase de lista, ni
+ * en las herramientas de aula, ni en nada proyectable; y esa condición tiene
+ * que ser física, no una prop opcional que cualquier vista pueda activar por
+ * descuido. Un componente compartido sería justo esa prop. La duplicación es de
+ * quince líneas de pintado; lo que compra es que añadir una vista con etiquetas
+ * exija escribirlas otra vez y pasar por `lib/etiquetasAlumno.test.ts`.
+ *
+ * Es solo el punto: el nombre va en `title` y en `aria-label`, y al pulsarlo
+ * sale en el aviso de abajo.
+ */
+function PuntoEtiquetas({
+  alumno,
+  catalogo,
+}: {
+  alumno: Alumno
+  catalogo: EtiquetaAlumno[]
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const puestas = etiquetasDe(alumno, catalogo)
+  if (puestas.length === 0) return null
+
+  return (
+    <span className="flex shrink-0 items-center gap-0.5">
+      {puestas.map((e) => (
+        <button
+          key={e.id}
+          type="button"
+          onClick={() => mostrarAviso(e.nombre)}
+          title={e.nombre}
+          aria-label={`Etiqueta ${e.nombre}`}
+          style={variablesColor(e.colorId)}
+          className="color-dato h-2.5 w-2.5 shrink-0 rounded-full"
+        />
+      ))}
+    </span>
   )
 }
 
