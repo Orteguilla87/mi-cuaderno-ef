@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
+import { CampoTexto } from '../components/CampoTexto'
 import { Hoja } from '../components/Hoja'
 import { Recursos } from '../components/Recursos'
 import { TituloSeccion } from '../components/TituloSeccion'
@@ -157,18 +158,13 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
           </select>
         </div>
 
-        <div>
-          <label className="etiqueta" htmlFor="s-notas">
-            Descripción
-          </label>
-          <CampoArea
-            id="s-notas"
-            className="campo h-40 resize-none py-2"
-            valor={sesion.notas}
-            onValor={(v) => actualizar({ notas: v })}
-            placeholder="Organización, variantes, qué vigilar…"
-          />
-        </div>
+        <CampoTexto
+          id="s-notas"
+          etiqueta="Descripción"
+          valor={sesion.notas}
+          onValor={(v) => actualizar({ notas: v })}
+          placeholder="Organización, variantes, qué vigilar…"
+        />
 
         <div>
           <label className="etiqueta" htmlFor="s-recursos-necesarios">

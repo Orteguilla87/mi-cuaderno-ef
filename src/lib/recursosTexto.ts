@@ -13,6 +13,7 @@
  * puede probar entero sin abrirla.
  */
 
+import { esEncabezadoReservado } from './estructuraSesion'
 import { formatoCorto, formatoLargo } from './fechas'
 import { normalizarLinea, normalizarTexto } from './texto'
 
@@ -77,12 +78,15 @@ export interface RecursosExtraidos {
 
 /**
  * Trocea una lista escrita en una sola línea: «12 conos, 4 aros · 2 balones».
- * El punto y coma y el `·` cuentan como separadores porque es como se escribe
- * cuando la coma ya está dentro de un ítem.
+ * El punto y coma, el punto medio `·` y la viñeta `•` cuentan como separadores
+ * porque es como se escribe cuando la coma ya está dentro de un ítem. El `•`
+ * está aquí además de en `normalizarLinea` porque esa solo lo traduce al
+ * principio de la línea: en medio de una lista de una sola línea sigue siendo
+ * un separador.
  */
 function trocearLinea(linea: string): string[] {
   return linea
-    .split(/[,;·]|\s+[-–—]\s+/)
+    .split(/[,;·•]|\s+[-–—]\s+/)
     .map((t) => t.trim().replace(/[.;,:]+$/, '').trim())
     .filter(Boolean)
 }
@@ -92,16 +96,6 @@ function esEtiquetaMaterial(linea: string): boolean {
   const m = ETIQUETA_MATERIAL.exec(linea)
   if (!m) return false
   return !!m[2] || !m[3].trim()
-}
-
-/**
- * Una línea sin viñeta ni número puede seguir siendo un ítem: mucha gente
- * escribe la lista a pelo bajo «Material:». Se pide que sea corta y sin punto
- * final, que es lo que separa un ítem de una frase de la descripción.
- */
-function pareceItem(linea: string): boolean {
-  const t = linea.trim()
-  return !!t && t.length < 80 && !t.endsWith('.')
 }
 
 /**
@@ -142,9 +136,19 @@ function separarEnlaces(contenido: string, anadirEnlace: (u: string) => void): s
  * conos del principio se recogen al final») y convertirlos en una lista de la
  * compra sería inventar datos, no extraerlos.
  *
- * Dos modos de lista, no uno: la etiqueta puede traer los ítems en su misma
- * línea («Material: 12 conos, 4 aros») o anunciarlos y dejarlos debajo. Si hay
- * las dos cosas, se capturan las dos.
+ * Dos modos de lista, y son EXCLUYENTES:
+ *
+ * - Modo LÍNEA: la etiqueta trae los ítems en su misma línea («Material: 12
+ *   conos, 4 aros»). Se captura esa línea y NADA MÁS. Lo que venga debajo es
+ *   otra cosa: el autor ya cerró la lista al escribirla entera de una vez.
+ * - Modo BLOQUE: la etiqueta solo anuncia («Material:» y la lista debajo). El
+ *   bloque continúa mientras las líneas lleven MARCA DE LISTA explícita
+ *   —viñeta o numeración—, y se cierra en cuanto dejan de llevarla.
+ *
+ * Antes el bloque se abría siempre, y continuaba con cualquier línea «corta y
+ * sin punto final». Ese criterio se ha quitado: es tan laxo que captura
+ * encabezados. Con él, «Recursos: conos · pandereta» seguido de «Momento de
+ * recogida» metía el encabezado del momento en la lista de la compra.
  */
 export function extraerRecursos(bloque: string): RecursosExtraidos {
   // Se normaliza aquí dentro, y no solo en el parser de la importación, porque
@@ -180,6 +184,10 @@ export function extraerRecursos(bloque: string): RecursosExtraidos {
   }
 
   for (let i = 0; i < lineas.length; i++) {
+    // Un encabezado de la estructura de la sesión nunca abre nada: no es una
+    // etiqueta de material por mucho que la regex pudiera rozarla.
+    if (esEncabezadoReservado(lineas[i])) continue
+
     const encabezado = ETIQUETA_MATERIAL.exec(lineas[i])
     if (!encabezado) continue
     const separador = encabezado[2]
@@ -188,20 +196,22 @@ export function extraerRecursos(bloque: string): RecursosExtraidos {
     if (!separador && resto.trim()) continue
 
     lineasConsumidas.push(i)
-    consumir(resto)
 
-    // La lista de debajo tiene un solo estilo: o va marcada (viñeta o número) o
-    // va suelta. Mezclarlos sería colarse en la descripción, que empieza justo
-    // donde la lista deja de tener forma de lista.
-    let modo: 'marcado' | 'suelto' | null = null
+    // Modo LÍNEA: la etiqueta ya trae la lista. Se captura y se cierra aquí.
+    if (resto.trim()) {
+      consumir(resto)
+      continue
+    }
+
+    // Modo BLOQUE: la etiqueta solo anuncia. Sigue mientras haya marca de lista.
     let j = i + 1
     while (j < lineas.length) {
       const linea = lineas[j]
 
       if (!linea.trim()) {
-        // Un blanco no corta si debajo sigue habiendo ítems MARCADOS (Word
+        // Un blanco no corta si debajo sigue habiendo ítems marcados (Word
         // intercala párrafos vacíos). Dos blancos seguidos sí cortan, y un
-        // blanco seguido de línea suelta también: ahí ya es otro párrafo.
+        // blanco seguido de línea sin marca también: ahí ya es otro párrafo.
         const siguiente = lineas[j + 1]
         if (!siguiente || !siguiente.trim()) break
         if (!VINETA.test(siguiente) && !NUMERADA.test(siguiente)) break
@@ -210,23 +220,17 @@ export function extraerRecursos(bloque: string): RecursosExtraidos {
         continue
       }
 
+      if (esEncabezadoReservado(linea)) break
       if (OTRA_ETIQUETA.test(linea) || CORTE_SESION.test(linea) || esEtiquetaMaterial(linea)) break
 
       const marcado = VINETA.exec(linea) ?? NUMERADA.exec(linea)
-      let contenido: string
-      if (marcado) {
-        if (modo === 'suelto') break
-        modo = 'marcado'
-        contenido = marcado[1]
-      } else {
-        if (modo === 'marcado') break
-        if (!pareceItem(linea)) break
-        modo = 'suelto'
-        contenido = linea
-      }
+      if (!marcado) break
+      // Un encabezado al que alguien le puso una viñeta delante sigue siendo un
+      // encabezado.
+      if (esEncabezadoReservado(marcado[1])) break
 
       lineasConsumidas.push(j)
-      consumir(contenido)
+      consumir(marcado[1])
       j++
     }
 
@@ -266,6 +270,9 @@ export function itemsDeMaterial(campo: string): string[] {
   for (const cruda of texto.split('\n')) {
     const linea = normalizarLinea(cruda)
     const contenido = (VINETA.exec(linea) ?? NUMERADA.exec(linea))?.[1] ?? linea
+    // Un encabezado de la sesión que se haya colado en este campo tampoco es
+    // material: la regla es la misma aquí que en `extraerRecursos`.
+    if (esEncabezadoReservado(contenido)) continue
     // Una URL escrita a mano en este campo tampoco es material que bajar del
     // almacén: no se trocea, se descarta.
     for (const item of trocearLinea(separarEnlaces(contenido, () => {}))) {

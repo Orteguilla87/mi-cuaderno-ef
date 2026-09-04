@@ -12,6 +12,7 @@
  * escrito.
  */
 
+import { aMarkdown } from './estructuraSesion'
 import { URL, extraerRecursos } from './recursosTexto'
 import { normalizarLinea } from './texto'
 
@@ -133,13 +134,35 @@ function pareceEncabezado(linea: string): boolean {
   return !!t && t.length < 80 && !t.endsWith('.')
 }
 
+/**
+ * «Sesión 1 · Bienvenidos a Educación Física» → el título es lo que va tras el
+ * separador. El número es POSICIONAL: la sesión ya sabe en qué puesto va, y
+ * arrastrarlo al título lo repite en cada listado y estorba al reordenar.
+ *
+ * El punto medio entra en la lista de separadores porque es el que se usa al
+ * escribir esto en Word; sin él el título salía como «· Bienvenidos a…».
+ */
+const SESION_TITULADA = /^sesi[óo]n\s*\d+\s*[·\-–—:.]\s*(.+)$/i
+
 /** Deja un encabezado en su texto: sin `##`, sin viñeta y sin «Sesión 3:» delante. */
 function limpiarEncabezado(linea: string): string {
-  return linea
+  const base = linea
     .replace(/^\s{0,3}#{1,6}\s*/, '')
     .replace(/^\s*[-–—*·]\s+/, '')
+    .trim()
+
+  const titulada = SESION_TITULADA.exec(base)
+  if (titulada) return titulada[1].trim()
+
+  // Sin separador tras el número no se recorta: «Sesión 3 Bienvenidos» se queda
+  // entero, porque no hay forma de saber dónde acaba la posición y empieza el
+  // título sin adivinarlo. Lo único que sí se sabe es que un «Sesión 3» a secas
+  // no deja título: ahí devuelve cadena vacía y la UI lo pide.
+  const sinPosicion = base
     .replace(/^\s*(?:sesi[óo]n\s*(?:n[ºo°]?\s*)?\d+|S\s*\d+|\d+)\s*[:.\-–)]?\s*/i, '')
     .trim()
+  if (sinPosicion === base) return base
+  return sinPosicion ? base : ''
 }
 
 // ——————————————————————— bloque → sesión ———————————————————————
@@ -228,16 +251,17 @@ function parsearBloque(
     if (soloUrl) lineasEnlace.add(i)
   }
 
-  // — descripción (1.7): el resto, con su estructura intacta —
-  // El `\n{3,}` cierra el hueco que deja el bloque de material al marcharse:
-  // es un movimiento, y un movimiento no debe dejar ni la etiqueta huérfana ni
-  // el agujero donde estaba.
-  const descripcion = lineas
-    .filter((_, i) => !lineasTitulo.has(i) && !lineasRecursos.has(i) && !lineasEnlace.has(i))
-    .join('\n')
-    .replace(/^\n+/, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s+$/, '')
+  // — descripción (1.7): el resto, con la jerarquía marcada en markdown —
+  // `aMarkdown` va al final y hace dos cosas de un tiro: marcar los tres
+  // niveles y cerrar el hueco que deja el bloque de material al marcharse —es
+  // un movimiento, y un movimiento no debe dejar ni la etiqueta huérfana ni el
+  // agujero donde estaba—. Al final y no antes, porque marcar la jerarquía
+  // primero convertiría en encabezado una línea que luego se lleva otro campo.
+  const descripcion = aMarkdown(
+    lineas
+      .filter((_, i) => !lineasTitulo.has(i) && !lineasRecursos.has(i) && !lineasEnlace.has(i))
+      .join('\n'),
+  )
 
   return {
     titulo,

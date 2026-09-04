@@ -3,6 +3,7 @@ import { AlertTriangle, ClipboardPaste, Combine, Plus, Trash2, Wand2 } from 'luc
 import { useMemo, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
+import { CampoTexto } from '../components/CampoTexto'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { db } from '../db/db'
 import { buscarPorNombre, crearMaterial } from '../db/inventario'
@@ -335,17 +336,17 @@ export function ImportarUnidad() {
                       </button>
                     </div>
 
-                    <div>
-                      <label className="etiqueta" htmlFor={`desc-${i}`}>
-                        Descripción
-                      </label>
-                      <CampoArea
-                        id={`desc-${i}`}
-                        className="campo h-32 resize-none py-2 text-sm"
-                        valor={s.descripcion}
-                        onValor={(v) => cambiar(i, { descripcion: v })}
-                      />
-                    </div>
+                    {/* Renderizada, no en crudo: el preview existe para juzgar
+                        si la jerarquía se ha interpretado bien, y eso no se ve
+                        en un textarea lleno de almohadillas. */}
+                    <CampoTexto
+                      id={`desc-${i}`}
+                      etiqueta="Descripción"
+                      valor={s.descripcion}
+                      onValor={(v) => cambiar(i, { descripcion: v })}
+                      alto="h-48"
+                      placeholder="Sin texto en el bloque."
+                    />
 
                     <div>
                       <span className="etiqueta">Material</span>
