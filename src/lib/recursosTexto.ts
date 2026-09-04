@@ -13,7 +13,7 @@
  * puede probar entero sin abrirla.
  */
 
-import { esEncabezadoReservado } from './estructuraSesion'
+import { comoActividad, esEncabezadoReservado } from './estructuraSesion'
 import { formatoCorto, formatoLargo } from './fechas'
 import { normalizarLinea, normalizarTexto } from './texto'
 
@@ -91,6 +91,19 @@ function trocearLinea(linea: string): string[] {
     .filter(Boolean)
 }
 
+/**
+ * Una línea sin viñeta ni número puede seguir siendo un ítem: mucha gente
+ * escribe la lista a pelo bajo «Material:», y una lista larga se parte en
+ * varias líneas sin marcar ninguna. Se pide que sea corta y sin punto final,
+ * que es lo que separa un ítem de una frase de la descripción. Lo que evita
+ * que este criterio —laxo a propósito— se coma un encabezado son los cortes
+ * que se comprueban ANTES en el bucle, empezando por `esEncabezadoReservado`.
+ */
+function pareceItem(linea: string): boolean {
+  const t = linea.trim()
+  return !!t && t.length < 80 && !t.endsWith('.')
+}
+
 /** `true` si la línea abre un apartado de material (con o sin separador). */
 function esEtiquetaMaterial(linea: string): boolean {
   const m = ETIQUETA_MATERIAL.exec(linea)
@@ -136,19 +149,24 @@ function separarEnlaces(contenido: string, anadirEnlace: (u: string) => void): s
  * conos del principio se recogen al final») y convertirlos en una lista de la
  * compra sería inventar datos, no extraerlos.
  *
- * Dos modos de lista, y son EXCLUYENTES:
+ * La lista puede venir en la misma línea de la etiqueta («Material: 12 conos,
+ * 4 aros»), debajo, o las dos cosas, y puede ocupar VARIAS líneas: con nueve
+ * grupos, una lista de material larga partida en tres renglones es lo normal, y
+ * perder los dos últimos es perder el viaje al almacén.
  *
- * - Modo LÍNEA: la etiqueta trae los ítems en su misma línea («Material: 12
- *   conos, 4 aros»). Se captura esa línea y NADA MÁS. Lo que venga debajo es
- *   otra cosa: el autor ya cerró la lista al escribirla entera de una vez.
- * - Modo BLOQUE: la etiqueta solo anuncia («Material:» y la lista debajo). El
- *   bloque continúa mientras las líneas lleven MARCA DE LISTA explícita
- *   —viñeta o numeración—, y se cierra en cuanto dejan de llevarla.
+ * Lo que decide dónde acaba la lista no es su forma, es dónde EMPIEZA otra
+ * cosa. El bloque se cierra en:
  *
- * Antes el bloque se abría siempre, y continuaba con cualquier línea «corta y
- * sin punto final». Ese criterio se ha quitado: es tan laxo que captura
- * encabezados. Con él, «Recursos: conos · pandereta» seguido de «Momento de
- * recogida» metía el encabezado del momento en la lista de la compra.
+ * - un encabezado de la estructura de la sesión (`esEncabezadoReservado`),
+ * - otra etiqueta de apartado o un encabezado de sesión,
+ * - una actividad («Nombre — descripción»): ahí ya es el cuerpo de la sesión,
+ * - una frase de verdad (larga, o con punto final),
+ * - un cambio de estilo: si la lista iba marcada con viñetas, una línea suelta
+ *   la cierra, y al revés. Mezclarlos sería colarse en la descripción.
+ *
+ * El guardarraíl de los encabezados es el que faltaba: sin él, «Recursos:
+ * conos · pandereta» seguido de «Momento de recogida» metía el encabezado del
+ * momento en la lista de la compra.
  */
 export function extraerRecursos(bloque: string): RecursosExtraidos {
   // Se normaliza aquí dentro, y no solo en el parser de la importación, porque
@@ -196,14 +214,12 @@ export function extraerRecursos(bloque: string): RecursosExtraidos {
     if (!separador && resto.trim()) continue
 
     lineasConsumidas.push(i)
+    consumir(resto)
 
-    // Modo LÍNEA: la etiqueta ya trae la lista. Se captura y se cierra aquí.
-    if (resto.trim()) {
-      consumir(resto)
-      continue
-    }
-
-    // Modo BLOQUE: la etiqueta solo anuncia. Sigue mientras haya marca de lista.
+    // La lista sigue debajo mientras no empiece otra cosa. Que la etiqueta ya
+    // trajera ítems en su propia línea no la cierra: una lista larga se parte
+    // en varios renglones, y el primero suele ir pegado a la etiqueta.
+    let modo: 'marcado' | 'suelto' | null = null
     let j = i + 1
     while (j < lineas.length) {
       const linea = lineas[j]
@@ -224,13 +240,26 @@ export function extraerRecursos(bloque: string): RecursosExtraidos {
       if (OTRA_ETIQUETA.test(linea) || CORTE_SESION.test(linea) || esEtiquetaMaterial(linea)) break
 
       const marcado = VINETA.exec(linea) ?? NUMERADA.exec(linea)
-      if (!marcado) break
-      // Un encabezado al que alguien le puso una viñeta delante sigue siendo un
-      // encabezado.
-      if (esEncabezadoReservado(marcado[1])) break
+      let contenido: string
+      if (marcado) {
+        if (modo === 'suelto') break
+        // Un encabezado al que alguien le puso una viñeta delante sigue siendo
+        // un encabezado.
+        if (esEncabezadoReservado(marcado[1])) break
+        modo = 'marcado'
+        contenido = marcado[1]
+      } else {
+        if (modo === 'marcado') break
+        // Una actividad («Nombre — descripción») es el cuerpo de la sesión, no
+        // un material: ahí la lista ya terminó aunque la línea sea corta.
+        if (comoActividad(linea)) break
+        if (!pareceItem(linea)) break
+        modo = 'suelto'
+        contenido = linea
+      }
 
       lineasConsumidas.push(j)
-      consumir(marcado[1])
+      consumir(contenido)
       j++
     }
 

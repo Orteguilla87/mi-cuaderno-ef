@@ -130,15 +130,22 @@ describe('extraerRecursos — formas en que se escribe el apartado', () => {
     expect(recursos).toEqual(['10 conos', '4 aros'])
   })
 
-  // El bloque solo continúa con marca de lista explícita. Antes bastaba con que
-  // la línea fuera «corta y sin punto final», y ese criterio se tragaba los
-  // encabezados de la sesión: «Recursos: conos · pandereta» seguido de «Momento
-  // de recogida» metía el momento en la lista de la compra. Se pierde la lista
-  // escrita a pelo, y es a propósito: material inventado es peor que material
-  // que falta, porque nadie revisa lo que ya parece escrito.
-  it('lista suelta, sin viñeta ni número: NO se captura', () => {
+  it('lista suelta, sin viñeta ni número', () => {
     const { recursos } = extraerRecursos(['Material:', '10 conos', '4 aros'].join('\n'))
-    expect(recursos).toEqual([])
+    expect(recursos).toEqual(['10 conos', '4 aros'])
+  })
+
+  it('una lista larga partida en varias líneas se lee entera', () => {
+    const { recursos } = extraerRecursos(
+      ['Material: 10 conos, 4 aros', '2 bancos suecos, 6 picas', 'petos de dos colores'].join('\n'),
+    )
+    expect(recursos).toEqual([
+      '10 conos',
+      '4 aros',
+      '2 bancos suecos',
+      '6 picas',
+      'petos de dos colores',
+    ])
   })
 
   it('admite «Recursos y materiales» y la etiqueta de una celda de tabla', () => {
@@ -151,11 +158,9 @@ describe('extraerRecursos — formas en que se escribe el apartado', () => {
     expect(extraerRecursos(bloque).recursos).toEqual(['10 conos', '4 aros', '2 picas'])
   })
 
-  // Los dos modos son excluyentes: si la etiqueta ya trae la lista escrita en su
-  // propia línea, el autor la cerró ahí. Lo de debajo es otra cosa.
-  it('la etiqueta trae ítems en su línea: se queda solo con esa línea', () => {
+  it('la etiqueta trae ítems en su línea Y lista debajo: captura las dos cosas', () => {
     const { recursos } = extraerRecursos(['Material: 12 conos', '- 4 aros'].join('\n'))
-    expect(recursos).toEqual(['12 conos'])
+    expect(recursos).toEqual(['12 conos', '4 aros'])
   })
 
   it('el bloque se corta en otra etiqueta y en un encabezado de sesión', () => {

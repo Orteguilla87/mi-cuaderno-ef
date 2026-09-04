@@ -100,6 +100,29 @@ describe('analizarTexto — títulos', () => {
     expect(sesiones[0].descripcion).toBe('Juegos de persecución.')
   })
 
+  it('la etiqueta de unidad manda sobre cualquier deducción', () => {
+    for (const etiqueta of [
+      'Unidad: Nos movemos por el espacio',
+      'UD: Nos movemos por el espacio',
+      'U.D.: Nos movemos por el espacio',
+      'Unidad didáctica: Nos movemos por el espacio',
+      'Título: Nos movemos por el espacio',
+    ]) {
+      const r = analizarTexto(`${etiqueta}\n\nSesión 1: Uno\nTexto.`)
+      expect(r.tituloUnidad).toBe('Nos movemos por el espacio')
+    }
+  })
+
+  it('«UNIDAD 1» a secas no es el título: se coge la línea de debajo', () => {
+    const r = analizarTexto('UNIDAD 1\nNos movemos por el espacio\n\nSesión 1: Uno\nTexto.')
+    expect(r.tituloUnidad).toBe('Nos movemos por el espacio')
+  })
+
+  it('la etiqueta puede ir debajo de la posición', () => {
+    const r = analizarTexto('UD 2\nTítulo: El bosque de los sentidos\n\nSesión 1: Uno\nTexto.')
+    expect(r.tituloUnidad).toBe('El bosque de los sentidos')
+  })
+
   it('sin encabezado por encima del primer corte no hay título de unidad', () => {
     const r = analizarTexto(
       'Esta programación se ha diseñado para el segundo trimestre del curso, en el pabellón.\n\nSesión 1: Uno\nTexto.',

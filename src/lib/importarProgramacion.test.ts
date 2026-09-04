@@ -193,6 +193,20 @@ describe('encabezados reservados — nunca son material', () => {
     expect(recursos).toEqual(['12 conos'])
   })
 
+  it('cortan también una lista suelta, sin viñetas', () => {
+    const { recursos } = extraerRecursos(
+      ['Material:', '12 conos', 'Parte principal', 'esto ya es la descripción'].join('\n'),
+    )
+    expect(recursos).toEqual(['12 conos'])
+  })
+
+  it('una actividad corta la lista aunque la línea sea corta', () => {
+    const { recursos } = extraerRecursos(
+      ['Recursos: conos · pandereta', 'Tulipán — Persecución'].join('\n'),
+    )
+    expect(recursos).toEqual(['conos', 'pandereta'])
+  })
+
   it('con viñeta delante siguen siendo encabezados', () => {
     const { recursos } = extraerRecursos(
       ['Material:', '- 12 conos', '- Momento de recogida', '- 4 aros'].join('\n'),

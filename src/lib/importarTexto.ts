@@ -165,6 +165,54 @@ function limpiarEncabezado(linea: string): string {
   return sinPosicion ? base : ''
 }
 
+// ——————————————————————— título de la unidad ———————————————————————
+
+/**
+ * Etiqueta explícita del título de la unidad, en el preámbulo: «Unidad: …»,
+ * «UD: …», «Unidad didáctica: …», «Título: …». Manda sobre cualquier deducción.
+ */
+const ETIQUETA_UNIDAD =
+  /^\s*(?:t[íi]tulo(?:\s+de\s+la\s+unidad)?|unidad(?:\s+did[áa]ctica)?|u\.?\s*d\.?)\s*[:\-–—]\s*(.+)$/i
+
+/**
+ * «Unidad 3», «UD 3», «U.D. 3» a secas, sin nada detrás: es la posición de la
+ * unidad, no su título, igual que «Sesión 3» no es el título de una sesión.
+ */
+const UNIDAD_POSICIONAL =
+  /^\s*(?:unidad(?:\s+did[áa]ctica)?|u\.?\s*d\.?)\s*(?:n[ºo°]?\s*)?\d*\s*[:.\-–—)]?\s*$/i
+
+/**
+ * Título de la unidad, de lo que va por encima del primer corte.
+ *
+ * Tres intentos, de más fiable a menos, y ninguno inventa: si el preámbulo es
+ * un párrafo de contexto («Esta programación se ha diseñado para…»), no hay
+ * título y la UI lo pide antes de dejar importar.
+ *
+ * El salto sobre la línea posicional es lo que arregla el caso corriente de un
+ * documento que empieza con «UNIDAD 1» en un renglón y el título en el
+ * siguiente: antes se quedaba con «UNIDAD 1», que no dice nada, y había que
+ * escribirlo a mano igualmente.
+ */
+function tituloDelPreambulo(preambulo: string[]): string | undefined {
+  for (const linea of preambulo) {
+    const etiqueta = ETIQUETA_UNIDAD.exec(linea)
+    const valor = etiqueta?.[1]?.trim()
+    if (valor) return valor
+  }
+
+  for (const linea of preambulo) {
+    if (!linea.trim()) continue
+    // Un párrafo corta la búsqueda: lo que venga después ya no es el
+    // encabezado de la unidad, es el cuerpo del documento.
+    if (!pareceEncabezado(linea)) return undefined
+    if (UNIDAD_POSICIONAL.test(linea)) continue
+    const candidato = limpiarEncabezado(linea)
+    if (candidato) return candidato
+  }
+
+  return undefined
+}
+
 // ——————————————————————— bloque → sesión ———————————————————————
 
 function parsearBloque(
@@ -304,14 +352,7 @@ export function analizarTexto(entrada: string): ImportacionParseada {
     }
   }
 
-  // Lo que va por encima del primer corte es el encabezado de la unidad, si
-  // tiene forma de encabezado. Si es un párrafo, no lo es: no se inventa.
-  let tituloUnidad: string | undefined
-  const preambulo = lineas.slice(0, cortes[0].linea)
-  const iPrimera = preambulo.findIndex((l) => l.trim())
-  if (iPrimera >= 0 && pareceEncabezado(preambulo[iPrimera])) {
-    tituloUnidad = limpiarEncabezado(preambulo[iPrimera]) || undefined
-  }
+  const tituloUnidad = tituloDelPreambulo(lineas.slice(0, cortes[0].linea))
 
   const sesiones = cortes.map((corte, i) => {
     const fin = i + 1 < cortes.length ? cortes[i + 1].linea : lineas.length
