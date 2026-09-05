@@ -69,6 +69,7 @@ export function HojaColumna({
   const [pesoUd, setPesoUd] = useState(0)
   const [rubricaId, setRubricaId] = useState('')
   const [caritas, setCaritas] = useState<3 | 5>(3)
+  const [paso, setPaso] = useState(1)
   const [max, setMax] = useState(10)
   const [componentes, setComponentes] = useState<ComponenteCalculo[]>([])
   const [editandoRubrica, setEditandoRubrica] = useState<string | null>(null)
@@ -102,6 +103,7 @@ export function HojaColumna({
       setPesoUd(columna.pesoUd)
       setRubricaId(columna.rubricaId ?? '')
       setCaritas(columna.caritas ?? 3)
+      setPaso(columna.paso && columna.paso > 0 ? columna.paso : 1)
       setMax(columna.escala?.max ?? 10)
       setComponentes(columna.calculo?.componentes ?? [])
     } else {
@@ -112,6 +114,7 @@ export function HojaColumna({
       setPesoUd(0)
       setRubricaId('')
       setCaritas(3)
+      setPaso(1)
       setMax(10)
       setComponentes([])
       setCriterioNueva(null)
@@ -170,6 +173,7 @@ export function HojaColumna({
         pesoUd: udId ? pesoUd : 0,
         rubricaId: rubricaId || undefined,
         caritas,
+        paso: tipo === 'contador' ? paso : undefined,
         escala: { min: 0, max, decimales: 1 },
         calculo: tipo === 'calculo' ? { componentes } : undefined,
         fecha: aISO(),
@@ -196,6 +200,7 @@ export function HojaColumna({
         pesoUd: udId ? pesoUd : 0,
         rubricaId: rubricaId || undefined,
         caritas,
+        paso: columna.tipo === 'contador' ? paso : undefined,
         escala: columna.tipo === 'numero' ? { min: 0, max, decimales: 1 } : undefined,
         // El cálculo es el único tipo cuyos parámetros se editan tras crearlo.
         calculo: columna.tipo === 'calculo' ? { componentes } : undefined,
@@ -317,6 +322,27 @@ export function HojaColumna({
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {tipo === 'contador' && (
+            <div>
+              <label className="etiqueta" htmlFor="col-paso">
+                Cuánto suma cada toque
+              </label>
+              <Campo
+                id="col-paso"
+                type="number"
+                className="campo cifra"
+                valor={String(paso)}
+                min={1}
+                onValor={(v) => setPaso(Math.max(1, Number(v) || 1))}
+              />
+              <p className="mt-1 text-xs texto-suave">
+                El contador no tiene tope y no cuenta para la nota de la unidad ni del trimestre:
+                es un registro de aula. Para usarlo en una nota, añádelo a mano como componente de
+                una columna de cálculo.
+              </p>
             </div>
           )}
 
@@ -828,9 +854,22 @@ function EditorCalculo({
   candidatas: Columna[]
   onCambio: (comps: ComponenteCalculo[]) => void
 }) {
-  // Solo se promedian columnas con valor sobre 10; texto y positivos/negativos
-  // no entran (el motor los descarta), así que no se ofrecen como componentes.
-  const PROMEDIABLES: TipoColumna[] = ['numero', 'caritas', 'si_no', 'rubrica', 'calculo']
+  // Columnas con valor sobre 10, más el contador. El texto y los
+  // positivos/negativos no entran: el motor los descarta, así que ofrecerlos
+  // sería prometer algo que no ocurre.
+  //
+  // El contador sí se ofrece —§M5: disponible para quien lo quiera usar
+  // explícitamente—, pero entra con su número tal cual, no reescalado a 0–10:
+  // no tiene tope al que referirlo. Por eso NUNCA se añade solo; hay que
+  // marcarlo aquí a mano.
+  const PROMEDIABLES: TipoColumna[] = [
+    'numero',
+    'caritas',
+    'si_no',
+    'rubrica',
+    'calculo',
+    'contador',
+  ]
   const elegibles = candidatas.filter((c) => PROMEDIABLES.includes(c.tipo))
 
   const pesoDe = (id: string) => componentes.find((c) => c.columnaId === id)?.pesoPct

@@ -467,6 +467,7 @@ export type UnidadCalificable = UnidadEnCurso | UnidadInfantil
 export type TipoColumna =
   | 'numero'
   | 'positivo_negativo'
+  | 'contador'
   | 'caritas'
   | 'si_no'
   | 'rubrica'
@@ -480,9 +481,9 @@ export const TIPOS_NUMERICOS: TipoColumna[] = ['numero']
  * (§ motor de `lib/notas.ts`): todos los que `valorNormalizado` sabe llevar a
  * 0–10 por sí solos.
  *
- * Quedan fuera `texto` y `positivo_negativo` (un contador no es un logro sobre
- * 10) y también `calculo`, que ya es una media de otras columnas: incluirla
- * contaría esas notas dos veces.
+ * Quedan fuera `texto`, `positivo_negativo` y `contador` (un contador no es un
+ * logro sobre 10: es un registro de aula) y también `calculo`, que ya es una
+ * media de otras columnas: incluirla contaría esas notas dos veces.
  */
 export const TIPOS_CALIFICABLES: TipoColumna[] = ['numero', 'caritas', 'si_no', 'rubrica']
 
@@ -518,6 +519,11 @@ export interface Columna {
   escala?: { min: number; max: number; decimales: 0 | 1 | 2 }
   // — tipo 'caritas' —
   caritas?: 3 | 5
+  /**
+   * — tipo 'contador' — cuánto suma o resta cada pulsación. Ausente = 1.
+   * El valor de la celda no tiene tope por arriba ni por abajo.
+   */
+  paso?: number
   // — tipo 'rubrica' —
   rubricaId?: Id
   // — tipo 'calculo' —
@@ -596,6 +602,12 @@ export interface ValorCelda {
   numero?: number
   positivos?: number
   negativos?: number
+  /**
+   * — tipo 'contador' — entero con signo. AUSENTE Y CERO SON DISTINTOS:
+   * ausente = la celda no se ha usado; 0 = se sumó y se restó lo mismo. Por eso
+   * nunca se escribe un 0 por defecto y «borrar» vuelve a ausente, no a 0.
+   */
+  contador?: number
   /** Índice de la carita elegida, 0 = la peor. */
   carita?: number
   marcado?: boolean

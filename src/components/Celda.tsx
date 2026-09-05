@@ -197,9 +197,186 @@ function SelectorCaritas({
 }
 
 /**
- * Celda de la rejilla. Los tipos rápidos (lista de control, caritas y
- * positivos/negativos) se editan con un solo toque sobre la propia celda; los
- * que necesitan más pantalla abren el evaluador de columna.
+ * Texto de un contador. Vacío es vacío: sin registro NO se pinta un 0, porque
+ * «no lo he usado» y «sumé y resté lo mismo» son dos cosas distintas. El menos
+ * es el signo tipográfico «−» (U+2212), no el guion del teclado: a un vistazo,
+ * en la pista y con sol, un guion corto se confunde con suciedad de pantalla.
+ */
+function textoContador(n: number | undefined): string {
+  if (n == null) return ''
+  return n < 0 ? `−${Math.abs(n)}` : String(n)
+}
+
+/**
+ * Celda de contador: un número con signo que sube y baja sin tope.
+ *
+ * El toque abre un control mínimo —«−», el número, «+»— que NO se cierra al
+ * pulsar: en clase se toca varias veces seguidas sobre el mismo alumno. Cada
+ * pulsación persiste al momento, no al cerrar, porque la app se usa en la pista
+ * y un cierre que no llega no puede costar los registros.
+ *
+ * Mismo anclaje `position: fixed` que el selector de caritas, y por el mismo
+ * motivo: la rejilla vive en un contenedor con `overflow-x-auto` que recortaría
+ * un popover interno.
+ */
+function CeldaContador({
+  valor,
+  paso,
+  etiquetaCelda,
+  onCambiar,
+  onBorrar,
+}: {
+  valor: number | undefined
+  paso: number
+  etiquetaCelda: string
+  onCambiar: (n: number) => void
+  onBorrar: () => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const anclaRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [coord, setCoord] = useState<{ top: number; left: number } | null>(null)
+  // Borrador del campo de escritura directa: mientras se teclea puede pasar por
+  // estados no numéricos («−», «») que todavía no son un valor que guardar.
+  const [borrador, setBorrador] = useState('')
+
+  useLayoutEffect(() => {
+    if (!abierto) return
+    const ancla = anclaRef.current?.getBoundingClientRect()
+    const panel = panelRef.current?.getBoundingClientRect()
+    if (!ancla || !panel) return
+    const margen = 8
+    let left = ancla.left + ancla.width / 2 - panel.width / 2
+    left = Math.max(margen, Math.min(left, window.innerWidth - panel.width - margen))
+    let top = ancla.bottom + 6
+    if (top + panel.height > window.innerHeight - margen) top = ancla.top - panel.height - 6
+    setCoord({ top: Math.max(margen, top), left })
+  }, [abierto])
+
+  useEffect(() => {
+    if (!abierto) return
+    const alPulsarTecla = (e: KeyboardEvent) => e.key === 'Escape' && setAbierto(false)
+    window.addEventListener('keydown', alPulsarTecla)
+    return () => window.removeEventListener('keydown', alPulsarTecla)
+  }, [abierto])
+
+  // El primer «+» sobre una celda vacía la deja en el paso (1 por defecto); el
+  // primer «−», en su negativo. De ahí en adelante, suma y resta normales.
+  const sumar = (signo: 1 | -1) => onCambiar((valor ?? 0) + signo * paso)
+
+  const texto = textoContador(valor)
+  const negativo = valor != null && valor < 0
+
+  return (
+    <>
+      <button
+        ref={anclaRef}
+        className={
+          CLASE_CELDA + ' cifra text-lg ' + (negativo ? 'text-acento' : '')
+        }
+        onClick={() => {
+          setCoord(null)
+          setBorrador(valor == null ? '' : String(valor))
+          setAbierto(true)
+        }}
+        aria-haspopup="dialog"
+        aria-expanded={abierto}
+        aria-label={`${etiquetaCelda}: ${valor == null ? 'sin registro' : texto}`}
+      >
+        {/* Vacío se marca con el mismo «·» que el resto de tipos sin valor:
+            un 0 aquí sería mentira. */}
+        <span aria-hidden>{texto || '·'}</span>
+      </button>
+
+      {abierto && (
+        <>
+          <button
+            className="fixed inset-0 z-fab cursor-default"
+            aria-label="Cerrar contador"
+            onClick={() => {
+              setAbierto(false)
+              anclaRef.current?.focus()
+            }}
+          />
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={etiquetaCelda}
+            style={{
+              top: coord?.top ?? 0,
+              left: coord?.left ?? 0,
+              visibility: coord ? 'visible' : 'hidden',
+            }}
+            className="fixed z-hoja flex max-w-[92vw] flex-col gap-2 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+          >
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => sumar(-1)}
+                aria-label={`Restar ${paso}`}
+                className="flex min-h-tap min-w-tap items-center justify-center rounded-xl bg-acento/10 text-acento transition active:scale-95
+                           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-acento/40"
+              >
+                <Minus size={22} strokeWidth={3} aria-hidden />
+              </button>
+
+              <input
+                type="text"
+                inputMode="numeric"
+                value={borrador}
+                onChange={(e) => {
+                  const bruto = e.target.value
+                  // El «−» tipográfico se acepta igual que el guion: es el que
+                  // se pinta en la celda y el que copia quien copia de ahí.
+                  const limpio = bruto.replace(/−/g, '-').replace(/[^\d-]/g, '')
+                  setBorrador(limpio)
+                  const n = Number.parseInt(limpio, 10)
+                  // Un borrador intermedio («», «-») no escribe nada: borrar se
+                  // hace con su botón, para no confundir vacío con 0.
+                  if (Number.isFinite(n)) onCambiar(n)
+                }}
+                aria-label={`${etiquetaCelda}, número`}
+                className={
+                  'cifra h-12 w-20 rounded-xl border-2 border-borde bg-fondo text-center text-2xl font-bold ' +
+                  'focus:border-primario focus:outline-none dark:border-noche-borde dark:bg-noche-elevada ' +
+                  (negativo ? 'text-acento' : '')
+                }
+              />
+
+              <button
+                onClick={() => sumar(1)}
+                aria-label={`Sumar ${paso}`}
+                className="flex min-h-tap min-w-tap items-center justify-center rounded-xl bg-lima/20 text-lima-oscuro transition active:scale-95
+                           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 dark:text-lima"
+              >
+                <Plus size={22} strokeWidth={3} aria-hidden />
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                onBorrar()
+                setBorrador('')
+                setAbierto(false)
+                anclaRef.current?.focus()
+              }}
+              disabled={valor == null}
+              className="btn w-full text-sm disabled:opacity-40"
+            >
+              <Delete size={16} aria-hidden />
+              Borrar (dejar vacío)
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+/**
+ * Celda de la rejilla. Los tipos rápidos (lista de control, caritas,
+ * positivos/negativos y contador) se editan con un solo toque sobre la propia
+ * celda; los que necesitan más pantalla abren el evaluador de columna.
  */
 export function Celda({
   columna,
@@ -207,6 +384,7 @@ export function Celda({
   valor,
   calculado,
   onCambiar,
+  onBorrar,
   onAbrirEditor,
 }: {
   columna: Columna
@@ -215,6 +393,8 @@ export function Celda({
   /** Resultado de una columna de tipo 'calculo' o 'rubrica'; lo aporta la rejilla. */
   calculado?: ResultadoCalculo
   onCambiar: (cambios: Cambios) => void | Promise<void>
+  /** Deja la celda SIN registro (distinto de escribir 0). Lo usa el contador. */
+  onBorrar: () => void | Promise<void>
   onAbrirEditor: () => void
 }) {
   const base = CLASE_CELDA
@@ -278,6 +458,17 @@ export function Celda({
         </div>
       )
     }
+
+    case 'contador':
+      return (
+        <CeldaContador
+          valor={valor?.contador}
+          paso={columna.paso && columna.paso > 0 ? columna.paso : 1}
+          etiquetaCelda={`${nombre}, ${columna.titulo}`}
+          onCambiar={(n) => void onCambiar({ contador: n })}
+          onBorrar={() => void onBorrar()}
+        />
+      )
 
     case 'numero': {
       const n = valor?.numero

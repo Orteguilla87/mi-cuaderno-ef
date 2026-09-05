@@ -31,6 +31,7 @@ import {
   agruparPorUnidad,
   calcularColumna,
   columnasDe,
+  borrarValor,
   guardarValor,
   mediaDe,
   pegarColumnas,
@@ -291,6 +292,14 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
     return deshacer
   }
 
+  /**
+   * Deja la celda sin registro. No es `cambiar({ contador: undefined })`: en un
+   * contador, vacío y 0 son estados distintos y la fila tiene que desaparecer.
+   */
+  async function borrar(columna: Columna, alumnoId: string) {
+    return borrarValor(columna.id, alumnoId)
+  }
+
   return (
     <>
       {/* Solo título + subtítulo en la cabecera (§ Bloque 5.1): con acciones
@@ -458,6 +467,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           onEvaluar={abrirEditor}
           onAplicarGrupo={setAplicando}
           onCambiar={cambiar}
+          onBorrar={borrar}
         />
       )}
 
@@ -683,7 +693,16 @@ function CabeceraColumna({
       // En apaisado la columna baja a 64 px y el relleno se aprieta: son ~15 px
       // por columna, que en una pantalla girada es una columna entera más
       // visible sin tener que arrastrar la rejilla de lado.
-      className="min-w-[76px] border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada apaisado:sticky apaisado:top-0 apaisado:z-10 apaisado:min-w-[64px] lg:sticky lg:top-0 lg:z-10"
+      //
+      // El contador va aún más estrecho: en su celda solo cabe —y solo hay que
+      // leer— un número, así que robar ancho al resto de la rejilla no tiene
+      // sentido.
+      className={
+        (columna.tipo === 'contador'
+          ? 'min-w-[52px] apaisado:min-w-[46px] '
+          : 'min-w-[76px] apaisado:min-w-[64px] ') +
+        'border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada apaisado:sticky apaisado:top-0 apaisado:z-10 lg:sticky lg:top-0 lg:z-10'
+      }
     >
       <button
         className="flex h-full w-full flex-col items-center gap-0.5 px-2 py-2 apaisado:px-1 apaisado:py-1"
@@ -722,6 +741,7 @@ function Rejilla({
   onEvaluar,
   onAplicarGrupo,
   onCambiar,
+  onBorrar,
 }: {
   alumnos: Alumno[]
   visibles: Columna[]
@@ -740,6 +760,8 @@ function Rejilla({
     alumnoId: string,
     cambios: Parameters<typeof guardarValor>[2],
   ) => Promise<() => Promise<void>>
+  /** Borra la celda entera (vuelve a «sin registro»), no la pone a 0. */
+  onBorrar: (columna: Columna, alumnoId: string) => Promise<() => Promise<void>>
 }) {
   // Los botones +/− abren la hoja de observación (M4) con el signo ya elegido,
   // para poder escoger tipo y escribir el texto — no suman en el acto.
@@ -850,6 +872,7 @@ function Rejilla({
                     // Escritura optimista sin aviso (§7): un toque suelto no
                     // necesita confirmación, igual que en el pase de lista.
                     onCambiar={(cambios) => void onCambiar(columna, a.id, cambios)}
+                    onBorrar={() => void onBorrar(columna, a.id)}
                     onAbrirEditor={() => onEvaluar(columna, fila)}
                   />
                 </td>

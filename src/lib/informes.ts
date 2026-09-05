@@ -151,6 +151,13 @@ export async function generarInformeIndividual(
       startY: y + 3,
       head: [['Columna', 'Valor (0–10)']],
       body: columnas.map((c: Columna) => {
+        // El contador va con su número tal cual: no es una nota sobre 10, y
+        // reescalarlo sería inventarse un dato. Sin registro se deja vacío,
+        // nunca un 0 (§ contador: vacío y 0 son estados distintos).
+        if (c.tipo === 'contador') {
+          const n = porColumna.get(c.id)?.contador
+          return [c.titulo, n == null ? '' : String(n)]
+        }
         const n = valorNormalizado(c, porColumna.get(c.id), c.rubricaId ? rubricas.get(c.rubricaId) : undefined)
         return [c.titulo, n == null ? '—' : n.toFixed(1)]
       }),
@@ -193,6 +200,12 @@ export async function exportarNotasXLSX(
   const filas = alumnos.map((a) => {
     const memo = new Map<string, ResultadoCalculo>()
     const valoresFila = columnas.map((c) => {
+      // El contador se exporta como el entero que es, no normalizado a 0–10; y
+      // una celda sin registro sale VACÍA, jamás como 0.
+      if (c.tipo === 'contador') {
+        const n = mapa.get(`${c.id}|${a.id}`)?.contador
+        return n == null ? '' : n
+      }
       const n =
         c.tipo === 'calculo'
           ? calcularColumna(c, columnasPorId, mapa, a.id, rubricas, memo).valor

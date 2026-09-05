@@ -24,6 +24,11 @@ export const TIPOS_COLUMNA: {
     etiqueta: 'Positivos y negativos',
     descripcion: 'Contadores + y − que se acumulan',
   },
+  {
+    tipo: 'contador',
+    etiqueta: 'Contador',
+    descripcion: 'Un número que sube y baja, p. ej. faltas de material',
+  },
   { tipo: 'caritas', etiqueta: 'Caritas', descripcion: 'Escala visual de 3 o 5 niveles' },
   { tipo: 'si_no', etiqueta: 'Lista de control', descripcion: 'Conseguido o no conseguido' },
   { tipo: 'rubrica', etiqueta: 'Rúbrica', descripcion: 'Varios criterios con niveles' },
@@ -63,6 +68,8 @@ export async function crearColumna(datos: {
   fecha?: string
   escala?: Columna['escala']
   caritas?: 3 | 5
+  /** Solo tipo 'contador': cuánto suma o resta cada pulsación. */
+  paso?: number
   rubricaId?: string
   calculo?: Columna['calculo']
 }): Promise<string> {
@@ -84,6 +91,7 @@ export async function crearColumna(datos: {
     criterioCodigo: datos.criterioCodigo,
     escala: datos.tipo === 'numero' ? (datos.escala ?? { min: 0, max: 10, decimales: 1 }) : undefined,
     caritas: datos.tipo === 'caritas' ? (datos.caritas ?? 3) : undefined,
+    paso: datos.tipo === 'contador' ? (datos.paso && datos.paso > 0 ? datos.paso : 1) : undefined,
     rubricaId: datos.tipo === 'rubrica' ? datos.rubricaId : undefined,
     calculo: datos.tipo === 'calculo' ? (datos.calculo ?? { componentes: [] }) : undefined,
   }
@@ -186,6 +194,26 @@ export async function guardarValor(
   }
   await db.valores.add(nuevo)
   return async () => void (await db.valores.delete(nuevo.id))
+}
+
+/**
+ * Borra la celda entera: la fila deja de existir, que no es lo mismo que
+ * dejarla a 0. Lo necesita el contador, donde vacío y 0 son estados distintos,
+ * y sirve igual para cualquier otro tipo.
+ */
+export async function borrarValor(
+  columnaId: string,
+  alumnoId: string,
+): Promise<() => Promise<void>> {
+  const previo = await db.valores
+    .where('[columnaId+alumnoId]')
+    .equals([columnaId, alumnoId])
+    .first()
+  if (!previo) return async () => {}
+
+  const antes = { ...previo }
+  await db.valores.delete(previo.id)
+  return async () => void (await db.valores.put(antes))
 }
 
 /**
@@ -300,11 +328,35 @@ export function valorNormalizado(
       return pesos === 0 ? null : suma / pesos
     }
     default:
-      // positivo_negativo, texto y calculo no se auto-normalizan aquí. El de
-      // cálculo se resuelve con `calcularColumna`, que necesita el resto de
-      // columnas y no cabe en esta firma.
+      // positivo_negativo, contador, texto y calculo no se auto-normalizan
+      // aquí. El contador es deliberado: es un registro de aula, no una nota,
+      // así que devolver null lo mantiene fuera de la media de la unidad, del
+      // trimestre y de `mediaDe` mientras el docente no lo pida explícitamente
+      // (para eso está `valorReferenciable`). El de cálculo se resuelve con
+      // `calcularColumna`, que necesita el resto de columnas y no cabe en esta
+      // firma.
       return null
   }
+}
+
+/**
+ * Valor de una celda tal y como puede REFERENCIARSE en una columna calculada.
+ *
+ * Es `valorNormalizado` más el contador, que entra con su número tal cual (no
+ * hay escala a la que llevarlo: no tiene tope). La separación es la que pide
+ * §M5: el contador no cuenta por defecto en ninguna nota, pero está disponible
+ * para quien lo elija a mano como componente de un cálculo.
+ *
+ * Una celda sin registro devuelve `null` en ambos casos: ausencia de dato, que
+ * el motor excluye y renormaliza. Nunca un 0.
+ */
+export function valorReferenciable(
+  columna: Columna,
+  valor: ValorCelda | undefined,
+  rubrica?: Rubrica,
+): number | null {
+  if (columna.tipo === 'contador') return valor?.contador ?? null
+  return valorNormalizado(columna, valor, rubrica)
 }
 
 /**
@@ -367,7 +419,9 @@ export function calcularColumna(
       normal = calcularColumna(col, columnasPorId, valores, alumnoId, rubricas, memo, enCurso).valor
     } else {
       const v = valores.get(`${col.id}|${alumnoId}`)
-      normal = valorNormalizado(col, v, col.rubricaId ? rubricas.get(col.rubricaId) : undefined)
+      // `valorReferenciable` y no `valorNormalizado`: aquí el docente ha
+      // elegido el componente a mano, así que un contador sí puede entrar.
+      normal = valorReferenciable(col, v, col.rubricaId ? rubricas.get(col.rubricaId) : undefined)
     }
     if (normal == null) continue
 
