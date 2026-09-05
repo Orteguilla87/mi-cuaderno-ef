@@ -53,7 +53,8 @@ import {
   type ImpactoUnidad,
   type ResumenCopia,
 } from '../db/planificador'
-import { huecosDe, type HuecoCalendario } from '../db/sesiones'
+import { huecosCanceladosDe, huecosDe, type HuecoCalendario } from '../db/sesiones'
+import { BotonNoHayClase, FilasCanceladas } from '../components/ClasesCanceladas'
 import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
@@ -160,6 +161,12 @@ function VistaSemana({
     () => huecosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
     [lunes],
   )
+  // Las clases canceladas de un día suelto se enseñan aparte, apagadas: quitar
+  // una clase no puede ser un hueco que desaparece sin explicación.
+  const canceladas = useLiveQuery(
+    () => huecosCanceladosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
+    [lunes],
+  )
   const curso = useLiveQuery(() => leerCursoActivo(), [])
   const hoy = aISO()
 
@@ -170,6 +177,7 @@ function VistaSemana({
   }
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
+  const canceladasDe = (d: number) => (canceladas ?? []).filter((h) => h.diaSemana === d)
 
   // Un día no lectivo (§ Bloque 7.2) se enseña marcado, sin huecos «Planificar»
   // ni creación de sesión al vuelo: la fuente de «¿toca clase?» es SIEMPRE
@@ -223,9 +231,10 @@ function VistaSemana({
       ) : (
         [1, 2, 3, 4, 5].map((d) => {
           const delDia = porDia(d)
+          const sinClase = canceladasDe(d)
           const estado = estados[d - 1]
           const noLectivo = estado && estado.tipo !== 'lectivo' ? estado : null
-          if (delDia.length === 0 && !noLectivo) return null
+          if (delDia.length === 0 && sinClase.length === 0 && !noLectivo) return null
           const fecha = sumarDias(lunes, d - 1)
           return (
             <section key={d}>
@@ -238,40 +247,55 @@ function VistaSemana({
               {noLectivo ? (
                 <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
               ) : (
+                <>
                 <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2">
                   {delDia.map((h) => (
                     <li key={`${h.grupo.id}-${h.horaInicio}`}>
-                      <button
-                        className="tarjeta-pulsable flex w-full items-center gap-3 text-left"
-                        onClick={() => void abrir(h)}
-                      >
-                        <span
-                          className="color-dato h-10 w-2 shrink-0 rounded-full"
-                          style={variablesColor(h.grupo.colorId ?? h.grupo.color)}
-                          aria-hidden
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <span className="truncate font-bold">{h.grupo.nombre}</span>
-                            <BadgeEtapa etapa={h.grupo.etapa} nivel={h.grupo.nivel} />
-                          </span>
-                          <span className="cifra mt-0.5 block truncate text-sm texto-suave">
-                            {h.horaInicio && h.horaFin ? `${h.horaInicio}–${h.horaFin}` : 'Sin hora fija'}
-                            {h.sesion?.titulo ? ` · ${h.sesion.titulo}` : ''}
-                          </span>
-                        </span>
-                        <span
-                          className={
-                            'shrink-0 text-xs font-bold ' +
-                            (h.sesion ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
-                          }
+                      <div className="tarjeta-pulsable flex w-full items-center gap-3">
+                        <button
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                          onClick={() => void abrir(h)}
                         >
-                          {h.sesion ? `${h.sesion.juegos.length} juegos` : 'Planificar'}
-                        </span>
-                      </button>
+                          <span
+                            className="color-dato h-10 w-2 shrink-0 rounded-full"
+                            style={variablesColor(h.grupo.colorId ?? h.grupo.color)}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-2">
+                              <span className="truncate font-bold">{h.grupo.nombre}</span>
+                              <BadgeEtapa etapa={h.grupo.etapa} nivel={h.grupo.nivel} />
+                            </span>
+                            <span className="cifra mt-0.5 block truncate text-sm texto-suave">
+                              {h.horaInicio && h.horaFin ? `${h.horaInicio}–${h.horaFin}` : 'Sin hora fija'}
+                              {h.sesion?.titulo ? ` · ${h.sesion.titulo}` : ''}
+                            </span>
+                          </span>
+                          <span
+                            className={
+                              'shrink-0 text-xs font-bold ' +
+                              (h.sesion ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
+                            }
+                          >
+                            {h.sesion ? `${h.sesion.juegos.length} juegos` : 'Planificar'}
+                          </span>
+                        </button>
+                        {/* Un hueco sin planificar se puede quitar de ese día
+                            sin tocar el horario; con sesión, eso se decide en
+                            su detalle, donde se ve qué se pierde. */}
+                        {!h.sesion && (
+                          <BotonNoHayClase
+                            grupo={h.grupo}
+                            fecha={h.fecha}
+                            horaInicio={h.horaInicio}
+                          />
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
+                <FilasCanceladas huecos={sinClase} />
+                </>
               )}
             </section>
           )

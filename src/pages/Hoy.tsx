@@ -19,7 +19,8 @@ import { ValoracionSesion } from '../components/ValoracionSesion'
 import { leerCursoActivo } from '../db/curso'
 import { db } from '../db/db'
 import { crearSesion, lunesDe, semanaActual } from '../db/planificador'
-import { huecosDe, type HuecoCalendario } from '../db/sesiones'
+import { huecosCanceladosDe, huecosDe, type HuecoCalendario } from '../db/sesiones'
+import { BotonNoHayClase, FilasCanceladas } from '../components/ClasesCanceladas'
 import type { CursoEscolar, Grupo, Sesion } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import {
@@ -137,6 +138,13 @@ export function Hoy() {
       .sort((a, b) => (a.horaInicio ?? '').localeCompare(b.horaInicio ?? ''))
   }, [dia, fecha])
 
+  // Clases quitadas de este día concreto: se enseñan al final, apagadas y con
+  // «Restaurar», para que ocultar una clase nunca sea un hueco sin explicación.
+  const canceladas = useLiveQuery(
+    async () => (dia === null ? [] : huecosCanceladosDe({ desde: fecha, hasta: fecha })),
+    [dia, fecha],
+  )
+
   // Solo la jornada de hoy conoce «ahora»: en otros días no hay clase en curso.
   // Una clase sin hora fija (sesión movida a un día sin franja) no puede estar
   // «en curso» ni ser «la siguiente»: no hay con qué comparar.
@@ -190,7 +198,7 @@ export function Hoy() {
 
         {!estado ? null : estado.tipo !== 'lectivo' ? (
           <MensajeNoLectivo estado={estado} curso={curso} />
-        ) : clases?.length === 0 ? (
+        ) : clases?.length === 0 && canceladas?.length === 0 ? (
           <div className="tarjeta text-center">
             <p className="text-base font-semibold">Sin clases el {NOMBRES_DIA[estado.dia - 1]}</p>
             <p className="mt-1 text-sm texto-suave">
@@ -233,6 +241,13 @@ export function Hoy() {
                 ))}
               </ul>
             </section>
+
+            {canceladas && canceladas.length > 0 && (
+              <section>
+                <TituloSeccion>Sin clase hoy</TituloSeccion>
+                <FilasCanceladas huecos={canceladas} />
+              </section>
+            )}
 
             {clases && clases.length > 0 && (
               <BotonMaterial
@@ -347,6 +362,10 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
     () => huecosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
     [lunes],
   )
+  const canceladas = useLiveQuery(
+    () => huecosCanceladosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
+    [lunes],
+  )
 
   /**
    * Asistencia de toda la semana de una vez, indexada por grupo+fecha: las
@@ -380,6 +399,7 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
   }, [lunes])
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
+  const canceladasDe = (d: number) => (canceladas ?? []).filter((h) => h.diaSemana === d)
 
   const lunesHoy = lunesDe(hoy)
   const viernes = sumarDias(lunes, 4)
@@ -424,13 +444,14 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
 
       {[1, 2, 3, 4, 5].map((d) => {
         const delDia = porDia(d)
+        const sinClase = canceladasDe(d)
         const fecha = sumarDias(lunes, d - 1)
         // `huecosDe` ya no devuelve nada en un día no lectivo (festivo,
         // periodo o fuera de curso): sin este chequeo aparte, ese día
         // desaparecería sin más en vez de enseñar el motivo.
         const est = curso ? estadoDia(fecha, curso) : undefined
         const noLectivo = est && est.tipo !== 'lectivo' ? est : null
-        if (delDia.length === 0 && !noLectivo) return null
+        if (delDia.length === 0 && sinClase.length === 0 && !noLectivo) return null
         return (
           <section key={d}>
             <TituloSeccion>
@@ -441,20 +462,23 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
             {noLectivo ? (
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
-              <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-                {delDia.map((h) => {
-                  const c = conteos?.get(`${h.grupo.id}|${h.fecha}`)
-                  return (
-                    <li key={`${h.grupo.id}-${h.horaInicio}`}>
-                      <TarjetaSesionSemana
-                        hueco={h}
-                        registrados={c?.registrados ?? 0}
-                        totalAlumnos={c?.totalAlumnos ?? 0}
-                      />
-                    </li>
-                  )
-                })}
-              </ul>
+              <>
+                <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+                  {delDia.map((h) => {
+                    const c = conteos?.get(`${h.grupo.id}|${h.fecha}`)
+                    return (
+                      <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                        <TarjetaSesionSemana
+                          hueco={h}
+                          registrados={c?.registrados ?? 0}
+                          totalAlumnos={c?.totalAlumnos ?? 0}
+                        />
+                      </li>
+                    )
+                  })}
+                </ul>
+                <FilasCanceladas huecos={sinClase} />
+              </>
             )}
           </section>
         )
@@ -602,6 +626,12 @@ function TarjetaSesionSemana({
           <button className="btn-suave w-full" onClick={() => void editar()}>
             Editar
           </button>
+
+          {/* Solo sin sesión: con una planificada, quitarla se decide en su
+              detalle, donde se ve qué contenido se pierde. */}
+          {!sesion && (
+            <BotonNoHayClase grupo={grupo} fecha={fecha} horaInicio={horaInicio} variante="ancho" />
+          )}
         </div>
       )}
     </div>
@@ -736,6 +766,10 @@ function TarjetaClase({
           <button className="btn-suave w-full" onClick={() => void editar()}>
             Editar sesión
           </button>
+
+          {!sesion && (
+            <BotonNoHayClase grupo={grupo} fecha={fecha} horaInicio={horaInicio} variante="ancho" />
+          )}
         </div>
       )}
     </div>

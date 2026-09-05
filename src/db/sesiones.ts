@@ -19,14 +19,21 @@
  * lee exclusivamente lo persistido en Dexie y filtra siempre por el calendario
  * escolar (`lib/calendarioEscolar.ts`), para que las cinco vistas dejen de
  * poder desincronizarse entre sí.
+ *
+ * Los HUECOS planificables sí se derivan del horario del grupo, y por eso
+ * borrar una sesión no quitaba la clase de las vistas: el hueco volvía a
+ * aparecer vacío en cada render. `db.clasesCanceladas` es la excepción por
+ * grupo y día que faltaba —«este día, este grupo, no hay clase»— y se aplica
+ * aquí, en el único sitio donde se generan huecos, para que las cuatro vistas
+ * que los pintan la respeten sin tocarlas.
  */
 
 import { estadoDia, esDiaLectivo, type EstadoDia } from '../lib/calendarioEscolar'
 import { diaLectivo, sumarDias } from '../lib/fechas'
-import { db } from './db'
+import { db, nuevoId } from './db'
 import { gruposVisibles } from './grupos'
 import { fechasDeClase } from './planificador'
-import type { Grupo, Sesion } from './types'
+import type { ClaseCancelada, Grupo, Sesion } from './types'
 
 interface RangoGrupo {
   desde: string
@@ -106,15 +113,66 @@ export interface HuecoCalendario {
  * moverla la hacía desaparecer de estas cuatro vistas aunque siguiera
  * guardada.
  */
-export async function huecosDe({ desde, hasta, grupoId }: RangoGrupo): Promise<HuecoCalendario[]> {
+export async function huecosDe(rango: RangoGrupo): Promise<HuecoCalendario[]> {
+  const { activos } = await generarHuecos(rango)
+  return activos
+}
+
+/** Un hueco del horario que el usuario ha cancelado para ese día concreto. */
+export interface HuecoCancelado extends HuecoCalendario {
+  cancelada: ClaseCancelada
+}
+
+/**
+ * Huecos cancelados de un rango (§ 8.5). Las vistas los pintan apagados con un
+ * «Restaurar»: una clase cancelada no desaparece en silencio, se ve que se
+ * ocultó ese día concreto y se puede devolver en un toque.
+ */
+export async function huecosCanceladosDe(rango: RangoGrupo): Promise<HuecoCancelado[]> {
+  const { cancelados } = await generarHuecos(rango)
+  return cancelados
+}
+
+/** Una excepción tapa un hueco si coincide el día y, si la lleva, la franja. */
+function tapa(c: ClaseCancelada, grupoId: string, fecha: string, horaInicio?: string) {
+  if (c.grupoId !== grupoId || c.fecha !== fecha) return false
+  // Sin franja, la excepción cancela el día entero para ese grupo.
+  return c.horaInicio === undefined || c.horaInicio === horaInicio
+}
+
+/**
+ * Generación de huecos, separando los cancelados de los que siguen en pie.
+ * Todas las lecturas van al principio, antes de cualquier bucle: `useLiveQuery`
+ * solo vigila lo que se lee mientras sigue su rastro, y una lectura tardía
+ * deja de refrescar las vistas al cancelar o restaurar una clase.
+ */
+async function generarHuecos({ desde, hasta, grupoId }: RangoGrupo): Promise<{
+  activos: HuecoCalendario[]
+  cancelados: HuecoCancelado[]
+}> {
   const curso = await cursoActivo()
   let grupos = await gruposVisibles()
   if (grupoId) grupos = grupos.filter((g) => g.id === grupoId)
 
   const sesiones = await db.sesiones.where('fecha').between(desde, hasta, true, true).toArray()
+  const canceladas = await db.clasesCanceladas
+    .where('fecha')
+    .between(desde, hasta, true, true)
+    .toArray()
   const sesionDe = (gId: string, fecha: string) => sesiones.find((s) => s.grupoId === gId && s.fecha === fecha)
 
-  const huecos: HuecoCalendario[] = []
+  const activos: HuecoCalendario[] = []
+  const cancelados: HuecoCancelado[] = []
+  const guardar = (hueco: HuecoCalendario) => {
+    // Regla de seguridad: una sesión persistida SIEMPRE se ve. Si se volvió a
+    // planificar ese día, una excepción olvidada no puede esconderla.
+    const cancelada = hueco.sesion
+      ? undefined
+      : canceladas.find((c) => tapa(c, hueco.grupo.id, hueco.fecha, hueco.horaInicio))
+    if (cancelada) cancelados.push({ ...hueco, cancelada })
+    else activos.push(hueco)
+  }
+
   let fecha = desde
   // Tope de seguridad, igual que en `fechasDeClase`.
   for (let i = 0; fecha <= hasta && i < 400; i++) {
@@ -125,7 +183,7 @@ export async function huecosDe({ desde, hasta, grupoId }: RangoGrupo): Promise<H
         const sesion = sesionDe(grupo.id, fecha)
         if (franjasHoy.length > 0) {
           for (const franja of franjasHoy) {
-            huecos.push({
+            guardar({
               fecha,
               diaSemana: estado.dia,
               grupo,
@@ -135,7 +193,7 @@ export async function huecosDe({ desde, hasta, grupoId }: RangoGrupo): Promise<H
             })
           }
         } else if (sesion) {
-          huecos.push({
+          guardar({
             fecha,
             diaSemana: estado.dia,
             grupo,
@@ -148,9 +206,92 @@ export async function huecosDe({ desde, hasta, grupoId }: RangoGrupo): Promise<H
     }
     fecha = sumarDias(fecha, 1)
   }
-  return huecos.sort(
-    (a, b) => a.fecha.localeCompare(b.fecha) || (a.horaInicio ?? '').localeCompare(b.horaInicio ?? ''),
+  const porFechaYHora = (a: HuecoCalendario, b: HuecoCalendario) =>
+    a.fecha.localeCompare(b.fecha) || (a.horaInicio ?? '').localeCompare(b.horaInicio ?? '')
+  return { activos: activos.sort(porFechaYHora), cancelados: cancelados.sort(porFechaYHora) }
+}
+
+/**
+ * Cancela la clase de un grupo en un día concreto (§ 8.5): el hueco deja de
+ * ofrecerse en Hoy, Planificador y Calendario. NO toca `Grupo.horario`, así
+ * que el resto de semanas siguen igual, y no borra ningún dato del día.
+ */
+export async function cancelarClase(
+  grupoId: string,
+  fecha: string,
+  horaInicio?: string,
+): Promise<() => Promise<void>> {
+  const previas = await db.clasesCanceladas.where('[grupoId+fecha]').equals([grupoId, fecha]).toArray()
+  // Ya cancelada (esa franja, o el día entero): nada que hacer ni que deshacer.
+  if (previas.some((c) => c.horaInicio === undefined || c.horaInicio === horaInicio)) {
+    return async () => {}
+  }
+
+  const cancelada: ClaseCancelada = {
+    id: nuevoId(),
+    grupoId,
+    fecha,
+    horaInicio,
+    creado: new Date().toISOString(),
+  }
+  await db.clasesCanceladas.add(cancelada)
+  return async () => void (await db.clasesCanceladas.delete(cancelada.id))
+}
+
+/**
+ * Devuelve a su sitio una clase cancelada. Con `horaInicio` retira esa franja
+ * y también la excepción de día entero, si la hubiera; sin él, todas las de
+ * ese grupo ese día.
+ */
+export async function restaurarClase(
+  grupoId: string,
+  fecha: string,
+  horaInicio?: string,
+): Promise<() => Promise<void>> {
+  const todas = await db.clasesCanceladas.where('[grupoId+fecha]').equals([grupoId, fecha]).toArray()
+  const quitar = todas.filter(
+    (c) => horaInicio === undefined || c.horaInicio === undefined || c.horaInicio === horaInicio,
   )
+  await db.clasesCanceladas.bulkDelete(quitar.map((c) => c.id))
+  return async () => void (await db.clasesCanceladas.bulkAdd(quitar))
+}
+
+/** Lo que se pierde y lo que NO al eliminar una sesión, para avisar con cifras. */
+export interface ResumenSesion {
+  juegos: number
+  tieneNotas: boolean
+  tieneValoracion: boolean
+  /** Registros de asistencia de ese grupo ese día: sobreviven al borrado. */
+  asistencias: number
+  /** Observaciones del grupo ese día: también sobreviven. */
+  observaciones: number
+}
+
+/**
+ * Recuento para la confirmación de borrado (§ M9: nunca destruir datos en
+ * silencio). Asistencia y observaciones van por `fecha`, no por `sesionId`, así
+ * que no se borran con la sesión: se cuentan para poder decirlo, no para
+ * alarmar.
+ */
+export async function resumenSesion(sesionId: string): Promise<ResumenSesion | undefined> {
+  const sesion = await db.sesiones.get(sesionId)
+  if (!sesion) return undefined
+
+  const alumnos = await db.alumnos.where('grupoId').equals(sesion.grupoId).toArray()
+  const delGrupo = new Set(alumnos.filter((a) => a.activo).map((a) => a.id))
+  const asistencias = await db.asistencias.where('fecha').equals(sesion.fecha).toArray()
+  const observaciones = await db.observaciones
+    .where('[grupoId+fecha]')
+    .equals([sesion.grupoId, sesion.fecha])
+    .count()
+
+  return {
+    juegos: sesion.juegos.length,
+    tieneNotas: Boolean(sesion.notas?.trim() || sesion.comentarios?.trim()),
+    tieneValoracion: sesion.valoracion != null,
+    asistencias: asistencias.filter((a) => delGrupo.has(a.alumnoId)).length,
+    observaciones,
+  }
 }
 
 export interface SesionNoLectiva {

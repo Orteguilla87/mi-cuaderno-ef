@@ -10,5 +10,10 @@ export default defineConfig({
     // Solo db.test.ts y sus dependientes tocan Dexie; el resto son funciones
     // puras y no necesitan IndexedDB.
     setupFiles: ['./src/test/setupIndexedDB.ts'],
+    // Los tests de backup y sincronización cifran de verdad: PBKDF2 con las
+    // 600k iteraciones de §1.4, varias veces por test. Con la suite entera en
+    // paralelo eso pasa de los 5 s por defecto y falla por reloj, no por lógica
+    // — y bajar las iteraciones en pruebas dejaría sin probar lo que importa.
+    testTimeout: 30_000,
   },
 })

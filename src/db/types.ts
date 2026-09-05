@@ -157,6 +157,30 @@ export interface EquipoGenerado {
   miembros: Id[]
 }
 
+/**
+ * «Este día, este grupo, no hay clase»: excepción puntual al horario semanal.
+ *
+ * El planificador se construye sobre `Grupo.horario`, así que borrar la sesión
+ * de un día no quitaba la clase de las vistas: el hueco se genera del horario y
+ * volvía a aparecer vacío. Esta tabla es la única forma de decir «ese día, ese
+ * grupo, no» sin tocar el horario —que afectaría a TODAS las semanas—.
+ *
+ * No destruye nada: la asistencia y las observaciones de ese día siguen donde
+ * estaban, y quitar la excepción devuelve la clase a su sitio.
+ */
+export interface ClaseCancelada {
+  id: Id
+  grupoId: Id
+  fecha: string
+  /**
+   * Franja concreta, para un grupo con más de una clase ese día. Ausente
+   * cancela todas las franjas de esa fecha.
+   */
+  horaInicio?: string
+  /** ISO de cuándo se canceló, para poder explicarlo en la interfaz. */
+  creado: string
+}
+
 /** Alineación de equipos guardada, reutilizable en 1 toque. */
 export interface Equipo {
   id: Id

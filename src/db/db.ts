@@ -9,6 +9,7 @@ import type {
   Asistencia,
   Calificacion,
   CicloAleatorio,
+  ClaseCancelada,
   Columna,
   Criterio,
   ComentarioBanco,
@@ -74,6 +75,7 @@ class CuadernoDB extends Dexie {
   materiales!: EntityTable<Material, 'id'>
   etiquetasMaterial!: EntityTable<EtiquetaMaterial, 'id'>
   etiquetasAlumno!: EntityTable<EtiquetaAlumno, 'id'>
+  clasesCanceladas!: EntityTable<ClaseCancelada, 'id'>
   config!: EntityTable<Config, 'id'>
   accionesAgente!: EntityTable<AccionAgente, 'id'>
 
@@ -481,6 +483,18 @@ class CuadernoDB extends Dexie {
     this.version(22).stores({
       etiquetasAlumno: 'id, nombre',
       alumnos: 'id, grupoId, apellidos, activo, [grupoId+activo], *etiquetas',
+    })
+
+    /**
+     * v23 — clases canceladas de un día suelto (`ClaseCancelada`).
+     *
+     * Aditiva y vacía al migrar: sin excepciones, `huecosDe` se comporta
+     * exactamente igual que antes. No necesita espejo en `backup.ts`, que
+     * recorre `db.tables` y por tanto ya la incluye en la copia cifrada y en
+     * la sincronización.
+     */
+    this.version(23).stores({
+      clasesCanceladas: 'id, grupoId, fecha, [grupoId+fecha]',
     })
   }
 }

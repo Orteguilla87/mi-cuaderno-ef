@@ -2,12 +2,17 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db, nuevoId } from './db'
 import {
+  cancelarClase,
   eliminarSesionesNoLectivas,
   getSesiones,
+  huecosCanceladosDe,
   huecosDe,
+  restaurarClase,
+  resumenSesion,
   reubicarSesionesNoLectivas,
   sesionesEnDiasNoLectivos,
 } from './sesiones'
+import { crearSesion, eliminarSesion } from './planificador'
 
 const CURSO_ID = 'curso1'
 const GRUPO_ID = 'g1'
@@ -254,5 +259,193 @@ describe('reubicarSesionesNoLectivas y eliminarSesionesNoLectivas', () => {
 
     await deshacer()
     expect(await db.sesiones.get(id)).toBeDefined()
+  })
+})
+
+/**
+ * El bug que motivó `db.clasesCanceladas`: borrar la sesión de un día no
+ * quitaba la clase de las vistas, porque el hueco se genera del horario del
+ * grupo y volvía a aparecer vacío en cada render.
+ */
+describe('clases canceladas de un día suelto', () => {
+  const MARTES = '2026-09-08'
+  const MARTES_SIGUIENTE = '2026-09-15'
+  const SEMANA = { desde: '2026-09-07', hasta: '2026-09-11' }
+  const SEMANA_SIGUIENTE = { desde: '2026-09-14', hasta: '2026-09-18' }
+
+  async function otroGrupoLosMartes() {
+    await db.grupos.put({
+      id: 'g2',
+      cursoEscolarId: CURSO_ID,
+      nombre: '4ºB',
+      etapa: 'primaria',
+      nivel: 4,
+      color: '#006A80',
+      orden: 1,
+      horario: [{ diaSemana: 2, horaInicio: '11:00', horaFin: '11:45' }],
+    })
+  }
+
+  it('eliminar cancelando el hueco quita la clase de todas las vistas', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote y conducción' })
+    expect(await huecosDe(SEMANA)).toHaveLength(1)
+
+    await eliminarSesion(id, false, true)
+
+    // Las cuatro vistas de hueco (Hoy día, Hoy semana, Planificador semana y
+    // Calendario semana) leen de `huecosDe`; Calendario mes, de `getSesiones`.
+    expect(await huecosDe({ desde: MARTES, hasta: MARTES })).toHaveLength(0)
+    expect(await huecosDe(SEMANA)).toHaveLength(0)
+    expect(await getSesiones(SEMANA)).toHaveLength(0)
+  })
+
+  it('la cancelación persiste: releer la base no la resucita', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES)
+    await eliminarSesion(id, false, true)
+
+    // Equivalente a recargar la app: nada en memoria, todo desde Dexie.
+    expect(await db.clasesCanceladas.count()).toBe(1)
+    expect(await huecosDe(SEMANA)).toHaveLength(0)
+  })
+
+  it('no afecta a la misma franja de otras semanas', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES)
+    await eliminarSesion(id, false, true)
+
+    const siguiente = await huecosDe(SEMANA_SIGUIENTE)
+    expect(siguiente).toHaveLength(1)
+    expect(siguiente[0].fecha).toBe(MARTES_SIGUIENTE)
+    // El horario del grupo no se ha tocado.
+    expect((await db.grupos.get(GRUPO_ID))!.horario).toHaveLength(1)
+  })
+
+  it('no afecta a otros grupos del mismo día', async () => {
+    await otroGrupoLosMartes()
+    const id = await crearSesion(GRUPO_ID, MARTES)
+    await eliminarSesion(id, false, true)
+
+    const quedan = await huecosDe(SEMANA)
+    expect(quedan).toHaveLength(1)
+    expect(quedan[0].grupo.id).toBe('g2')
+  })
+
+  it('la clase cancelada se lista aparte, para poder restaurarla', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES)
+    await eliminarSesion(id, false, true)
+
+    const canceladas = await huecosCanceladosDe(SEMANA)
+    expect(canceladas).toHaveLength(1)
+    expect(canceladas[0].grupo.id).toBe(GRUPO_ID)
+    expect(canceladas[0].fecha).toBe(MARTES)
+  })
+
+  it('restaurar devuelve el hueco a todas las vistas', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES)
+    await eliminarSesion(id, false, true)
+
+    await restaurarClase(GRUPO_ID, MARTES)
+    expect(await huecosDe(SEMANA)).toHaveLength(1)
+    expect(await huecosCanceladosDe(SEMANA)).toHaveLength(0)
+  })
+
+  it('deshacer el borrado devuelve sesión y clase de una vez', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote y conducción' })
+    const deshacer = await eliminarSesion(id, false, true)
+
+    await deshacer()
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(1)
+    expect(huecos[0].sesion?.titulo).toBe('Bote y conducción')
+    expect(await db.clasesCanceladas.count()).toBe(0)
+  })
+
+  it('«vaciar la planificación» borra la sesión pero deja el hueco', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote y conducción' })
+    await eliminarSesion(id, false, false)
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(1)
+    expect(huecos[0].sesion).toBeUndefined()
+  })
+
+  it('una sesión persistida siempre se ve, aunque quede una cancelación vieja', async () => {
+    await cancelarClase(GRUPO_ID, MARTES)
+    expect(await huecosDe(SEMANA)).toHaveLength(0)
+
+    // Volver a planificar ese día retira la excepción (y, aun antes de eso,
+    // `huecosDe` nunca esconde un hueco que tiene sesión).
+    await crearSesion(GRUPO_ID, MARTES, { titulo: 'Otra cosa' })
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(1)
+    expect(huecos[0].sesion?.titulo).toBe('Otra cosa')
+    expect(await db.clasesCanceladas.count()).toBe(0)
+  })
+
+  it('cancelar un hueco vacío no borra nada y se deshace', async () => {
+    const deshacer = await cancelarClase(GRUPO_ID, MARTES)
+    expect(await huecosDe(SEMANA)).toHaveLength(0)
+
+    await deshacer()
+    expect(await huecosDe(SEMANA)).toHaveLength(1)
+  })
+
+  it('cancelar dos veces el mismo día no duplica la excepción', async () => {
+    await cancelarClase(GRUPO_ID, MARTES)
+    await cancelarClase(GRUPO_ID, MARTES)
+    expect(await db.clasesCanceladas.count()).toBe(1)
+  })
+
+  it('una excepción con franja solo tapa esa franja', async () => {
+    await db.grupos.update(GRUPO_ID, {
+      horario: [
+        { diaSemana: 2, horaInicio: '10:00', horaFin: '10:45' },
+        { diaSemana: 2, horaInicio: '12:00', horaFin: '12:45' },
+      ],
+    })
+    await cancelarClase(GRUPO_ID, MARTES, '10:00')
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(1)
+    expect(huecos[0].horaInicio).toBe('12:00')
+  })
+})
+
+describe('resumenSesion', () => {
+  it('cuenta lo que se pierde y lo que sobrevive al borrado', async () => {
+    await db.alumnos.bulkPut([
+      { id: 'a1', grupoId: GRUPO_ID, nombre: 'Ana', apellidos: 'Pérez', alias: 'Ana', activo: true },
+      { id: 'a2', grupoId: GRUPO_ID, nombre: 'Luis', apellidos: 'Gil', alias: 'Luis', activo: true },
+    ])
+    await db.asistencias.put({
+      id: nuevoId(),
+      alumnoId: 'a1',
+      fecha: '2026-09-08',
+      estado: 'presente',
+      chandal: true,
+    })
+    await db.observaciones.put({
+      id: nuevoId(),
+      alumnoId: 'a2',
+      grupoId: GRUPO_ID,
+      fecha: '2026-09-08',
+      tipo: 'conducta',
+      signo: '+',
+      texto: 'Ayuda a recoger',
+      tags: [],
+    })
+    const id = await crearSesion(GRUPO_ID, '2026-09-08', {
+      juegos: [{ gameId: 'j1', nombre: 'El pañuelo' }],
+      notas: 'Por parejas',
+      valoracion: 4,
+    })
+
+    const resumen = (await resumenSesion(id))!
+    expect(resumen.juegos).toBe(1)
+    expect(resumen.tieneNotas).toBe(true)
+    expect(resumen.tieneValoracion).toBe(true)
+    // Asistencia y observaciones van por fecha y grupo: no se borran con la sesión.
+    expect(resumen.asistencias).toBe(1)
+    expect(resumen.observaciones).toBe(1)
   })
 })

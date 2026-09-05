@@ -11,6 +11,7 @@ import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
 import { db } from '../db/db'
 import { gruposVisibles } from '../db/grupos'
+import { resumenSesion, type ResumenSesion } from '../db/sesiones'
 import {
   duplicarSesion,
   editarSesion,
@@ -19,7 +20,7 @@ import {
   sesionAPlantilla,
 } from '../db/planificador'
 import type { Sesion, UnidadDidactica } from '../db/types'
-import { diaLectivo, formatoDiaCorto } from '../lib/fechas'
+import { diaLectivo, formatoDiaCorto, formatoCorto } from '../lib/fechas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
 import { usePortapapeles } from '../store/portapapeles'
@@ -373,7 +374,15 @@ function HojaDuplicar({
   )
 }
 
-/** Eliminar con la opción de cerrar el hueco corriendo las siguientes sesiones. */
+/**
+ * Eliminar una sesión: tres cosas distintas que antes se confundían en una.
+ *
+ * «Eliminar esta clase» quita la clase de ESE día —el hueco viene del horario
+ * del grupo, así que sin cancelarlo la clase reaparecía vacía y parecía que no
+ * se había borrado nada—. «Vaciar la planificación» hace lo de antes: borra el
+ * contenido y deja el hueco libre. Y cambiar el horario del grupo, que afecta a
+ * TODAS las semanas, se enseña como lo que es: otra acción, en otro sitio.
+ */
 function HojaEliminarSesion({
   abierta,
   sesion,
@@ -384,13 +393,23 @@ function HojaEliminarSesion({
   onCerrar: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
+  // Solo mientras la hoja está abierta: recontar en cada render de la página
+  // sería trabajo para nada.
+  const resumen = useLiveQuery(
+    async () => (abierta ? resumenSesion(sesion.id) : undefined),
+    [abierta, sesion.id],
+  )
 
-  async function eliminar(desplazar: boolean) {
-    const deshacer = await eliminarSesion(sesion.id, desplazar)
+  async function eliminar(opciones: { desplazar?: boolean; cancelar?: boolean }) {
+    const deshacer = await eliminarSesion(sesion.id, !!opciones.desplazar, !!opciones.cancelar)
     onCerrar()
     navegar('/planificador')
     mostrarAviso(
-      desplazar ? 'Sesión eliminada; las siguientes se han corrido' : 'Sesión eliminada',
+      opciones.desplazar
+        ? 'Sesión eliminada; las siguientes se han corrido'
+        : opciones.cancelar
+          ? `Clase cancelada el ${formatoCorto(sesion.fecha)}`
+          : 'Planificación vaciada',
       deshacer,
     )
   }
@@ -398,22 +417,94 @@ function HojaEliminarSesion({
   return (
     <Hoja abierta={abierta} titulo="Eliminar sesión" onCerrar={onCerrar}>
       <div className="space-y-3">
-        <p className="text-sm texto-suave">
-          ¿Qué hacemos con el hueco que deja en el calendario de este grupo?
+        {resumen && <AvisoContenido resumen={resumen} />}
+
+        <button className="btn-primario w-full" onClick={() => void eliminar({ cancelar: true })}>
+          Eliminar esta clase
+        </button>
+        <p className="text-xs texto-suave">
+          Quita la clase del {formatoCorto(sesion.fecha)} de Hoy, del planificador y del calendario.
+          El horario del grupo no cambia: el resto de semanas siguen igual, y puedes restaurarla
+          desde ese mismo día.
         </p>
-        <button className="btn-primario w-full" onClick={() => void eliminar(true)}>
+
+        <button className="btn-suave w-full" onClick={() => void eliminar({ desplazar: true })}>
           Eliminar y desplazar las siguientes
         </button>
         <p className="text-xs texto-suave">
           Cada sesión posterior pasa a la clase anterior de la secuencia, cerrando el hueco.
         </p>
-        <button className="btn-suave w-full" onClick={() => void eliminar(false)}>
-          Eliminar solo esta sesión
+
+        <button className="btn-suave w-full" onClick={() => void eliminar({})}>
+          Vaciar la planificación
         </button>
+        <p className="text-xs texto-suave">
+          Borra el contenido pero mantiene la clase en el calendario, lista para planificar de
+          nuevo.
+        </p>
+
+        <button
+          className="btn w-full"
+          onClick={() => {
+            onCerrar()
+            navegar(`/grupos/${sesion.grupoId}`)
+          }}
+        >
+          Cambiar el horario del grupo
+        </button>
+        <p className="text-xs texto-suave">
+          Ojo: el horario afecta a todas las semanas del curso, no solo a este día.
+        </p>
+
         <button className="btn w-full" onClick={onCerrar}>
           Cancelar
         </button>
       </div>
     </Hoja>
   )
+}
+
+/**
+ * Qué se pierde y qué no, con cifras (§ M9: nunca destruir datos en silencio).
+ * La asistencia y las observaciones van por fecha y grupo, no por sesión, así
+ * que sobreviven al borrado — y decirlo evita tanto la sorpresa como el susto.
+ */
+function AvisoContenido({ resumen }: { resumen: ResumenSesion }) {
+  const pierde = [
+    resumen.juegos > 0 && `${resumen.juegos} ${resumen.juegos === 1 ? 'juego' : 'juegos'}`,
+    resumen.tieneNotas && 'la descripción y los comentarios',
+    resumen.tieneValoracion && 'la valoración',
+  ].filter((x): x is string => typeof x === 'string')
+
+  const conserva = [
+    resumen.asistencias > 0 &&
+      `${resumen.asistencias} ${resumen.asistencias === 1 ? 'registro' : 'registros'} de asistencia`,
+    resumen.observaciones > 0 &&
+      `${resumen.observaciones} ${resumen.observaciones === 1 ? 'observación' : 'observaciones'}`,
+  ].filter((x): x is string => typeof x === 'string')
+
+  return (
+    <div className="tarjeta space-y-1 border-l-4 border-acento">
+      <p className="text-sm">
+        {pierde.length > 0 ? (
+          <>
+            Se pierde el contenido de la sesión: <strong>{enumerar(pierde)}</strong>.
+          </>
+        ) : (
+          'Esta sesión no tiene contenido guardado.'
+        )}
+      </p>
+      {conserva.length > 0 && (
+        <p className="text-sm texto-suave">
+          No se borra nada más: {enumerar(conserva)} de ese día se conservan.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** «a, b y c» — enumeración en español, sin coma antes de la conjunción. */
+function enumerar(partes: string[]): string {
+  if (partes.length <= 1) return partes[0] ?? ''
+  return `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}`
 }

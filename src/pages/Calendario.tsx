@@ -6,7 +6,14 @@ import { Cabecera } from '../components/Cabecera'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { leerCursoActivo } from '../db/curso'
 import { crearSesion, lunesDe, semanaActual } from '../db/planificador'
-import { getSesiones, huecosDe, type HuecoCalendario, type SesionConGrupo } from '../db/sesiones'
+import {
+  getSesiones,
+  huecosCanceladosDe,
+  huecosDe,
+  type HuecoCalendario,
+  type SesionConGrupo,
+} from '../db/sesiones'
+import { FilasCanceladas } from '../components/ClasesCanceladas'
 import type { CursoEscolar } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, deISO, formatoCorto, formatoLargo, NOMBRES_DIA, sumarDias } from '../lib/fechas'
@@ -296,9 +303,16 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
     () => huecosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
     [lunes],
   )
+  // Misma fuente y mismo trato que en Hoy y el Planificador: una clase quitada
+  // de un día suelto se ve apagada con «Restaurar», no desaparece sin más.
+  const canceladas = useLiveQuery(
+    () => huecosCanceladosDe({ desde: lunes, hasta: sumarDias(lunes, 4) }),
+    [lunes],
+  )
   const viernes = sumarDias(lunes, 4)
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
+  const canceladasDe = (d: number) => (canceladas ?? []).filter((h) => h.diaSemana === d)
 
   return (
     <div className="space-y-4 p-4">
@@ -322,7 +336,7 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
         </button>
       </div>
 
-      {huecos?.length === 0 && (
+      {huecos?.length === 0 && canceladas?.length === 0 && (
         <div className="tarjeta text-center">
           <p className="text-base font-semibold">Sin clases esta semana</p>
           <p className="mt-1 text-sm texto-suave">
@@ -333,10 +347,11 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
 
       {[1, 2, 3, 4, 5].map((d) => {
         const delDia = porDia(d)
+        const sinClase = canceladasDe(d)
         const fecha = sumarDias(lunes, d - 1)
         const est = curso ? estadoDia(fecha, curso) : undefined
         const noLectivo = est && est.tipo !== 'lectivo' ? est : null
-        if (delDia.length === 0 && !noLectivo) return null
+        if (delDia.length === 0 && sinClase.length === 0 && !noLectivo) return null
         return (
           <section key={d}>
             <TituloSeccion>
@@ -346,13 +361,16 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
             {noLectivo ? (
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
-              <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-                {delDia.map((h) => (
-                  <li key={`${h.grupo.id}-${h.horaInicio}`}>
-                    <TarjetaHueco hueco={h} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+                  {delDia.map((h) => (
+                    <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                      <TarjetaHueco hueco={h} />
+                    </li>
+                  ))}
+                </ul>
+                <FilasCanceladas huecos={sinClase} />
+              </>
             )}
           </section>
         )

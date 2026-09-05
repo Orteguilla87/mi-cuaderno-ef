@@ -6,6 +6,7 @@ import { criteriosDeGrupo } from './criterios'
 import { db, nuevoId } from './db'
 import {
   NIVEL_CICLO_INFANTIL,
+  type ClaseCancelada,
   type Columna,
   type Etapa,
   type FilaInstrumento,
@@ -52,7 +53,16 @@ export async function crearSesion(
     comentarios: datos.comentarios,
   }
   await db.sesiones.add(sesion)
+  // Planificar ese día es, por sí solo, restaurar la clase: si estaba cancelada
+  // (`db.clasesCanceladas`), la excepción deja de tener sentido y se retira.
+  await quitarCancelaciones(grupoId, fecha)
   return sesion.id
+}
+
+/** Retira las excepciones de «no hay clase» de un grupo y fecha. */
+async function quitarCancelaciones(grupoId: string, fecha: string): Promise<void> {
+  const previas = await db.clasesCanceladas.where('[grupoId+fecha]').equals([grupoId, fecha]).toArray()
+  if (previas.length) await db.clasesCanceladas.bulkDelete(previas.map((c) => c.id))
 }
 
 /**
@@ -131,25 +141,55 @@ export async function editarSesion(
   }
 
   await db.sesiones.update(sesionId, cambios)
+  // Mover una sesión a un día cancelado lo reactiva: hay clase, la hay.
+  if (cambios.fecha) await quitarCancelaciones(antes.grupoId, cambios.fecha)
   return async () => void (await db.sesiones.put(antes))
 }
 
 /**
- * Elimina una sesión. Con `desplazarSiguientes`, las sesiones posteriores del
- * mismo grupo se corren una posición hacia el hueco que deja (misma lógica de
- * secuencia que `copiarPlanificacion`: se avanza sobre las clases reales del
- * grupo, no sobre fechas de calendario sueltas).
+ * Elimina una sesión. Tres desenlaces distintos para el hueco que deja, porque
+ * borrar el contenido y quitar la clase del día NO son lo mismo (y confundirlos
+ * era el motivo de que «eliminar» pareciera no hacer nada: el hueco se genera
+ * del horario y volvía a salir vacío):
+ *  - `cancelarHueco`: además de borrar la sesión, marca «ese día, ese grupo, no
+ *    hay clase» en `db.clasesCanceladas`. El horario semanal no se toca.
+ *  - `desplazarSiguientes`: las sesiones posteriores del mismo grupo se corren
+ *    una posición hacia el hueco (misma lógica de secuencia que
+ *    `copiarPlanificacion`: se avanza sobre las clases reales del grupo, no
+ *    sobre fechas de calendario sueltas). Ahí el hueco debe seguir existiendo.
+ *  - Ninguno de los dos: se vacía la planificación y el hueco queda libre.
  */
 export async function eliminarSesion(
   sesionId: string,
   desplazarSiguientes: boolean,
+  cancelarHueco = false,
 ): Promise<() => Promise<void>> {
   const sesion = await db.sesiones.get(sesionId)
   if (!sesion) throw new Error('La sesión ya no existe')
 
   if (!desplazarSiguientes) {
-    await db.sesiones.delete(sesionId)
-    return async () => void (await db.sesiones.add(sesion))
+    if (!cancelarHueco) {
+      await db.sesiones.delete(sesionId)
+      return async () => void (await db.sesiones.add(sesion))
+    }
+
+    const cancelada: ClaseCancelada = {
+      id: nuevoId(),
+      grupoId: sesion.grupoId,
+      fecha: sesion.fecha,
+      creado: new Date().toISOString(),
+    }
+    await db.transaction('rw', [db.sesiones, db.clasesCanceladas], async () => {
+      await db.sesiones.delete(sesionId)
+      await db.clasesCanceladas.add(cancelada)
+    })
+    // Deshacer devuelve las dos cosas a la vez: la sesión y la clase del día.
+    return async () => {
+      await db.transaction('rw', [db.sesiones, db.clasesCanceladas], async () => {
+        await db.clasesCanceladas.delete(cancelada.id)
+        await db.sesiones.add(sesion)
+      })
+    }
   }
 
   const grupo = await db.grupos.get(sesion.grupoId)
