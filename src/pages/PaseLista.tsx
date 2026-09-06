@@ -20,11 +20,12 @@ import {
   leerAsistenciaGrupo,
   marcarTodosPresentes,
   resumirAsistencia,
+  type FranjaAsistencia,
 } from '../db/asistencia'
 import { db } from '../db/db'
 import type { Alumno, Asistencia, EstadoAsistencia } from '../db/types'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
-import { aISO, etiquetaDia, sumarDias } from '../lib/fechas'
+import { aISO, diaLectivo, etiquetaDia, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useFechaActiva } from '../store/fechaActiva'
 import { useUI } from '../store/ui'
@@ -60,7 +61,15 @@ const ESTADOS: Record<
   },
 }
 
-export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; fecha?: string }) {
+export function PaseLista({
+  grupoId,
+  fecha: fechaSemilla,
+  franja: franjaSemilla,
+}: {
+  grupoId: string
+  fecha?: string
+  franja?: string
+}) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const dia = useFechaActiva((s) => s.fecha)
   const fijarFecha = useFechaActiva((s) => s.fijarFecha)
@@ -85,9 +94,29 @@ export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; f
       .sort((a, b) => `${a.apellidos} ${a.nombre}`.localeCompare(`${b.apellidos} ${b.nombre}`, 'es'))
   }, [grupoId])
 
+  /**
+   * Las clases del grupo ese día, en orden. Casi siempre una; cuando son dos en
+   * franjas separadas hay que elegir, porque cada una tiene su propia lista:
+   * antes ambas escribían sobre el mismo registro y la segunda machacaba la
+   * primera.
+   */
+  const franjasDelDia = (() => {
+    const dow = diaLectivo(dia)
+    if (!grupo || dow === null) return []
+    return grupo.horario
+      .filter((f) => f.diaSemana === dow)
+      .map((f) => f.horaInicio)
+      .sort((a, b) => a.localeCompare(b))
+  })()
+
+  // La franja elegida a mano manda; si no, la de la ruta; si no, la primera.
+  const [elegida, setElegida] = useState<string | undefined>(franjaSemilla)
+  const inicio = elegida && franjasDelDia.includes(elegida) ? elegida : franjasDelDia[0]
+  const franja: FranjaAsistencia = { inicio, primera: inicio === franjasDelDia[0] }
+
   const registros = useLiveQuery(
-    async () => leerAsistenciaGrupo((alumnos ?? []).map((a) => a.id), dia),
-    [alumnos, dia],
+    async () => leerAsistenciaGrupo((alumnos ?? []).map((a) => a.id), dia, franja),
+    [alumnos, dia, franja.inicio, franja.primera],
   )
 
   if (grupo === undefined || alumnos === undefined) {
@@ -134,7 +163,7 @@ export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; f
   }
 
   async function todosPresentes() {
-    const deshacerBulk = await marcarTodosPresentes(alumnos!, dia)
+    const deshacerBulk = await marcarTodosPresentes(alumnos!, dia, franja)
     apilar(deshacerBulk)
     mostrarAviso(`${alumnos!.length} presentes`, async () => {
       await deshacerBulk()
@@ -172,6 +201,36 @@ export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; f
       <div className="space-y-4 p-4">
         <BarraFecha dia={dia} onIr={irA} />
 
+        {franjasDelDia.length > 1 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold texto-suave">
+              Este grupo tiene {franjasDelDia.length} clases hoy · cada una lleva su propia lista
+            </p>
+            <div
+              role="tablist"
+              aria-label="Clase del día"
+              className="flex gap-2 overflow-x-auto pb-0.5"
+            >
+              {franjasDelDia.map((hora, i) => (
+                <button
+                  key={hora}
+                  role="tab"
+                  aria-selected={hora === inicio}
+                  onClick={() => setElegida(hora)}
+                  className={
+                    'min-h-touch shrink-0 rounded-xl border px-4 text-sm font-semibold tabular-nums ' +
+                    (hora === inicio
+                      ? 'border-primario bg-primario text-white'
+                      : 'border-agua bg-superficie text-tinta dark:bg-noche-elevada dark:text-crema')
+                  }
+                >
+                  {i + 1}ª · {hora}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {alumnos.length === 0 ? (
           <EstadoVacio
             titulo="Grupo sin alumnado"
@@ -205,8 +264,8 @@ export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; f
                   key={a.id}
                   alumno={a}
                   registro={porAlumno.get(a.id)}
-                  onTocar={async () => apilar(await ciclarEstado(a.id, dia))}
-                  onChandal={async () => apilar(await alternarChandal(a.id, dia))}
+                  onTocar={async () => apilar(await ciclarEstado(a.id, dia, franja))}
+                  onChandal={async () => apilar(await alternarChandal(a.id, dia, franja))}
                   onDetalle={() => setDetalle(a)}
                 />
               ))}
@@ -223,6 +282,7 @@ export function PaseLista({ grupoId, fecha: fechaSemilla }: { grupoId: string; f
         alumno={detalle}
         registro={detalle ? porAlumno.get(detalle.id) : undefined}
         fecha={dia}
+        franja={franja}
         onCerrar={() => setDetalle(null)}
       />
     </>
@@ -372,11 +432,13 @@ function HojaDetalle({
   alumno,
   registro,
   fecha,
+  franja,
   onCerrar,
 }: {
   alumno: Alumno | null
   registro?: Asistencia
   fecha: string
+  franja: FranjaAsistencia
   onCerrar: () => void
 }) {
   if (!alumno) return null
@@ -389,6 +451,7 @@ function HojaDetalle({
         id: crypto.randomUUID(),
         alumnoId: alumno!.id,
         fecha,
+        franjaInicio: franja.inicio,
         estado,
         chandal: true,
       })
@@ -422,7 +485,7 @@ function HojaDetalle({
           <span className="etiqueta">Chándal</span>
           <button
             className={registro?.chandal === false ? 'btn-acento w-full' : 'btn-suave w-full'}
-            onClick={() => void alternarChandal(alumno!.id, fecha)}
+            onClick={() => void alternarChandal(alumno!.id, fecha, franja)}
           >
             <Shirt size={18} aria-hidden />
             {registro?.chandal === false ? 'Sin chándal' : 'Con chándal'}

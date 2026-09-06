@@ -32,7 +32,7 @@ import { estadoDia, esDiaLectivo, type EstadoDia } from '../lib/calendarioEscola
 import { diaLectivo, sumarDias } from '../lib/fechas'
 import { db, nuevoId } from './db'
 import { gruposVisibles } from './grupos'
-import { fechasDeClase } from './planificador'
+import { claveHueco, clavesOcupadas, huecosDeClase, type HuecoDeClase } from './planificador'
 import type { ClaseCancelada, Grupo, Sesion } from './types'
 
 interface RangoGrupo {
@@ -78,7 +78,12 @@ export async function getSesiones({ desde, hasta, grupoId }: RangoGrupo): Promis
     const grupo = gruposPorId.get(sesion.grupoId)
     if (!grupo) continue // el grupo se borró; la sesión queda huérfana, fuera de alcance aquí
     const dow = diaLectivo(sesion.fecha)
-    const franja = grupo.horario.find((f) => f.diaSemana === dow)
+    // La franja de ESTA sesión, no la primera del día: un grupo puede tener dos
+    // clases en franjas separadas y cada una hereda su propia hora.
+    const franjasHoy = grupo.horario.filter((f) => f.diaSemana === dow)
+    const franja =
+      franjasHoy.find((f) => f.horaInicio === sesion.franjaInicio) ??
+      (sesion.franjaInicio === undefined ? ordenarFranjas(franjasHoy)[0] : undefined)
     resultado.push({
       sesion,
       grupo,
@@ -96,6 +101,17 @@ export interface HuecoCalendario {
   fecha: string
   diaSemana: 1 | 2 | 3 | 4 | 5
   grupo: Grupo
+  /**
+   * IDENTIDAD del hueco dentro del día: la `horaInicio` de la franja del
+   * horario que ocupa. Es lo que distingue las dos clases de un mismo grupo el
+   * mismo día, y lo que se guarda en `Sesion.franjaInicio` y en la asistencia.
+   * `horaInicio` de abajo es solo presentación —puede venir cambiada por la
+   * sesión— y por eso no sirve como clave.
+   *
+   * Ausente solo en el caso raro de una sesión movida a mano a un día en el que
+   * su grupo no tiene ninguna franja.
+   */
+  franjaInicio?: string
   horaInicio?: string
   horaFin?: string
   sesion?: Sesion
@@ -159,7 +175,17 @@ async function generarHuecos({ desde, hasta, grupoId }: RangoGrupo): Promise<{
     .where('fecha')
     .between(desde, hasta, true, true)
     .toArray()
-  const sesionDe = (gId: string, fecha: string) => sesiones.find((s) => s.grupoId === gId && s.fecha === fecha)
+  // Las sesiones de un grupo y día, ya repartidas por franja. Reparto, no
+  // búsqueda: con `find(grupoId + fecha)` las DOS franjas de un día resolvían a
+  // la misma sesión y solo se veía una clase. Cada sesión se entrega a UNA sola
+  // franja, y ninguna se queda sin salir.
+  const porGrupoYDia = new Map<string, Sesion[]>()
+  for (const s of sesiones) {
+    const clave = `${s.grupoId}|${s.fecha}`
+    const lista = porGrupoYDia.get(clave)
+    if (lista) lista.push(s)
+    else porGrupoYDia.set(clave, [s])
+  }
 
   const activos: HuecoCalendario[] = []
   const cancelados: HuecoCancelado[] = []
@@ -179,24 +205,31 @@ async function generarHuecos({ desde, hasta, grupoId }: RangoGrupo): Promise<{
     const estado = curso ? estadoDia(fecha, curso) : undefined
     if (estado?.tipo === 'lectivo') {
       for (const grupo of grupos) {
-        const franjasHoy = grupo.horario.filter((f) => f.diaSemana === estado.dia)
-        const sesion = sesionDe(grupo.id, fecha)
-        if (franjasHoy.length > 0) {
-          for (const franja of franjasHoy) {
-            guardar({
-              fecha,
-              diaSemana: estado.dia,
-              grupo,
-              horaInicio: sesion?.horaInicio ?? franja.horaInicio,
-              horaFin: sesion?.horaFin ?? franja.horaFin,
-              sesion,
-            })
-          }
-        } else if (sesion) {
+        const franjasHoy = ordenarFranjas(grupo.horario.filter((f) => f.diaSemana === estado.dia))
+        const delDia = porGrupoYDia.get(`${grupo.id}|${fecha}`) ?? []
+        const { porFranja, sueltas } = repartirPorFranja(delDia, franjasHoy)
+
+        for (const franja of franjasHoy) {
+          const sesion = porFranja.get(franja.horaInicio)
           guardar({
             fecha,
             diaSemana: estado.dia,
             grupo,
+            franjaInicio: franja.horaInicio,
+            horaInicio: sesion?.horaInicio ?? franja.horaInicio,
+            horaFin: sesion?.horaFin ?? franja.horaFin,
+            sesion,
+          })
+        }
+        // Sesiones que no encajan en ninguna franja del día (movidas a mano, o
+        // más sesiones que franjas): se pintan igual, con su propia hora. Nunca
+        // se esconde algo que está guardado.
+        for (const sesion of sueltas) {
+          guardar({
+            fecha,
+            diaSemana: estado.dia,
+            grupo,
+            franjaInicio: sesion.franjaInicio,
             horaInicio: sesion.horaInicio,
             horaFin: sesion.horaFin,
             sesion,
@@ -209,6 +242,40 @@ async function generarHuecos({ desde, hasta, grupoId }: RangoGrupo): Promise<{
   const porFechaYHora = (a: HuecoCalendario, b: HuecoCalendario) =>
     a.fecha.localeCompare(b.fecha) || (a.horaInicio ?? '').localeCompare(b.horaInicio ?? '')
   return { activos: activos.sort(porFechaYHora), cancelados: cancelados.sort(porFechaYHora) }
+}
+
+/** Franjas ordenadas por hora: el orden del array del grupo no está garantizado. */
+function ordenarFranjas<T extends { horaInicio: string }>(franjas: T[]): T[] {
+  return [...franjas].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
+}
+
+/**
+ * Reparte las sesiones de un grupo en un día entre las franjas de su horario.
+ *
+ * Tres pasadas, en este orden, y cada sesión se consume UNA sola vez:
+ *  1. Coincidencia exacta de `franjaInicio` — el caso normal desde v24.
+ *  2. Sesiones sin `franjaInicio` (anteriores a v24, o creadas fuera de un
+ *     hueco) a la primera franja libre: es donde ya se pintaban, así que un
+ *     grupo con una sola clase al día se comporta exactamente como antes.
+ *  3. Lo que sobre sale aparte, con su propia hora, sin perderse.
+ */
+function repartirPorFranja(
+  sesiones: Sesion[],
+  franjas: { horaInicio: string }[],
+): { porFranja: Map<string, Sesion>; sueltas: Sesion[] } {
+  const porFranja = new Map<string, Sesion>()
+  const pendientes = [...sesiones]
+
+  for (const franja of franjas) {
+    const i = pendientes.findIndex((s) => s.franjaInicio === franja.horaInicio)
+    if (i >= 0) porFranja.set(franja.horaInicio, pendientes.splice(i, 1)[0])
+  }
+  for (const franja of franjas) {
+    if (porFranja.has(franja.horaInicio)) continue
+    const i = pendientes.findIndex((s) => s.franjaInicio === undefined)
+    if (i >= 0) porFranja.set(franja.horaInicio, pendientes.splice(i, 1)[0])
+  }
+  return { porFranja, sueltas: pendientes }
 }
 
 /**
@@ -279,7 +346,19 @@ export async function resumenSesion(sesionId: string): Promise<ResumenSesion | u
 
   const alumnos = await db.alumnos.where('grupoId').equals(sesion.grupoId).toArray()
   const delGrupo = new Set(alumnos.filter((a) => a.activo).map((a) => a.id))
-  const asistencias = await db.asistencias.where('fecha').equals(sesion.fecha).toArray()
+
+  // Solo la asistencia de ESTA clase: con dos clases del mismo grupo el mismo
+  // día, contar las del día entero decía el doble de registros de los que hay.
+  const grupo = await db.grupos.get(sesion.grupoId)
+  const dow = diaLectivo(sesion.fecha)
+  const franjas = ordenarFranjas((grupo?.horario ?? []).filter((f) => f.diaSemana === dow))
+  const esPrimera =
+    franjas.length === 0 ||
+    sesion.franjaInicio === undefined ||
+    sesion.franjaInicio === franjas[0].horaInicio
+  const asistencias = (await db.asistencias.where('fecha').equals(sesion.fecha).toArray()).filter(
+    (a) => (a.franjaInicio === undefined ? esPrimera : a.franjaInicio === sesion.franjaInicio),
+  )
   const observaciones = await db.observaciones
     .where('[grupoId+fecha]')
     .equals([sesion.grupoId, sesion.fecha])
@@ -341,7 +420,11 @@ export async function reubicarSesionesNoLectivas(
   const curso = await cursoActivo()
   if (!curso) return { reubicadas: 0, sinHueco: sesionIds.length, deshacer: async () => {} }
 
-  const cambios: { id: string; fechaAntes: string; fechaDespues: string }[] = []
+  const cambios: {
+    id: string
+    antes: { fecha: string; franjaInicio?: string }
+    despues: HuecoDeClase
+  }[] = []
   let sinHueco = 0
 
   for (const id of sesionIds) {
@@ -350,21 +433,32 @@ export async function reubicarSesionesNoLectivas(
     const grupo = await db.grupos.get(sesion.grupoId)
     if (!grupo) continue
 
-    const ocupadas = new Set(
-      (await db.sesiones.where('grupoId').equals(grupo.id).toArray()).map((s) => s.fecha),
+    const ocupadas = clavesOcupadas(
+      await db.sesiones.where('grupoId').equals(grupo.id).toArray(),
+      grupo,
     )
-    const destino = fechasDeClase(grupo, curso, sesion.fecha).find(
-      (f) => !ocupadas.has(f) && f !== sesion.fecha,
+    // Por clases y no por fechas: con dos franjas el mismo día, la primera
+    // sesión reubicada tapaba la segunda clase de ese día sin querer.
+    const destino = huecosDeClase(grupo, curso, sesion.fecha).find(
+      (h) => !ocupadas.has(claveHueco(h)) && h.fecha !== sesion.fecha,
     )
     if (!destino) {
       sinHueco++
       continue
     }
-    cambios.push({ id, fechaAntes: sesion.fecha, fechaDespues: destino })
+    cambios.push({
+      id,
+      antes: { fecha: sesion.fecha, franjaInicio: sesion.franjaInicio },
+      despues: destino,
+    })
   }
 
   await db.transaction('rw', db.sesiones, async () => {
-    for (const c of cambios) await db.sesiones.update(c.id, { fecha: c.fechaDespues })
+    for (const c of cambios)
+      await db.sesiones.update(c.id, {
+        fecha: c.despues.fecha,
+        franjaInicio: c.despues.franjaInicio,
+      })
   })
 
   return {
@@ -372,7 +466,11 @@ export async function reubicarSesionesNoLectivas(
     sinHueco,
     deshacer: async () => {
       await db.transaction('rw', db.sesiones, async () => {
-        for (const c of cambios) await db.sesiones.update(c.id, { fecha: c.fechaAntes })
+        for (const c of cambios)
+          await db.sesiones.update(c.id, {
+            fecha: c.antes.fecha,
+            franjaInicio: c.antes.franjaInicio,
+          })
       })
     },
   }

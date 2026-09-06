@@ -55,6 +55,27 @@ describe('textoMaterial', () => {
     expect(texto).toContain('- 6 picas')
   })
 
+  /**
+   * Las dos clases del MISMO grupo el mismo día suman su material. Antes solo
+   * llegaba una: las dos franjas del horario resolvían a la misma sesión, así
+   * que la lista del día se quedaba a medias.
+   */
+  it('suma el material de las dos clases de un mismo grupo', () => {
+    const texto = textoMaterial([
+      {
+        fecha: '2026-09-22',
+        clases: [
+          { grupo: '3ºA', texto: 'Material: 12 conos, 4 aros' },
+          { grupo: '3ºA', texto: 'Material: 6 picas, 2 bancos suecos' },
+        ],
+      },
+    ])
+    expect(texto).toContain('- 12 conos')
+    expect(texto).toContain('- 4 aros')
+    expect(texto).toContain('- 6 picas')
+    expect(texto).toContain('- 2 bancos suecos')
+  })
+
   it('dos cantidades distintas del mismo material NO se funden', () => {
     const texto = textoMaterial([dia('2026-09-22', 'Material: 12 conos', 'Material: 6 conos')])
     expect(texto).toContain('- 12 conos')

@@ -32,6 +32,7 @@ import {
   sumarDias,
 } from '../lib/fechas'
 import { generarPlanDelDia } from '../lib/informes'
+import { ordinalesDelDia, rotuloOrdinal, type OrdinalClase } from '../lib/clasesDelDia'
 import { textoMaterial, type DiaMaterial } from '../lib/recursosTexto'
 import { navegar } from '../lib/router'
 import { useFechaActiva } from '../store/fechaActiva'
@@ -70,8 +71,17 @@ function BotonMaterial({ dias, rotulo }: { dias: DiaMaterial[]; rotulo: string }
   )
 }
 
+/**
+ * Clave de una CLASE, no de un día: `grupo|fecha|franja`. Un grupo con dos
+ * clases el mismo día necesita dos conteos de asistencia distintos.
+ */
+const claveConteo = (grupoId: string, fecha: string, franjaInicio?: string) =>
+  `${grupoId}|${fecha}|${franjaInicio ?? ''}`
+
 interface Clase {
   grupo: Grupo
+  /** Identidad de la clase dentro del día (§ `HuecoCalendario.franjaInicio`). */
+  franjaInicio?: string
   horaInicio?: string
   horaFin?: string
   registrados: number
@@ -121,13 +131,27 @@ export function Hoy() {
       db.asistencias.where('fecha').equals(fecha).toArray(),
     ])
 
-    const registrados = new Set(asistencias.map((a) => a.alumnoId))
+    // Por CLASE y no por día: con dos clases del mismo grupo, contar los
+    // registros del día entero daba «Hecho» en la segunda sin haber pasado
+    // lista en ella.
+    const primeraDelGrupo = new Map<string, string | undefined>()
+    for (const h of huecos)
+      if (!primeraDelGrupo.has(h.grupo.id)) primeraDelGrupo.set(h.grupo.id, h.franjaInicio)
 
     return huecos
       .map((h) => {
         const activos = alumnos.filter((a) => a.grupoId === h.grupo.id && a.activo)
+        const esPrimera = primeraDelGrupo.get(h.grupo.id) === h.franjaInicio
+        const registrados = new Set(
+          asistencias
+            .filter((a) =>
+              a.franjaInicio === undefined ? esPrimera : a.franjaInicio === h.franjaInicio,
+            )
+            .map((a) => a.alumnoId),
+        )
         return {
           grupo: h.grupo,
+          franjaInicio: h.franjaInicio,
           horaInicio: h.horaInicio,
           horaFin: h.horaFin,
           registrados: activos.filter((a) => registrados.has(a.id)).length,
@@ -154,6 +178,14 @@ export function Hoy() {
   const siguiente = esHoy ? clases?.find((c) => c.horaInicio != null && c.horaInicio > ahora) : undefined
   // Lo que hay que atender ahora: la clase en curso o, si no, la próxima.
   const destacada = enCurso ?? siguiente
+
+  // «1.ª de 2» / «2.ª de 2» para el grupo que tiene dos clases hoy en franjas
+  // separadas: dos tarjetas idénticas seguidas parecerían un duplicado.
+  const ordinales = ordinalesDelDia((clases ?? []).map((c) => ({ grupoId: c.grupo.id })))
+  const ordinalDe = (c: Clase) => {
+    const i = (clases ?? []).indexOf(c)
+    return i < 0 ? undefined : ordinales[i]
+  }
 
   return (
     <>
@@ -217,7 +249,13 @@ export function Hoy() {
                 </TituloSeccion>
 
                 {destacada ? (
-                  <TarjetaClase clase={destacada} fecha={fecha} destacada enCurso={!!enCurso} />
+                  <TarjetaClase
+                    clase={destacada}
+                    fecha={fecha}
+                    ordinal={ordinalDe(destacada)}
+                    destacada
+                    enCurso={!!enCurso}
+                  />
                 ) : (
                   <p className="text-sm texto-suave">
                     Ya no quedan clases hoy. Puedes repasar lo registrado más abajo.
@@ -230,10 +268,11 @@ export function Hoy() {
               <TituloSeccion>Jornada completa</TituloSeccion>
               <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                 {clases?.map((c) => (
-                  <li key={`${c.grupo.id}-${c.horaInicio}`}>
+                  <li key={`${c.grupo.id}-${c.franjaInicio ?? c.horaInicio}`}>
                     <TarjetaClase
                       clase={c}
                       fecha={fecha}
+                      ordinal={ordinalDe(c)}
                       enCurso={c === enCurso}
                       pasada={esHoy && c.horaFin != null && c.horaFin <= ahora && c !== enCurso}
                     />
@@ -368,35 +407,54 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
   )
 
   /**
-   * Asistencia de toda la semana de una vez, indexada por grupo+fecha: las
-   * tarjetas necesitan el mismo `registrados/total` que la vista de día para
-   * enseñar «Hecho» o «3/22», y una consulta por tarjeta serían decenas.
+   * Asistencia de toda la semana de una vez, indexada por grupo+fecha+FRANJA:
+   * las tarjetas necesitan el mismo `registrados/total` que la vista de día
+   * para enseñar «Hecho» o «3/22», y una consulta por tarjeta serían decenas.
+   *
+   * La franja entra en la clave porque un grupo puede tener dos clases el mismo
+   * día: sin ella, pasar lista en la primera pintaba «Hecho» también en la
+   * segunda. Depende de `huecos`, que es quien sabe qué clases hay.
    */
   const conteos = useLiveQuery(async () => {
+    if (!huecos) return undefined
     const [alumnos, asistencias] = await Promise.all([
       db.alumnos.toArray(),
       db.asistencias.where('fecha').between(lunes, sumarDias(lunes, 4), true, true).toArray(),
     ])
-    const mapa = new Map<string, { registrados: number; totalAlumnos: number }>()
-    const porFecha = new Map<string, Set<string>>()
-    for (const a of asistencias) {
-      if (!porFecha.has(a.fecha)) porFecha.set(a.fecha, new Set())
-      porFecha.get(a.fecha)!.add(a.alumnoId)
+
+    // La primera clase de cada grupo y día: es la dueña de los registros
+    // anteriores a v24, que no llevan franja.
+    const primera = new Map<string, string | undefined>()
+    for (const h of huecos) {
+      const k = `${h.grupo.id}|${h.fecha}`
+      if (!primera.has(k)) primera.set(k, h.franjaInicio)
     }
-    for (let d = 0; d < 5; d++) {
-      const f = sumarDias(lunes, d)
-      const puestos = porFecha.get(f) ?? new Set<string>()
+
+    const mapa = new Map<string, { registrados: number; totalAlumnos: number }>()
+    for (const h of huecos) {
+      const clave = claveConteo(h.grupo.id, h.fecha, h.franjaInicio)
+      if (mapa.has(clave)) continue
+      const esPrimera = primera.get(`${h.grupo.id}|${h.fecha}`) === h.franjaInicio
+      const puestos = new Set(
+        asistencias
+          .filter(
+            (a) =>
+              a.fecha === h.fecha &&
+              (a.franjaInicio === undefined ? esPrimera : a.franjaInicio === h.franjaInicio),
+          )
+          .map((a) => a.alumnoId),
+      )
+      let registrados = 0
+      let totalAlumnos = 0
       for (const al of alumnos) {
-        if (!al.activo) continue
-        const k = `${al.grupoId}|${f}`
-        const actual = mapa.get(k) ?? { registrados: 0, totalAlumnos: 0 }
-        actual.totalAlumnos += 1
-        if (puestos.has(al.id)) actual.registrados += 1
-        mapa.set(k, actual)
+        if (!al.activo || al.grupoId !== h.grupo.id) continue
+        totalAlumnos += 1
+        if (puestos.has(al.id)) registrados += 1
       }
+      mapa.set(clave, { registrados, totalAlumnos })
     }
     return mapa
-  }, [lunes])
+  }, [lunes, huecos])
 
   const porDia = (d: number) => (huecos ?? []).filter((h) => h.diaSemana === d)
   const canceladasDe = (d: number) => (canceladas ?? []).filter((h) => h.diaSemana === d)
@@ -464,18 +522,22 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
             ) : (
               <>
                 <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-                  {delDia.map((h) => {
-                    const c = conteos?.get(`${h.grupo.id}|${h.fecha}`)
-                    return (
-                      <li key={`${h.grupo.id}-${h.horaInicio}`}>
-                        <TarjetaSesionSemana
-                          hueco={h}
-                          registrados={c?.registrados ?? 0}
-                          totalAlumnos={c?.totalAlumnos ?? 0}
-                        />
-                      </li>
-                    )
-                  })}
+                  {(() => {
+                    const ordinales = ordinalesDelDia(delDia.map((h) => ({ grupoId: h.grupo.id })))
+                    return delDia.map((h, i) => {
+                      const c = conteos?.get(claveConteo(h.grupo.id, h.fecha, h.franjaInicio))
+                      return (
+                        <li key={`${h.grupo.id}-${h.franjaInicio ?? h.horaInicio}`}>
+                          <TarjetaSesionSemana
+                            hueco={h}
+                            ordinal={ordinales[i]}
+                            registrados={c?.registrados ?? 0}
+                            totalAlumnos={c?.totalAlumnos ?? 0}
+                          />
+                        </li>
+                      )
+                    })
+                  })()}
                 </ul>
                 <FilasCanceladas huecos={sinClase} />
               </>
@@ -495,10 +557,15 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
  */
 function AccionesClase({
   grupo,
+  fecha,
+  franjaInicio,
   registrados,
   totalAlumnos,
 }: {
   grupo: Grupo
+  fecha: string
+  /** Clase concreta del día: sin ella, la segunda clase abriría la lista de la primera. */
+  franjaInicio?: string
   registrados: number
   totalAlumnos: number
 }) {
@@ -516,7 +583,11 @@ function AccionesClase({
       </button>
 
       <button
-        onClick={() => navegar(`/asistencia/${grupo.id}`)}
+        onClick={() =>
+          navegar(
+            `/asistencia/${grupo.id}/${fecha}` + (franjaInicio ? `/${franjaInicio}` : ''),
+          )
+        }
         className={
           'flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold ' +
           (completo ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
@@ -541,15 +612,18 @@ function AccionesClase({
 
 function TarjetaSesionSemana({
   hueco,
+  ordinal,
   registrados,
   totalAlumnos,
 }: {
   hueco: HuecoCalendario
+  /** «1.ª de 2» cuando el grupo tiene más de una clase ese día. */
+  ordinal?: OrdinalClase
   registrados: number
   totalAlumnos: number
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { grupo, fecha, horaInicio, horaFin, sesion } = hueco
+  const { grupo, fecha, franjaInicio, horaInicio, horaFin, sesion } = hueco
 
   const campos: { etiqueta: string; texto: string }[] = []
   if (sesion?.notas) campos.push({ etiqueta: 'Notas', texto: sesion.notas })
@@ -565,12 +639,12 @@ function TarjetaSesionSemana({
     })
 
   async function editar() {
-    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha, { franjaInicio }))
     navegar(`/sesiones/${id}`)
   }
 
   async function valorar(v: 1 | 2 | 3 | 4 | 5 | undefined) {
-    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha, { franjaInicio }))
     await db.sesiones.update(id, { valoracion: v })
   }
 
@@ -594,6 +668,7 @@ function TarjetaSesionSemana({
             </span>
             <span className="cifra mt-0.5 block truncate text-sm texto-suave">
               {horaInicio && horaFin ? `${horaInicio}–${horaFin}` : 'Sin hora fija'}
+              {rotuloOrdinal(ordinal) ? ` · ${rotuloOrdinal(ordinal)}` : ''}
               {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
             </span>
           </span>
@@ -606,7 +681,13 @@ function TarjetaSesionSemana({
           />
         </button>
 
-        <AccionesClase grupo={grupo} registrados={registrados} totalAlumnos={totalAlumnos} />
+        <AccionesClase
+          grupo={grupo}
+          fecha={fecha}
+          franjaInicio={franjaInicio}
+          registrados={registrados}
+          totalAlumnos={totalAlumnos}
+        />
       </div>
 
       {abierta && (
@@ -630,7 +711,12 @@ function TarjetaSesionSemana({
           {/* Solo sin sesión: con una planificada, quitarla se decide en su
               detalle, donde se ve qué contenido se pierde. */}
           {!sesion && (
-            <BotonNoHayClase grupo={grupo} fecha={fecha} horaInicio={horaInicio} variante="ancho" />
+            <BotonNoHayClase
+              grupo={grupo}
+              fecha={fecha}
+              horaInicio={franjaInicio ?? horaInicio}
+              variante="ancho"
+            />
           )}
         </div>
       )}
@@ -647,18 +733,21 @@ function TarjetaSesionSemana({
 function TarjetaClase({
   clase,
   fecha,
+  ordinal,
   destacada = false,
   enCurso = false,
   pasada = false,
 }: {
   clase: Clase
   fecha: string
+  /** «1.ª de 2» cuando el grupo tiene más de una clase ese día. */
+  ordinal?: OrdinalClase
   destacada?: boolean
   enCurso?: boolean
   pasada?: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { grupo, horaInicio, horaFin, registrados, totalAlumnos, sesion } = clase
+  const { grupo, franjaInicio, horaInicio, horaFin, registrados, totalAlumnos, sesion } = clase
   const hayDescripcion = !!(
     sesion &&
     (sesion.notas || sesion.recursosNecesarios || sesion.comentarios || sesion.juegos.length > 0)
@@ -667,12 +756,12 @@ function TarjetaClase({
   // Como en la vista de semana: si el día aún no tiene sesión, se crea al vuelo,
   // así valorar o editar funciona igual haya planificación o no.
   async function editar() {
-    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha, { franjaInicio }))
     navegar(`/sesiones/${id}`)
   }
 
   async function valorar(v: 1 | 2 | 3 | 4 | 5 | undefined) {
-    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha, { franjaInicio }))
     await db.sesiones.update(id, { valoracion: v })
   }
 
@@ -707,6 +796,7 @@ function TarjetaClase({
             </span>
             <span className="cifra mt-0.5 block text-sm texto-suave">
               {horaInicio && horaFin ? `${horaInicio}–${horaFin} · ` : ''}
+              {rotuloOrdinal(ordinal) ? `${rotuloOrdinal(ordinal)} · ` : ''}
               {totalAlumnos} {totalAlumnos === 1 ? 'alumno' : 'alumnos'}
             </span>
             {sesion?.titulo && <span className="mt-0.5 block truncate text-sm">{sesion.titulo}</span>}
@@ -721,7 +811,13 @@ function TarjetaClase({
           />
         </button>
 
-        <AccionesClase grupo={grupo} registrados={registrados} totalAlumnos={totalAlumnos} />
+        <AccionesClase
+          grupo={grupo}
+          fecha={fecha}
+          franjaInicio={franjaInicio}
+          registrados={registrados}
+          totalAlumnos={totalAlumnos}
+        />
       </div>
 
       {abierta && (
@@ -768,7 +864,12 @@ function TarjetaClase({
           </button>
 
           {!sesion && (
-            <BotonNoHayClase grupo={grupo} fecha={fecha} horaInicio={horaInicio} variante="ancho" />
+            <BotonNoHayClase
+              grupo={grupo}
+              fecha={fecha}
+              horaInicio={franjaInicio ?? horaInicio}
+              variante="ancho"
+            />
           )}
         </div>
       )}

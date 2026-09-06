@@ -2,6 +2,33 @@ import { db, nuevoId } from './db'
 import type { Alumno, Asistencia, EstadoAsistencia } from './types'
 
 /**
+ * La clase concreta a la que pertenece un pase de lista, dentro de un día.
+ *
+ * Existe porque un grupo puede tener DOS clases el mismo día en franjas
+ * separadas: hasta v24 la asistencia se identificaba solo por `alumnoId+fecha`,
+ * así que pasar lista en la segunda SOBRESCRIBÍA la primera. Eso era pérdida de
+ * datos, no una molestia visual.
+ *
+ * `primera` es lo que hace la migración innecesaria: un registro guardado sin
+ * `franjaInicio` —todos los anteriores a v24— pertenece a la primera clase del
+ * día, que es exactamente lo que significaba antes. Nada que reescribir, nada
+ * que reatribuir mal.
+ */
+export interface FranjaAsistencia {
+  /** `horaInicio` de la franja del horario. Ausente si ese día no hay franjas. */
+  inicio?: string
+  /** Si es la primera clase del grupo ese día. */
+  primera: boolean
+}
+
+/** Un registro pertenece a la franja pedida. Sin franja, todo vale (vista global). */
+function esDeLaFranja(a: Asistencia, franja?: FranjaAsistencia): boolean {
+  if (!franja) return true
+  if (a.franjaInicio === undefined) return franja.primera
+  return a.franjaInicio === franja.inicio
+}
+
+/**
  * Orden del ciclo al tocar una tarjeta en el pase de lista.
  *
  * El flujo real es «Todos presentes» + excepciones, así que el primer toque
@@ -16,15 +43,31 @@ export function siguienteEstado(actual: EstadoAsistencia | undefined): EstadoAsi
   return CICLO[(i + 1) % CICLO.length]
 }
 
-/** Registros de un grupo en una fecha, indexados por alumno. */
+/**
+ * Registros de un grupo en una fecha y clase, indexados por alumno. El índice
+ * sigue siendo `[alumnoId+fecha]` y la franja se filtra en memoria: son ~25
+ * registros por día y así los anteriores a v24, que no tienen el campo y por
+ * tanto IndexedDB no indexaría, siguen encontrándose.
+ */
 export async function leerAsistenciaGrupo(
   alumnoIds: string[],
   fecha: string,
+  franja?: FranjaAsistencia,
 ): Promise<Map<string, Asistencia>> {
   if (alumnoIds.length === 0) return new Map()
   const claves = alumnoIds.map((id) => [id, fecha] as [string, string])
   const lista = await db.asistencias.where('[alumnoId+fecha]').anyOf(claves).toArray()
-  return new Map(lista.map((a) => [a.alumnoId, a]))
+  return new Map(lista.filter((a) => esDeLaFranja(a, franja)).map((a) => [a.alumnoId, a]))
+}
+
+/** El registro de un alumno en una clase concreta, si lo hay. */
+async function registroDe(
+  alumnoId: string,
+  fecha: string,
+  franja?: FranjaAsistencia,
+): Promise<Asistencia | undefined> {
+  const lista = await db.asistencias.where('[alumnoId+fecha]').equals([alumnoId, fecha]).toArray()
+  return lista.find((a) => esDeLaFranja(a, franja))
 }
 
 /**
@@ -38,10 +81,12 @@ export async function leerAsistenciaGrupo(
 export async function marcarTodosPresentes(
   alumnos: Alumno[],
   fecha: string,
+  franja?: FranjaAsistencia,
 ): Promise<() => Promise<void>> {
   const previos = await leerAsistenciaGrupo(
     alumnos.map((a) => a.id),
     fecha,
+    franja,
   )
 
   const aCrear: Asistencia[] = []
@@ -54,6 +99,7 @@ export async function marcarTodosPresentes(
         id: nuevoId(),
         alumnoId: alumno.id,
         fecha,
+        franjaInicio: franja?.inicio,
         estado: 'presente',
         chandal: true,
       })
@@ -79,8 +125,9 @@ export async function marcarTodosPresentes(
 export async function ciclarEstado(
   alumnoId: string,
   fecha: string,
+  franja?: FranjaAsistencia,
 ): Promise<() => Promise<void>> {
-  const previo = await db.asistencias.where('[alumnoId+fecha]').equals([alumnoId, fecha]).first()
+  const previo = await registroDe(alumnoId, fecha, franja)
   const estado = siguienteEstado(previo?.estado)
 
   if (previo) {
@@ -89,7 +136,14 @@ export async function ciclarEstado(
     return async () => void (await db.asistencias.update(previo.id, { estado: antes }))
   }
 
-  const nuevo: Asistencia = { id: nuevoId(), alumnoId, fecha, estado, chandal: true }
+  const nuevo: Asistencia = {
+    id: nuevoId(),
+    alumnoId,
+    fecha,
+    franjaInicio: franja?.inicio,
+    estado,
+    chandal: true,
+  }
   await db.asistencias.add(nuevo)
   return async () => void (await db.asistencias.delete(nuevo.id))
 }
@@ -98,15 +152,23 @@ export async function ciclarEstado(
 export async function alternarChandal(
   alumnoId: string,
   fecha: string,
+  franja?: FranjaAsistencia,
 ): Promise<() => Promise<void>> {
-  const previo = await db.asistencias.where('[alumnoId+fecha]').equals([alumnoId, fecha]).first()
+  const previo = await registroDe(alumnoId, fecha, franja)
 
   if (previo) {
     await db.asistencias.update(previo.id, { chandal: !previo.chandal })
     return async () => void (await db.asistencias.update(previo.id, { chandal: previo.chandal }))
   }
 
-  const nuevo: Asistencia = { id: nuevoId(), alumnoId, fecha, estado: 'presente', chandal: false }
+  const nuevo: Asistencia = {
+    id: nuevoId(),
+    alumnoId,
+    fecha,
+    franjaInicio: franja?.inicio,
+    estado: 'presente',
+    chandal: false,
+  }
   await db.asistencias.add(nuevo)
   return async () => void (await db.asistencias.delete(nuevo.id))
 }
@@ -142,7 +204,12 @@ export function resumirAsistencia(registros: Asistencia[]): ResumenAsistencia {
   const asistidas = presentes + retrasos
   const pctAsistencia = total === 0 ? 0 : Math.round((asistidas / total) * 100)
 
-  const porFecha = [...registros].sort((a, b) => b.fecha.localeCompare(a.fecha))
+  // Más reciente primero. Dentro del día, la clase más tardía va antes: con dos
+  // clases el mismo día la racha tiene que recorrerlas en orden inverso real.
+  const porFecha = [...registros].sort(
+    (a, b) =>
+      b.fecha.localeCompare(a.fecha) || (b.franjaInicio ?? '').localeCompare(a.franjaInicio ?? ''),
+  )
   let rachaChandal = 0
   for (const r of porFecha) {
     // Un día que no vino no rompe la racha: no pudo traer el chándal.

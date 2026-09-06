@@ -19,7 +19,7 @@ export function FilasCanceladas({ huecos }: { huecos: HuecoCancelado[] }) {
   return (
     <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2">
       {huecos.map((h) => (
-        <li key={`${h.grupo.id}-${h.fecha}-${h.horaInicio ?? ''}`}>
+        <li key={`${h.grupo.id}-${h.fecha}-${h.franjaInicio ?? h.horaInicio ?? ''}`}>
           <FilaCancelada hueco={h} />
         </li>
       ))}
@@ -29,10 +29,12 @@ export function FilasCanceladas({ huecos }: { huecos: HuecoCancelado[] }) {
 
 function FilaCancelada({ hueco }: { hueco: HuecoCancelado }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
-  const { grupo, fecha, horaInicio } = hueco
+  // Se restaura la FRANJA, no la hora pintada: son lo mismo en un hueco sin
+  // sesión —el único que se puede cancelar—, pero la franja es la identidad.
+  const { grupo, fecha, franjaInicio, horaInicio } = hueco
 
   async function restaurar() {
-    const deshacer = await restaurarClase(grupo.id, fecha, horaInicio)
+    const deshacer = await restaurarClase(grupo.id, fecha, franjaInicio ?? horaInicio)
     mostrarAviso(`Clase de ${grupo.nombre} restaurada`, deshacer)
   }
 

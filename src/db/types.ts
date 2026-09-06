@@ -206,6 +206,17 @@ export interface Asistencia {
   id: Id
   alumnoId: Id
   fecha: string
+  /**
+   * Franja del horario a la que pertenece este pase de lista, por su
+   * `horaInicio`. Existe porque un grupo puede tener DOS clases el mismo día en
+   * franjas separadas: sin este campo ambas escribían sobre el mismo registro y
+   * pasar lista en la segunda machacaba la primera.
+   *
+   * Ausente = «la primera franja del día», que es lo que significaban todos los
+   * registros anteriores a este campo. Por eso la migración no reescribe nada:
+   * el silencio ya es la respuesta correcta.
+   */
+  franjaInicio?: string
   estado: EstadoAsistencia
   chandal: boolean
   observacion?: string
@@ -240,6 +251,16 @@ export interface Sesion {
   /** Hora distinta a la habitual del grupo ese día, si se ha cambiado para esta sesión. */
   horaInicio?: string
   horaFin?: string
+  /**
+   * Franja del horario del grupo que ocupa esta sesión, por su `horaInicio`.
+   * Es IDENTIDAD, no presentación: `horaInicio` de arriba es un override de la
+   * hora real y puede cambiar; esto no. Distingue las dos clases de un mismo
+   * grupo el mismo día en franjas separadas.
+   *
+   * Ausente = primera franja del grupo ese día (lo que ya ocurría antes de que
+   * el campo existiera).
+   */
+  franjaInicio?: string
 }
 
 /**

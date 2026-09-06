@@ -54,6 +54,7 @@ import {
   type ResumenCopia,
 } from '../db/planificador'
 import { huecosCanceladosDe, huecosDe, type HuecoCalendario } from '../db/sesiones'
+import { ordinalesDelDia, rotuloOrdinal } from '../lib/clasesDelDia'
 import { BotonNoHayClase, FilasCanceladas } from '../components/ClasesCanceladas'
 import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
@@ -172,7 +173,7 @@ function VistaSemana({
 
   async function abrir(h: HuecoCalendario) {
     // Un hueco sin sesión la crea al vuelo: planificar no debe costar dos pasos.
-    const id = h.sesion?.id ?? (await crearSesion(h.grupo.id, h.fecha))
+    const id = h.sesion?.id ?? (await crearSesion(h.grupo.id, h.fecha, { franjaInicio: h.franjaInicio }))
     navegar(`/sesiones/${id}`)
   }
 
@@ -249,8 +250,15 @@ function VistaSemana({
               ) : (
                 <>
                 <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2">
-                  {delDia.map((h) => (
-                    <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                  {(() => {
+                    // Un grupo con dos clases ese día se rotula «1.ª de 2» /
+                    // «2.ª de 2»: sin la marca, dos filas iguales seguidas
+                    // parecen un duplicado por error.
+                    const ordinales = ordinalesDelDia(delDia.map((h) => ({ grupoId: h.grupo.id })))
+                    return delDia.map((h, i) => {
+                    const ord = ordinales[i]
+                    return (
+                    <li key={`${h.grupo.id}-${h.franjaInicio ?? h.horaInicio}`}>
                       <div className="tarjeta-pulsable flex w-full items-center gap-3">
                         <button
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"
@@ -268,6 +276,7 @@ function VistaSemana({
                             </span>
                             <span className="cifra mt-0.5 block truncate text-sm texto-suave">
                               {h.horaInicio && h.horaFin ? `${h.horaInicio}–${h.horaFin}` : 'Sin hora fija'}
+                              {rotuloOrdinal(ord) ? ` · ${rotuloOrdinal(ord)}` : ''}
                               {h.sesion?.titulo ? ` · ${h.sesion.titulo}` : ''}
                             </span>
                           </span>
@@ -287,12 +296,14 @@ function VistaSemana({
                           <BotonNoHayClase
                             grupo={h.grupo}
                             fecha={h.fecha}
-                            horaInicio={h.horaInicio}
+                            horaInicio={h.franjaInicio ?? h.horaInicio}
                           />
                         )}
                       </div>
                     </li>
-                  ))}
+                    )
+                    })
+                  })()}
                 </ul>
                 <FilasCanceladas huecos={sinClase} />
                 </>

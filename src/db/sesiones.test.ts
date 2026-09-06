@@ -449,3 +449,136 @@ describe('resumenSesion', () => {
     expect(resumen.observaciones).toBe(1)
   })
 })
+
+/**
+ * El bug de las DOS clases el mismo día (§ v24 en `db.ts`).
+ *
+ * Un grupo con dos franjas separadas —a primera hora y después del recreo—
+ * solo enseñaba una: la sesión se buscaba por `grupoId+fecha` con un `find`,
+ * así que las dos franjas resolvían a la MISMA sesión. Y la asistencia, por
+ * `alumnoId+fecha`, hacía que pasar lista en la segunda sobrescribiera la
+ * primera: eso era pérdida de datos, no una molestia visual.
+ */
+describe('dos clases del mismo grupo el mismo día', () => {
+  const MARTES = '2026-09-08'
+  const SEMANA = { desde: '2026-09-07', hasta: '2026-09-11' }
+
+  async function grupoConDosClasesElMartes() {
+    await db.grupos.update(GRUPO_ID, {
+      horario: [
+        { diaSemana: 2, horaInicio: '10:00', horaFin: '10:45' },
+        { diaSemana: 2, horaInicio: '12:30', horaFin: '13:15' },
+      ],
+    })
+  }
+
+  it('las dos aparecen, cada una con su sesión, en huecos y en sesiones', async () => {
+    await grupoConDosClasesElMartes()
+    const a = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote', franjaInicio: '10:00' })
+    const b = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Saltos', franjaInicio: '12:30' })
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(2)
+    expect(huecos.map((h) => h.sesion?.id)).toEqual([a, b])
+    // Cada una hereda la hora de SU franja, no la de la primera del día.
+    expect(huecos.map((h) => h.horaInicio)).toEqual(['10:00', '12:30'])
+    expect(huecos.map((h) => h.franjaInicio)).toEqual(['10:00', '12:30'])
+
+    // Calendario > Mes lee de `getSesiones`: también las dos.
+    const sesiones = await getSesiones(SEMANA)
+    expect(sesiones.map((s) => s.sesion.id)).toEqual([a, b])
+    expect(sesiones.map((s) => s.horaFin)).toEqual(['10:45', '13:15'])
+  })
+
+  it('se ordenan por hora aunque se creen al revés', async () => {
+    await grupoConDosClasesElMartes()
+    await crearSesion(GRUPO_ID, MARTES, { titulo: 'Tarde', franjaInicio: '12:30' })
+    await crearSesion(GRUPO_ID, MARTES, { titulo: 'Mañana', franjaInicio: '10:00' })
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos.map((h) => h.sesion?.titulo)).toEqual(['Mañana', 'Tarde'])
+  })
+
+  it('planificar solo una deja la otra como hueco vacío, no como copia suya', async () => {
+    await grupoConDosClasesElMartes()
+    const a = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote', franjaInicio: '10:00' })
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(2)
+    expect(huecos[0].sesion?.id).toBe(a)
+    expect(huecos[1].sesion).toBeUndefined()
+    expect(huecos[1].horaInicio).toBe('12:30')
+  })
+
+  it('eliminar una de las dos no elimina ni desplaza la otra', async () => {
+    await grupoConDosClasesElMartes()
+    const a = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote', franjaInicio: '10:00' })
+    const b = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Saltos', franjaInicio: '12:30' })
+
+    await eliminarSesion(a, false, false)
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(2)
+    expect(huecos[1].sesion?.id).toBe(b)
+    expect(huecos[1].sesion?.titulo).toBe('Saltos')
+    // La superviviente sigue en su franja: no se ha adelantado a la vacante.
+    expect((await db.sesiones.get(b))!.franjaInicio).toBe('12:30')
+  })
+
+  it('una sesión sin franja (anterior a v24) ocupa la primera clase del día', async () => {
+    await grupoConDosClasesElMartes()
+    const id = nuevoId()
+    await db.sesiones.put({
+      id,
+      grupoId: GRUPO_ID,
+      fecha: MARTES,
+      titulo: 'Heredada',
+      juegos: [],
+      notas: '',
+      recursos: [],
+    })
+
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(2)
+    expect(huecos[0].sesion?.id).toBe(id)
+    expect(huecos[1].sesion).toBeUndefined()
+  })
+
+  it('un grupo con una sola clase al día se comporta exactamente como antes', async () => {
+    const id = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Única', franjaInicio: '10:00' })
+    const huecos = await huecosDe(SEMANA)
+    expect(huecos).toHaveLength(1)
+    expect(huecos[0].sesion?.id).toBe(id)
+    expect(huecos[0].horaInicio).toBe('10:00')
+  })
+})
+
+/**
+ * «Preparar el material» del día se arma con lo que devuelve `huecosDe`: si
+ * ahí solo llegaba una de las dos clases, la lista salía a medias por mucho
+ * que el texto se generase bien.
+ */
+describe('material del día con dos clases del mismo grupo', () => {
+  it('las dos sesiones llegan con su propio material', async () => {
+    await db.grupos.update(GRUPO_ID, {
+      horario: [
+        { diaSemana: 2, horaInicio: '10:00', horaFin: '10:45' },
+        { diaSemana: 2, horaInicio: '12:30', horaFin: '13:15' },
+      ],
+    })
+    await crearSesion(GRUPO_ID, '2026-09-08', {
+      franjaInicio: '10:00',
+      recursosNecesarios: 'Material: 12 conos, 4 aros',
+    })
+    await crearSesion(GRUPO_ID, '2026-09-08', {
+      franjaInicio: '12:30',
+      recursosNecesarios: 'Material: 6 picas',
+    })
+
+    const huecos = await huecosDe({ desde: '2026-09-07', hasta: '2026-09-11' })
+    expect(huecos.map((h) => h.sesion?.recursosNecesarios)).toEqual([
+      'Material: 12 conos, 4 aros',
+      'Material: 6 picas',
+    ])
+  })
+})

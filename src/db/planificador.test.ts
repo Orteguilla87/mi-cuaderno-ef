@@ -6,14 +6,19 @@ import {
   anadirSesionPlan,
   aplicarUnidadAGrupo,
   archivarUnidad,
+  claveHueco,
+  clavesOcupadas,
   contarImpactoUnidad,
   copiarUnidad,
   crearSesion,
   crearUnidad,
   duplicarSesionPlan,
+  fechasDeClase,
+  huecosDeClase,
   eliminarSesionPlan,
   eliminarUnidad,
   guardarPesosTrimestre,
+  generarCursoCompleto,
   guardarSesionPlan,
   importarUnidad,
   mapearCriterios,
@@ -1099,5 +1104,68 @@ describe('mover una unidad multi-curso', () => {
     const udId = await unidadDeTres()
     await anadirCursoAUnidad(udId, 4, 'blanco')
     await expect(moverUnidad(udId, 6)).rejects.toThrow(/cursos/)
+  })
+})
+
+/**
+ * Un grupo con DOS franjas el mismo día tiene dos clases, no una. Contar por
+ * fechas —lo que hacía `fechasDeClase`— se comía la segunda de cada día: al
+ * generar el curso salía la mitad de las sesiones, y al volcar una unidad se
+ * quedaba media unidad sin colocar.
+ */
+describe('dos franjas el mismo día', () => {
+  const MARTES = '2026-09-08'
+
+  async function dosClasesLosMartes() {
+    await db.grupos.update(GRUPO_ID, {
+      horario: [
+        { diaSemana: 2, horaInicio: '10:00', horaFin: '10:45' },
+        { diaSemana: 2, horaInicio: '12:30', horaFin: '13:15' },
+      ],
+    })
+    return (await db.grupos.get(GRUPO_ID))!
+  }
+
+  it('huecosDeClase da dos entradas por día; fechasDeClase sigue dando una fecha', async () => {
+    const grupo = await dosClasesLosMartes()
+    const curso = (await db.cursos.get(CURSO_ID))!
+
+    const huecos = huecosDeClase(grupo, curso).filter((h) => h.fecha === MARTES)
+    expect(huecos).toEqual([
+      { fecha: MARTES, franjaInicio: '10:00' },
+      { fecha: MARTES, franjaInicio: '12:30' },
+    ])
+    // La fecha no se repite: quien solo necesita días sigue viendo lo de antes.
+    expect(fechasDeClase(grupo, curso).filter((f) => f === MARTES)).toEqual([MARTES])
+  })
+
+  it('generar el curso crea una sesión por CLASE, y repetirlo no duplica nada', async () => {
+    const grupo = await dosClasesLosMartes()
+    const { resultado } = await generarCursoCompleto(GRUPO_ID)
+
+    const delMartes = (await db.sesiones.where('grupoId').equals(GRUPO_ID).toArray()).filter(
+      (s) => s.fecha === MARTES,
+    )
+    expect(delMartes.map((s) => s.franjaInicio).sort()).toEqual(['10:00', '12:30'])
+    expect(resultado.creadas).toBe(resultado.total)
+
+    const otra = await generarCursoCompleto(GRUPO_ID)
+    expect(otra.resultado.creadas).toBe(0)
+    expect(otra.resultado.existentes).toBe(resultado.total)
+    expect(grupo.horario).toHaveLength(2)
+  })
+
+  it('una sesión sin franja ocupa la primera clase de su día', async () => {
+    const grupo = await dosClasesLosMartes()
+    await crearSesion(GRUPO_ID, MARTES) // sin franja: como antes de v24
+
+    const ocupadas = clavesOcupadas(await db.sesiones.toArray(), grupo)
+    expect(ocupadas.has(claveHueco({ fecha: MARTES, franjaInicio: '10:00' }))).toBe(true)
+    expect(ocupadas.has(claveHueco({ fecha: MARTES, franjaInicio: '12:30' }))).toBe(false)
+
+    // Generar el curso rellena solo la clase que faltaba, sin pisar la vieja.
+    await generarCursoCompleto(GRUPO_ID)
+    const delMartes = (await db.sesiones.toArray()).filter((s) => s.fecha === MARTES)
+    expect(delMartes).toHaveLength(2)
   })
 })

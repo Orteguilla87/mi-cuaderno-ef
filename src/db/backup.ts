@@ -179,7 +179,38 @@ export const MIGRACIONES: Migracion[] = [
           c.coloresPetosIds ??= (c.coloresPetos as string[]).map(normalizarColor)
     },
   },
+  {
+    // Espejo de db.ts v24: cada sesión pasa a llevar la franja del horario que
+    // ocupa. Sin este espejo, restaurar una copia anterior dejaría todas las
+    // sesiones sin franja y las dos clases de un mismo día volverían a
+    // colapsar en una. La asistencia NO se toca a propósito: «sin franja» ya
+    // significa «la primera del día».
+    hasta: 24,
+    aplicar: (t) => {
+      const horarios = new Map<string, string[][]>()
+      for (const g of filas(t, 'grupos')) {
+        const porDia: string[][] = [[], [], [], [], [], [], [], []]
+        for (const f of (g.horario ?? []) as { diaSemana: number; horaInicio: string }[])
+          porDia[f.diaSemana]?.push(f.horaInicio)
+        for (const lista of porDia) lista.sort((a, b) => a.localeCompare(b))
+        horarios.set(g.id as string, porDia)
+      }
+      for (const s of filas(t, 'sesiones')) {
+        if (s.franjaInicio !== undefined) continue
+        const dia = diaDeLaSemanaISO(s.fecha as string)
+        const primera = horarios.get(s.grupoId as string)?.[dia]?.[0]
+        if (primera) s.franjaInicio = primera
+      }
+    },
+  },
 ]
+
+/** 1..7 (lunes..domingo) de un 'YYYY-MM-DD', en UTC: sin depender de la zona. */
+function diaDeLaSemanaISO(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return dow === 0 ? 7 : dow
+}
 
 /** Aplica en orden las migraciones pendientes entre `desde` y ESQUEMA_ACTUAL. */
 export function migrarTablas(tablas: Tablas, desde: number): Tablas {

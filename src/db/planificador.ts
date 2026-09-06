@@ -1,6 +1,6 @@
 import { cicloDeCurso, cicloDeUnidad, idCriterioPrimaria, ordinalCiclo } from '../lib/ciclos'
 import { estadoDia, type CursoFechas } from '../lib/calendarioEscolar'
-import { aISO, deISO, sumarDias } from '../lib/fechas'
+import { aISO, deISO, diaLectivo, sumarDias } from '../lib/fechas'
 import { esEnlace } from '../lib/importarTexto'
 import { criteriosDeGrupo } from './criterios'
 import { db, nuevoId } from './db'
@@ -51,18 +51,56 @@ export async function crearSesion(
     recursos: datos.recursos ?? [],
     recursosNecesarios: datos.recursosNecesarios,
     comentarios: datos.comentarios,
+    // Franja del horario que ocupa. Sin ella, dos clases del mismo grupo el
+    // mismo día vuelven a ser indistinguibles (v24 en `db.ts`).
+    franjaInicio: datos.franjaInicio,
   }
   await db.sesiones.add(sesion)
   // Planificar ese día es, por sí solo, restaurar la clase: si estaba cancelada
   // (`db.clasesCanceladas`), la excepción deja de tener sentido y se retira.
-  await quitarCancelaciones(grupoId, fecha)
+  await quitarCancelaciones(grupoId, fecha, sesion.franjaInicio)
   return sesion.id
 }
 
-/** Retira las excepciones de «no hay clase» de un grupo y fecha. */
-async function quitarCancelaciones(grupoId: string, fecha: string): Promise<void> {
+/**
+ * Retira las excepciones de «no hay clase» que tapan la franja que se acaba de
+ * planificar — solo esa. Un grupo con dos clases ese día puede tener una
+ * cancelada y la otra no, así que restaurar el día entero sería decidir por el
+ * usuario: una excepción de día completo se conserva, estrechada a las demás
+ * franjas.
+ */
+async function quitarCancelaciones(
+  grupoId: string,
+  fecha: string,
+  franjaInicio?: string,
+): Promise<void> {
   const previas = await db.clasesCanceladas.where('[grupoId+fecha]').equals([grupoId, fecha]).toArray()
-  if (previas.length) await db.clasesCanceladas.bulkDelete(previas.map((c) => c.id))
+  if (!previas.length) return
+
+  // Sin franja conocida no hay nada que estrechar: se comporta como antes.
+  if (franjaInicio === undefined) {
+    await db.clasesCanceladas.bulkDelete(previas.map((c) => c.id))
+    return
+  }
+
+  const grupo = await db.grupos.get(grupoId)
+  const dow = diaLectivo(fecha)
+  const otras = (grupo?.horario ?? [])
+    .filter((f) => f.diaSemana === dow && f.horaInicio !== franjaInicio)
+    .map((f) => f.horaInicio)
+
+  const aBorrar = previas.filter((c) => c.horaInicio === undefined || c.horaInicio === franjaInicio)
+  const aCrear: ClaseCancelada[] = []
+  for (const c of aBorrar) {
+    if (c.horaInicio !== undefined) continue // era de esta franja: desaparece y ya está
+    for (const hora of otras)
+      aCrear.push({ id: nuevoId(), grupoId, fecha, horaInicio: hora, creado: c.creado })
+  }
+
+  await db.transaction('rw', db.clasesCanceladas, async () => {
+    await db.clasesCanceladas.bulkDelete(aBorrar.map((c) => c.id))
+    if (aCrear.length) await db.clasesCanceladas.bulkAdd(aCrear)
+  })
 }
 
 /**
@@ -200,23 +238,38 @@ export async function eliminarSesion(
     .filter((s) => s.fecha > sesion.fecha)
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
-  // huecos[0] es la propia fecha que se libera; cada sesión posterior ocupa
-  // la posición anterior de la secuencia, cerrando el hueco.
-  const huecos = fechasDeClase(grupo, curso, sesion.fecha)
+  // huecos[0] es la propia CLASE que se libera; cada sesión posterior ocupa la
+  // posición anterior de la secuencia, cerrando el hueco. Se recorre por clases
+  // y no por fechas: en un grupo con dos franjas el mismo día, contar por días
+  // adelantaba las sesiones el doble de lo debido.
+  const huecos = huecosDeClase(grupo, curso, sesion.fecha)
   const cambios = siguientes
-    .map((s, i) => ({ id: s.id, fechaAntes: s.fecha, fechaDespues: huecos[i] }))
-    .filter((c): c is { id: string; fechaAntes: string; fechaDespues: string } =>
-      Boolean(c.fechaDespues && c.fechaDespues !== c.fechaAntes),
+    .map((s, i) => ({
+      id: s.id,
+      antes: { fecha: s.fecha, franjaInicio: s.franjaInicio },
+      despues: huecos[i],
+    }))
+    .filter((c) => c.despues !== undefined)
+    .filter(
+      (c) => c.despues.fecha !== c.antes.fecha || c.despues.franjaInicio !== c.antes.franjaInicio,
     )
 
   await db.transaction('rw', db.sesiones, async () => {
     await db.sesiones.delete(sesionId)
-    for (const c of cambios) await db.sesiones.update(c.id, { fecha: c.fechaDespues })
+    for (const c of cambios)
+      await db.sesiones.update(c.id, {
+        fecha: c.despues.fecha,
+        franjaInicio: c.despues.franjaInicio,
+      })
   })
 
   return async () => {
     await db.transaction('rw', db.sesiones, async () => {
-      for (const c of cambios) await db.sesiones.update(c.id, { fecha: c.fechaAntes })
+      for (const c of cambios)
+        await db.sesiones.update(c.id, {
+          fecha: c.antes.fecha,
+          franjaInicio: c.antes.franjaInicio,
+        })
       await db.sesiones.add(sesion)
     })
   }
@@ -1261,7 +1314,13 @@ export function semanaActual(): string {
 /** Sesiones de un grupo en orden cronológico: la vista de «programar el curso». */
 export async function sesionesDeGrupo(grupoId: string): Promise<Sesion[]> {
   const lista = await db.sesiones.where('grupoId').equals(grupoId).toArray()
-  return lista.sort((a, b) => a.fecha.localeCompare(b.fecha))
+  // Dentro del día, por franja: un grupo con dos clases el mismo día tiene que
+  // listarlas en el orden en que ocurren, no en el que las devuelva el índice.
+  return lista.sort(
+    (a, b) =>
+      a.fecha.localeCompare(b.fecha) ||
+      (a.franjaInicio ?? '').localeCompare(b.franjaInicio ?? ''),
+  )
 }
 
 /**
@@ -1275,20 +1334,48 @@ export async function sesionesDeGrupo(grupoId: string): Promise<Sesion[]> {
  * entre grupos con horarios distintos.
  */
 export function fechasDeClase(grupo: Grupo, curso: CursoFechas, desde?: string): string[] {
+  const fechas: string[] = []
+  for (const h of huecosDeClase(grupo, curso, desde))
+    if (fechas[fechas.length - 1] !== h.fecha) fechas.push(h.fecha)
+  return fechas
+}
+
+/** Una clase concreta del curso: su fecha y la franja del horario que ocupa. */
+export interface HuecoDeClase {
+  fecha: string
+  franjaInicio: string
+}
+
+/**
+ * Lo mismo que `fechasDeClase` pero SIN colapsar el día: un grupo con dos
+ * franjas el mismo día da dos huecos, no uno. Es la unidad correcta para
+ * generar el curso, copiar planificaciones o buscar la siguiente clase libre —
+ * contar por fechas se comía la segunda clase del día.
+ *
+ * Orden: por fecha y, dentro del día, por hora.
+ */
+export function huecosDeClase(grupo: Grupo, curso: CursoFechas, desde?: string): HuecoDeClase[] {
   if (grupo.horario.length === 0) return []
 
-  const dias = new Set(grupo.horario.map((f) => f.diaSemana))
-  const arranque = desde && desde > curso.inicio ? desde : curso.inicio
+  const porDia = new Map<number, string[]>()
+  for (const f of grupo.horario) {
+    const lista = porDia.get(f.diaSemana)
+    if (lista) lista.push(f.horaInicio)
+    else porDia.set(f.diaSemana, [f.horaInicio])
+  }
+  for (const lista of porDia.values()) lista.sort((a, b) => a.localeCompare(b))
 
-  const fechas: string[] = []
+  const arranque = desde && desde > curso.inicio ? desde : curso.inicio
+  const huecos: HuecoDeClase[] = []
   let fecha = arranque
   // Tope de seguridad por si las fechas del curso vinieran mal (fin < inicio).
   for (let i = 0; fecha <= curso.fin && i < 500; i++) {
     const estado = estadoDia(fecha, curso)
-    if (estado.tipo === 'lectivo' && dias.has(estado.dia)) fechas.push(fecha)
+    if (estado.tipo === 'lectivo')
+      for (const franjaInicio of porDia.get(estado.dia) ?? []) huecos.push({ fecha, franjaInicio })
     fecha = sumarDias(fecha, 1)
   }
-  return fechas
+  return huecos
 }
 
 /** Próximas `cuantas` clases del grupo a partir de `desde`, dentro del curso. */
@@ -1301,6 +1388,41 @@ export async function proximasClases(
   if (!curso) return []
   return fechasDeClase(grupo, curso, desde).slice(0, cuantas)
 }
+
+/** Como `proximasClases`, pero una entrada por clase real y no por día. */
+export async function proximosHuecos(
+  grupo: Grupo,
+  desde: string,
+  cuantos: number,
+): Promise<HuecoDeClase[]> {
+  const curso = await db.cursos.filter((c) => c.activo).first()
+  if (!curso) return []
+  return huecosDeClase(grupo, curso, desde).slice(0, cuantos)
+}
+
+/**
+ * Las clases ya ocupadas de un grupo, como claves `fecha|franja`. Una sesión
+ * sin `franjaInicio` (anterior a v24) ocupa la primera franja de su día, que es
+ * donde la pinta `db/sesiones.ts`: así «ocupado» significa lo mismo en los dos
+ * sitios y generar el curso no crea una sesión encima de otra.
+ */
+export function clavesOcupadas(sesiones: Sesion[], grupo: Grupo): Set<string> {
+  const primeraDelDia = new Map<number, string>()
+  for (const f of grupo.horario) {
+    const previa = primeraDelDia.get(f.diaSemana)
+    if (previa === undefined || f.horaInicio < previa) primeraDelDia.set(f.diaSemana, f.horaInicio)
+  }
+  const claves = new Set<string>()
+  for (const s of sesiones) {
+    const dow = diaLectivo(s.fecha)
+    const franja = s.franjaInicio ?? (dow === null ? undefined : primeraDelDia.get(dow))
+    claves.add(`${s.fecha}|${franja ?? ''}`)
+  }
+  return claves
+}
+
+/** Clave de un hueco, en el mismo formato que `clavesOcupadas`. */
+export const claveHueco = (h: HuecoDeClase): string => `${h.fecha}|${h.franjaInicio}`
 
 export interface ResultadoGeneracion {
   creadas: number
@@ -1323,21 +1445,20 @@ export async function generarCursoCompleto(
   const curso = await db.cursos.filter((c) => c.activo).first()
   if (!grupo || !curso) throw new Error('Falta el grupo o el curso activo')
 
-  const fechas = fechasDeClase(grupo, curso)
-  const ocupadas = new Set(
-    (await db.sesiones.where('grupoId').equals(grupoId).toArray()).map((s) => s.fecha),
-  )
+  const huecos = huecosDeClase(grupo, curso)
+  const ocupadas = clavesOcupadas(await db.sesiones.where('grupoId').equals(grupoId).toArray(), grupo)
 
-  const nuevas: Sesion[] = fechas
-    .filter((f) => !ocupadas.has(f))
-    .map((fecha) => ({
+  const nuevas: Sesion[] = huecos
+    .filter((h) => !ocupadas.has(claveHueco(h)))
+    .map((h) => ({
       id: nuevoId(),
       grupoId,
-      fecha,
+      fecha: h.fecha,
       titulo: '',
       juegos: [],
       notas: '',
       recursos: [],
+      franjaInicio: h.franjaInicio,
     }))
 
   await db.sesiones.bulkAdd(nuevas)
@@ -1346,8 +1467,8 @@ export async function generarCursoCompleto(
   return {
     resultado: {
       creadas: nuevas.length,
-      existentes: fechas.length - nuevas.length,
-      total: fechas.length,
+      existentes: huecos.length - nuevas.length,
+      total: huecos.length,
     },
     deshacer: async () => void (await db.sesiones.bulkDelete(ids)),
   }
@@ -1399,10 +1520,13 @@ export async function copiarPlanificacion(opciones: {
     const grupo = await db.grupos.get(grupoId)
     if (!grupo) continue
 
-    // Se piden más fechas que sesiones para tener margen ante huecos ocupados.
-    const candidatas = await proximasClases(grupo, desde, ordenadas.length * 3 + 10)
-    const ocupadas = new Set(
-      (await db.sesiones.where('grupoId').equals(grupoId).toArray()).map((s) => s.fecha),
+    // Se piden más clases que sesiones para tener margen ante huecos ocupados.
+    // Clases, no fechas: un destino con dos franjas el mismo día tiene dos
+    // huecos que llenar, y contando por días se perdía uno de cada dos.
+    const candidatas = await proximosHuecos(grupo, desde, ordenadas.length * 3 + 10)
+    const ocupadas = clavesOcupadas(
+      await db.sesiones.where('grupoId').equals(grupoId).toArray(),
+      grupo,
     )
 
     let omitidas = 0
@@ -1411,17 +1535,17 @@ export async function copiarPlanificacion(opciones: {
 
     for (const origen of ordenadas) {
       // Avanza hasta la primera clase libre del destino.
-      while (indiceFecha < candidatas.length && ocupadas.has(candidatas[indiceFecha])) {
+      while (indiceFecha < candidatas.length && ocupadas.has(claveHueco(candidatas[indiceFecha]))) {
         indiceFecha++
         omitidas++
       }
       if (indiceFecha >= candidatas.length) break
 
-      const fecha = candidatas[indiceFecha++]
+      const hueco = candidatas[indiceFecha++]
       creadas.push({
         id: nuevoId(),
         grupoId,
-        fecha,
+        fecha: hueco.fecha,
         titulo: origen.titulo,
         udId: origen.udId,
         juegos: origen.juegos,
@@ -1429,8 +1553,9 @@ export async function copiarPlanificacion(opciones: {
         recursos: origen.recursos,
         recursosNecesarios: origen.recursosNecesarios,
         comentarios: origen.comentarios,
+        franjaInicio: hueco.franjaInicio,
       })
-      ocupadas.add(fecha)
+      ocupadas.add(claveHueco(hueco))
       colocadas++
     }
 
@@ -1557,10 +1682,13 @@ export async function aplicarUnidadAGrupo(opciones: {
   if (plan.length === 0)
     throw new Error(`${grupo.nivel}º de esta unidad no tiene ninguna sesión planificada todavía.`)
 
-  // Se piden más fechas que sesiones para tener margen ante huecos ocupados.
-  const candidatas = await proximasClases(grupo, desde, plan.length * 3 + 10)
-  const ocupadas = new Set(
-    (await db.sesiones.where('grupoId').equals(grupoId).toArray()).map((s) => s.fecha),
+  // Se piden más clases que sesiones para tener margen ante huecos ocupados.
+  // Clases y no fechas: en un grupo con dos franjas el mismo día, contar por
+  // días dejaba media unidad sin colocar.
+  const candidatas = await proximosHuecos(grupo, desde, plan.length * 3 + 10)
+  const ocupadas = clavesOcupadas(
+    await db.sesiones.where('grupoId').equals(grupoId).toArray(),
+    grupo,
   )
 
   const nuevas: Sesion[] = []
@@ -1568,25 +1696,26 @@ export async function aplicarUnidadAGrupo(opciones: {
   let indiceFecha = 0
 
   for (const paso of plan) {
-    while (indiceFecha < candidatas.length && ocupadas.has(candidatas[indiceFecha])) {
+    while (indiceFecha < candidatas.length && ocupadas.has(claveHueco(candidatas[indiceFecha]))) {
       indiceFecha++
       omitidas++
     }
     if (indiceFecha >= candidatas.length) break
 
-    const fecha = candidatas[indiceFecha++]
+    const hueco = candidatas[indiceFecha++]
     nuevas.push({
       id: nuevoId(),
       grupoId,
-      fecha,
+      fecha: hueco.fecha,
       titulo: paso.titulo,
       udId,
       juegos: [],
       notas: paso.notas,
       recursos: paso.recursos,
       recursosNecesarios: paso.recursosNecesarios,
+      franjaInicio: hueco.franjaInicio,
     })
-    ocupadas.add(fecha)
+    ocupadas.add(claveHueco(hueco))
   }
 
   await db.sesiones.bulkAdd(nuevas)

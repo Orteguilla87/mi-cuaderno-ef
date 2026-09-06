@@ -496,7 +496,64 @@ class CuadernoDB extends Dexie {
     this.version(23).stores({
       clasesCanceladas: 'id, grupoId, fecha, [grupoId+fecha]',
     })
+
+    /**
+     * v24 — un grupo puede tener DOS clases el mismo día en franjas separadas.
+     *
+     * Hasta aquí una sesión se identificaba por `grupoId+fecha`, así que las dos
+     * franjas del día resolvían a la MISMA sesión y solo se veía una clase; y la
+     * asistencia, por `alumnoId+fecha`, hacía que pasar lista en la segunda
+     * sobrescribiera la primera. `Sesion.franjaInicio` y `Asistencia.franjaInicio`
+     * (ver `types.ts`) añaden la franja a la identidad.
+     *
+     * La migración es ADITIVA e IDEMPOTENTE:
+     *  - Cada sesión existente recibe la franja MÁS TEMPRANA de su grupo ese día
+     *    de la semana, que es exactamente el hueco donde ya se pintaba. Una
+     *    sesión cuyo grupo no tiene franja ese día se queda sin campo, igual que
+     *    antes. Re-ejecutarla no cambia nada: solo escribe donde falta el campo.
+     *  - La asistencia NO se toca. «Sin franja» ya significa «la primera del
+     *    día», así que cero reescrituras y cero riesgo de reatribuir mal un
+     *    registro histórico.
+     *
+     * El índice `[grupoId+fecha+franjaInicio]` no sustituye a `[grupoId+fecha]`:
+     * IndexedDB no indexa las filas a las que les falta un componente, y las
+     * sesiones fuera de horario siguen sin `franjaInicio` a propósito.
+     */
+    this.version(24)
+      .stores({
+        sesiones: 'id, grupoId, fecha, udId, [grupoId+fecha], [grupoId+fecha+franjaInicio]',
+      })
+      .upgrade(async (tx) => {
+        const grupos = await tx.table('grupos').toArray()
+        const horarios = new Map<string, { diaSemana: number; horaInicio: string }[]>(
+          grupos.map((g) => [g.id as string, (g.horario ?? []) as { diaSemana: number; horaInicio: string }[]]),
+        )
+        await tx
+          .table('sesiones')
+          .toCollection()
+          .modify((s) => {
+            if (s.franjaInicio !== undefined) return
+            const dow = diaDeLaSemana(s.fecha as string)
+            const franjas = (horarios.get(s.grupoId as string) ?? [])
+              .filter((f) => f.diaSemana === dow)
+              .map((f) => f.horaInicio)
+              .sort((a, b) => a.localeCompare(b))
+            if (franjas.length > 0) s.franjaInicio = franjas[0]
+          })
+      })
   }
+}
+
+/**
+ * Día de la semana 1..7 de un ISO 'YYYY-MM-DD', sin pasar por `Date` en hora
+ * local: la migración no puede depender de la zona horaria del dispositivo.
+ * Duplica a propósito la aritmética de `lib/fechas.ts` para que una migración
+ * ya aplicada en un dispositivo no cambie de resultado si aquel módulo cambia.
+ */
+function diaDeLaSemana(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0 domingo
+  return dow === 0 ? 7 : dow
 }
 
 /**
@@ -504,7 +561,7 @@ class CuadernoDB extends Dexie {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 22
+export const ESQUEMA_ACTUAL = 24
 
 export const db = new CuadernoDB()
 

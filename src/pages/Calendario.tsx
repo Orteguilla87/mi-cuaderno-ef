@@ -364,7 +364,7 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
               <>
                 <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                   {delDia.map((h) => (
-                    <li key={`${h.grupo.id}-${h.horaInicio}`}>
+                    <li key={`${h.grupo.id}-${h.franjaInicio ?? h.horaInicio}`}>
                       <TarjetaHueco hueco={h} />
                     </li>
                   ))}
@@ -380,10 +380,10 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
 }
 
 function TarjetaHueco({ hueco }: { hueco: HuecoCalendario }) {
-  const { grupo, fecha, horaInicio, horaFin, sesion } = hueco
+  const { grupo, fecha, franjaInicio, horaInicio, horaFin, sesion } = hueco
 
   async function editar() {
-    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha))
+    const id = sesion?.id ?? (await crearSesion(grupo.id, fecha, { franjaInicio }))
     navegar(`/sesiones/${id}`)
   }
 

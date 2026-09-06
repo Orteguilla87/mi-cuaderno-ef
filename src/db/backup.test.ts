@@ -196,6 +196,38 @@ describe('import de un esquema anterior', () => {
     })
   })
 
+  /**
+   * Espejo de db.ts v24. Sin él, una copia anterior restauraría las sesiones
+   * sin franja y las dos clases de un mismo día volverían a colapsar en una.
+   */
+  it('v24: cada sesión de una copia anterior recibe la franja de su horario', () => {
+    const migradas = migrarTablas(
+      {
+        grupos: [
+          {
+            id: 'g',
+            horario: [
+              // A propósito desordenado: la migración se queda con la MÁS temprana.
+              { diaSemana: 2, horaInicio: '12:30', horaFin: '13:15' },
+              { diaSemana: 2, horaInicio: '10:00', horaFin: '10:45' },
+            ],
+          },
+        ],
+        sesiones: [
+          { id: 's1', grupoId: 'g', fecha: '2026-09-08' }, // martes
+          { id: 's2', grupoId: 'g', fecha: '2026-09-09' }, // miércoles: sin franja
+          { id: 's3', grupoId: 'g', fecha: '2026-09-08', franjaInicio: '12:30' }, // ya la trae
+        ],
+      },
+      23,
+    )
+    expect(migradas.sesiones!.map((s) => (s as { franjaInicio?: string }).franjaInicio)).toEqual([
+      '10:00',
+      undefined,
+      '12:30',
+    ])
+  })
+
   it('crea las filas de los instrumentos de una copia anterior a la v15', async () => {
     // Una copia hecha con la v14: columnas con `criterioCodigo` y sin filas. Sin
     // esta migración se restauraría con instrumentos sin evidencia posible, y

@@ -13,7 +13,9 @@ import {
   eliminarSesionesDeGrupo,
   generarCursoCompleto,
   pegarEnSesion,
-  proximasClases,
+  claveHueco,
+  clavesOcupadas,
+  proximosHuecos,
   sesionesDeGrupo,
   type ResultadoCopia,
 } from '../db/planificador'
@@ -87,12 +89,14 @@ export function PlanGrupo() {
 
   async function anadirSiguiente() {
     if (!grupo) return
-    const yaUsadas = new Set((sesiones ?? []).map((s) => s.fecha))
-    // La siguiente clase libre a partir de hoy, no la siguiente fecha del calendario.
-    const candidatas = await proximasClases(grupo, aISO(), (sesiones?.length ?? 0) + 20)
-    const libre = candidatas.find((f) => !yaUsadas.has(f))
+    // La siguiente CLASE libre a partir de hoy, no el siguiente día: un grupo
+    // con dos clases el mismo día tiene dos huecos que llenar, y contando por
+    // fechas se saltaba el segundo.
+    const yaUsadas = clavesOcupadas(sesiones ?? [], grupo)
+    const candidatas = await proximosHuecos(grupo, aISO(), (sesiones?.length ?? 0) + 20)
+    const libre = candidatas.find((h) => !yaUsadas.has(claveHueco(h)))
     if (!libre) return
-    const id = await crearSesion(grupo.id, libre)
+    const id = await crearSesion(grupo.id, libre.fecha, { franjaInicio: libre.franjaInicio })
     navegar(`/sesiones/${id}`)
   }
 

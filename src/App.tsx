@@ -82,16 +82,17 @@ function AvisoSemilla() {
 }
 
 function Contenido({ ruta }: { ruta: string }) {
-  const [seccion, param, param2] = segmentos(ruta)
+  const [seccion, param, param2, param3] = segmentos(ruta)
 
   switch (seccion) {
     case 'grupos':
       return param ? <GrupoDetalle grupoId={param} /> : <Grupos />
     case 'alumnos':
       return param ? <AlumnoDetalle alumnoId={param} /> : <Grupos />
-    // /asistencia/:grupoId[/:fecha] — sin fecha, hoy.
+    // /asistencia/:grupoId[/:fecha[/:franja]] — sin fecha, hoy; sin franja, la
+    // primera clase de ese día (un grupo puede tener dos en franjas separadas).
     case 'asistencia':
-      return param ? <PaseLista grupoId={param} fecha={param2} /> : <Grupos />
+      return param ? <PaseLista grupoId={param} fecha={param2} franja={param3} /> : <Grupos />
     case 'cuaderno':
       return <Cuaderno grupoId={param} />
     // Con Infantil apagado (lib/etapas.ts) la ruta sigue existiendo pero no
