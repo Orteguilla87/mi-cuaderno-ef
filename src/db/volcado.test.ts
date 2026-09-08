@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
-import { beforeEach, afterEach, describe, expect, it } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db'
+import { exportarBackup, restaurarBackup } from './backup'
 import {
   aplicarUnidadAGrupo,
   aplicarVolcado,
@@ -380,5 +381,148 @@ describe('vínculo con la unidad', () => {
     })
 
     expect(await programacion()).toEqual(antes)
+  })
+})
+
+/**
+ * Regresión del «object store was not found».
+ *
+ * `aplicarVolcado` llama a `quitarCancelaciones` por cada sesión colocada, y esa
+ * función LEE `db.grupos` para estrechar una cancelación de día completo. Con la
+ * tabla fuera del scope de la transacción, IndexedDB abortaba con NotFoundError
+ * — pero solo si el grupo tenía alguna clase cancelada, porque sin ninguna la
+ * función sale antes de llegar a esa lectura. Por eso el resto de las pruebas
+ * pasaban y la app fallaba con datos de verdad.
+ */
+describe('volcado con clases canceladas de por medio', () => {
+  async function cancelar(fecha: string, horaInicio?: string) {
+    await db.clasesCanceladas.add({
+      id: `c-${fecha}-${horaInicio ?? 'dia'}`,
+      grupoId: GRUPO_ID,
+      fecha,
+      ...(horaInicio ? { horaInicio } : {}),
+      creado: '2026-09-01T10:00:00.000Z',
+    })
+  }
+
+  it('coloca las 13 sesiones de la unidad con cancelaciones en medio', async () => {
+    // Una cancelación de día completo y otra de una franja suelta, que son los
+    // dos casos que `quitarCancelaciones` trata distinto.
+    await cancelar('2026-09-08')
+    await cancelar('2026-09-14', '09:00')
+    await cancelar('2026-09-17', '11:00')
+
+    const udId = await unidadDe(13)
+    const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
+
+    expect(r.previa.colocadas).toBe(13)
+    expect(await db.sesiones.count()).toBe(13)
+    // Planificar una clase la restaura: las cancelaciones que tapaban un hueco
+    // ocupado por la unidad ya no tienen sentido.
+    expect(await db.clasesCanceladas.count()).toBe(0)
+  })
+
+  it('una cancelación de día completo se estrecha a las franjas que no se ocupan', async () => {
+    await cancelar('2026-09-08') // martes: dos clases, 10:00 y 12:30
+    const udId = await unidadDe(2)
+
+    // Arranca en la SEGUNDA clase del martes: la primera se queda sin ocupar.
+    await aplicarVolcado({
+      udId,
+      grupoId: GRUPO_ID,
+      desde: '2026-09-08',
+      franjaInicio: '12:30',
+      modo: 'saltar',
+    })
+
+    const quedan = await db.clasesCanceladas.toArray()
+    expect(quedan.map((c) => c.horaInicio)).toEqual(['10:00'])
+  })
+
+  it('deshacer devuelve las sesiones pero no resucita las cancelaciones', async () => {
+    await cancelar('2026-09-07')
+    const udId = await unidadDe(3)
+    const { deshacer } = await aplicarVolcado({
+      udId,
+      grupoId: GRUPO_ID,
+      desde: '2026-09-07',
+      modo: 'saltar',
+    })
+    await deshacer()
+    expect(await db.sesiones.count()).toBe(0)
+  })
+})
+
+describe('la transacción es atómica', () => {
+  it('si falla a mitad, no queda ni una sesión colocada', async () => {
+    const udId = await unidadDe(13)
+    let escrituras = 0
+    const original = db.sesiones.add.bind(db.sesiones)
+    const espia = vi
+      .spyOn(db.sesiones, 'add')
+      .mockImplementation(((...args: Parameters<typeof original>) => {
+        if (++escrituras === 6) throw new Error('fallo simulado a mitad del volcado')
+        return original(...args)
+      }) as typeof db.sesiones.add)
+
+    await expect(
+      aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' }),
+    ).rejects.toThrow(/fallo simulado/)
+
+    espia.mockRestore()
+    // Ni las cinco que sí llegaron a escribirse: la transacción entera revierte.
+    expect(await db.sesiones.count()).toBe(0)
+  })
+
+  it('si falla al reemplazar un volcado previo, el anterior sigue intacto', async () => {
+    const udId = await unidadDe(4)
+    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
+    const antes = await programacion()
+
+    const espia = vi.spyOn(db.sesiones, 'add').mockImplementation((() => {
+      throw new Error('fallo simulado al reemplazar')
+    }) as typeof db.sesiones.add)
+
+    await expect(
+      aplicarVolcado({
+        udId,
+        grupoId: GRUPO_ID,
+        desde: '2026-09-21',
+        modo: 'saltar',
+        reemplazarPrevio: true,
+      }),
+    ).rejects.toThrow(/fallo simulado/)
+
+    espia.mockRestore()
+    expect(await programacion()).toEqual(antes)
+  })
+})
+
+describe('las cancelaciones viajan en la copia cifrada', () => {
+  it('sobreviven al ciclo exportar → restaurar', async () => {
+    await db.clasesCanceladas.add({
+      id: 'c1',
+      grupoId: GRUPO_ID,
+      fecha: '2026-09-08',
+      horaInicio: '10:00',
+      creado: '2026-09-01T10:00:00.000Z',
+    })
+    const udId = await unidadDe(3)
+    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-10', modo: 'saltar' })
+
+    const { fichero, cabecera } = await exportarBackup('pista-mojada-2026')
+    expect(cabecera.registros.clasesCanceladas).toBe(1)
+
+    await db.transaction('rw', db.tables, async () => {
+      for (const tabla of db.tables) await tabla.clear()
+    })
+    await restaurarBackup(fichero, 'pista-mojada-2026')
+
+    expect(await db.clasesCanceladas.get('c1')).toMatchObject({
+      grupoId: GRUPO_ID,
+      fecha: '2026-09-08',
+      horaInicio: '10:00',
+    })
+    expect(await db.sesiones.count()).toBe(3)
   })
 })

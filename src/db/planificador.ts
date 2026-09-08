@@ -1904,7 +1904,15 @@ export async function aplicarVolcado(
   const creadas: string[] = []
   const reescritas: string[] = []
 
-  await db.transaction('rw', db.sesiones, db.clasesCanceladas, async () => {
+  // `db.grupos` va en el scope aunque aquí no se escriba en ella: dentro se
+  // llama a `quitarCancelaciones`, que LEE el horario del grupo para estrechar
+  // una cancelación de día completo. Dexie exige declarar por adelantado toda
+  // tabla que se vaya a tocar —también las que toca una función auxiliar y
+  // también en lectura—, y sin declararla el volcado reventaba con un
+  // «object store was not found» de IndexedDB en cuanto el grupo tenía alguna
+  // clase cancelada. Sin cancelaciones esa lectura no llega a ocurrir, que es
+  // por lo que solo fallaba en bases con datos de verdad.
+  await db.transaction('rw', db.sesiones, db.clasesCanceladas, db.grupos, async () => {
     if (retiradas.length > 0) await db.sesiones.bulkDelete([...retiradasIds])
 
     for (const paso of previa.pasos) {

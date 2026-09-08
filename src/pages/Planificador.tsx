@@ -563,6 +563,29 @@ function VistaUnidades() {
  * pasar al siguiente. Antes de escribir nada se enseña la previa, hueco a
  * hueco, con lo que se rellena, lo que se salta y lo que se sustituye.
  */
+/**
+ * Qué enseñarle al maestro cuando el volcado falla.
+ *
+ * Los errores que lanza `aplicarVolcado` a propósito —otra etapa, otro curso,
+ * unidad sin sesiones— ya están escritos para leerse, y se pasan tal cual. Lo
+ * que NO puede salir a pantalla es el texto de una excepción de IndexedDB
+ * («Failed to execute 'objectStore' on 'IDBTransaction'…»): no le dice nada a
+ * quien está en la pista y da la sensación de que la app se ha roto por dentro.
+ * Se sustituye por una frase llana y por lo único que importa saber: que no ha
+ * quedado nada a medias.
+ */
+function mensajeVolcado(e: unknown): string {
+  if (!(e instanceof Error)) return 'No se ha podido llevar la unidad. No se ha colocado nada.'
+  const tecnico =
+    e.name === 'NotFoundError' ||
+    e.name === 'TransactionInactiveError' ||
+    e.name === 'QuotaExceededError' ||
+    e.name.startsWith('Dexie') ||
+    /objectStore|IDBTransaction|IDBDatabase|transaction/i.test(e.message)
+  if (!tecnico) return e.message
+  return 'No se ha podido guardar la programación. No se ha colocado ninguna sesión: la unidad y el grupo están como estaban. Vuelve a intentarlo; si sigue igual, cierra y abre la app.'
+}
+
 function HojaLlevarAGrupo({
   unidad,
   onCerrar,
@@ -669,7 +692,7 @@ function HojaLlevarAGrupo({
       if (r.previa.sinHueco > 0) partes.push(`${r.previa.sinHueco} sin hueco`)
       mostrarAviso(partes.join(' · '), r.deshacer)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se ha podido llevar la unidad')
+      setError(mensajeVolcado(e))
     } finally {
       setGuardando(false)
     }
