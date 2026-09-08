@@ -8,6 +8,7 @@ import {
   Minus,
   Plus,
   Shuffle,
+  Table2,
 } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
@@ -159,15 +160,21 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
               <ClipboardCheck size={20} aria-hidden />
               Pasar lista
             </button>
-            {/* Infantil no accede al cuaderno (§6): su evaluación es cualitativa. */}
-            {grupo.etapa === 'infantil' && (
+            {/* Infantil no accede al cuaderno (§6): su evaluación es cualitativa,
+                y en su lugar tiene su propia pantalla de registro. */}
+            {grupo.etapa === 'infantil' ? (
               <button className="btn-suave" onClick={() => navegar(`/infantil/${grupoId}`)}>
                 <ClipboardList size={20} aria-hidden />
                 Evaluar
               </button>
+            ) : (
+              <button className="btn-suave" onClick={() => navegar(`/cuaderno/${grupoId}`)}>
+                <Table2 size={20} aria-hidden />
+                Cuaderno
+              </button>
             )}
             <button
-              className={grupo.etapa === 'infantil' ? 'btn-suave col-span-2' : 'btn-suave'}
+              className="btn-suave col-span-2"
               onClick={() => navegar(`/equipos/${grupoId}`)}
             >
               <Shuffle size={20} aria-hidden />

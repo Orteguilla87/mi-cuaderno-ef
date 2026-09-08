@@ -21,6 +21,17 @@ export function navegar(ruta: string): void {
   window.location.hash = ruta
 }
 
+/**
+ * Cambia de ruta SIN apilar una entrada nueva en el historial: la actual se
+ * sustituye. Para cambios laterales dentro de la misma pantalla (cambiar de
+ * grupo en el Cuaderno, por ejemplo), donde «Atrás» debe seguir devolviendo al
+ * origen desde el que se llegó y no al grupo anterior.
+ */
+export function reemplazarRuta(ruta: string): void {
+  const { href } = window.location
+  window.location.replace(href.replace(/#.*$/, '') + '#' + ruta)
+}
+
 export function volver(): void {
   window.history.back()
 }

@@ -66,7 +66,7 @@ import type {
 import { contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
 import { formatearNombre } from '../lib/nombres'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
-import { navegar } from '../lib/router'
+import { navegar, reemplazarRuta } from '../lib/router'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { variablesColor } from '../components/SelectorColor'
@@ -105,6 +105,18 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
     if (grupoIdInicial) fijarGrupoActivo(grupoIdInicial)
   }, [grupoIdInicial, fijarGrupoActivo])
   const grupoId = grupoIdInicial ?? grupoIdGuardado
+
+  /**
+   * Cambiar de grupo desde el selector. Llegando por `/cuaderno/:grupoId` la
+   * ruta manda sobre el grupo activo, así que hay que moverla también o el
+   * selector no haría nada. Se REEMPLAZA la entrada del historial: «Atrás»
+   * sigue devolviendo al origen (Hoy o la ficha del grupo), no al grupo que se
+   * estaba mirando hace un momento.
+   */
+  function cambiarDeGrupo(id: string) {
+    fijarGrupoActivo(id)
+    if (grupoIdInicial) reemplazarRuta(`/cuaderno/${id}`)
+  }
 
   const [trimestre, setTrimestre] = useState<Trimestre>(1)
   const [configurando, setConfigurando] = useState<Columna | 'nueva' | null>(null)
@@ -306,8 +318,13 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           dentro, a 360–390px el título quedaba tapado por los botones
           contiguos. Los botones bajan a su propia fila, bajo las pestañas de
           trimestre — jerárquicamente son suyas, no del título. */}
+      {/* «Atrás» solo cuando se ha llegado por `/cuaderno/:grupoId`, es decir
+          desde Hoy o desde la ficha del grupo: `volver()` es `history.back()`,
+          así que devuelve al origen REAL de cada camino. Entrando por la
+          pestaña del Cuaderno no hay origen que deshacer y no se pinta. */}
       <Cabecera
         titulo="Cuaderno"
+        atras={!!grupoIdInicial}
         subtitulo={grupo ? `${grupo.nombre} · ${trimestre}.º trimestre` : undefined}
       />
 
@@ -316,7 +333,11 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
       )}
 
       <div className="space-y-3 p-4 pb-2">
-        <SelectorGrupo grupos={grupos} valor={idEfectivo} onCambio={fijarGrupoActivo} />
+        {/* Al llegar por `/cuaderno/:grupoId` la ruta manda sobre el grupo
+            activo, así que cambiar de grupo aquí tiene que mover TAMBIÉN la
+            ruta; se reemplaza, no se apila, para que «Atrás» siga devolviendo
+            al origen desde el que se entró. */}
+        <SelectorGrupo grupos={grupos} valor={idEfectivo} onCambio={cambiarDeGrupo} />
 
         <div role="tablist" aria-label="Trimestre" className="pestanas">
           {([1, 2, 3] as const).map((t) => (

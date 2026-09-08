@@ -16,17 +16,56 @@ import {
   claveHueco,
   clavesOcupadas,
   proximosHuecos,
+  sesionVacia,
   sesionesDeGrupo,
   type ResultadoCopia,
 } from '../db/planificador'
 import type { FranjaHorario, Grupo, Sesion } from '../db/types'
-import { aISO, formatoDiaCorto } from '../lib/fechas'
+import { aISO, diaLectivo, formatoDiaCorto } from '../lib/fechas'
+import { rotuloOrdinal } from '../lib/clasesDelDia'
 import { navegar } from '../lib/router'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
 import { EditorHorario } from './Grupos'
 import { variablesColor } from '../components/SelectorColor'
+
+/**
+ * Etiqueta horaria de cada sesión, en PARALELO a la lista que se le pasa.
+ *
+ * La hora sale, por orden: del override de la sesión (`horaInicio`, cuando se
+ * ha cambiado la hora de ese día suelto), de su franja del horario, o de la
+ * primera clase del grupo ese día —que es lo que significa una sesión sin
+ * franja, de antes de la v24—. Cuando el grupo tiene dos clases ese día se
+ * añade el ordinal («1.ª de 2»), el mismo rótulo que usan Hoy y el Calendario.
+ */
+function horariosDeSesiones(sesiones: Sesion[], grupo: Grupo | null): string[] {
+  if (!grupo) return sesiones.map(() => '')
+  const franjasPorDia = new Map<number, FranjaHorario[]>()
+  for (const f of grupo.horario) {
+    const lista = franjasPorDia.get(f.diaSemana) ?? []
+    lista.push(f)
+    franjasPorDia.set(f.diaSemana, lista)
+  }
+  for (const lista of franjasPorDia.values())
+    lista.sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))
+
+  return sesiones.map((s) => {
+    const dow = diaLectivo(s.fecha)
+    const delDia = dow === null ? [] : (franjasPorDia.get(dow) ?? [])
+    const franja = s.franjaInicio ?? delDia[0]?.horaInicio
+    const propia = delDia.find((f) => f.horaInicio === franja)
+    const inicio = s.horaInicio ?? franja
+    if (!inicio) return ''
+    const fin = s.horaFin ?? propia?.horaFin
+    const horas = fin ? `${inicio}–${fin}` : inicio
+    const orden = delDia.findIndex((f) => f.horaInicio === franja)
+    const rotulo = rotuloOrdinal(delDia.length > 1 && orden >= 0
+      ? { orden: orden + 1, total: delDia.length }
+      : undefined)
+    return rotulo ? `${horas} · ${rotulo}` : horas
+  })
+}
 
 /**
  * Planificación de un grupo entero (§ petición del usuario): lo normal es
@@ -63,9 +102,14 @@ export function PlanGrupo() {
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
   const { sesionCopiada, copiar: copiarEnPortapapeles, limpiar: limpiarPortapapeles } = usePortapapeles()
 
+  // Hora de cada sesión, en paralelo a la lista. Sin ella, dos clases del mismo
+  // grupo el mismo día se ven como dos filas idénticas y no hay forma de saber
+  // cuál es cuál —ni de distinguirlas de un duplicado.
+  const horarios = horariosDeSesiones(sesiones ?? [], grupo)
+
   // Solo cuentan las que ya tienen algo escrito: el esqueleto vacío que genera
   // «Generar curso completo» aún no es una sesión que echar de menos en una UD.
-  const sinUnidad = (sesiones ?? []).filter((s) => !s.udId && (s.titulo.trim() || s.juegos.length > 0))
+  const sinUnidad = (sesiones ?? []).filter((s) => !s.udId && !sesionVacia(s))
 
   function copiarSesion(s: Sesion) {
     copiarEnPortapapeles({
@@ -241,6 +285,7 @@ export function PlanGrupo() {
                       </span>
                       <span className="cifra mt-0.5 block truncate text-sm texto-suave">
                         {formatoDiaCorto(s.fecha)}
+                        {horarios[i] && ` · ${horarios[i]}`}
                         {s.juegos.length > 0 && ` · ${s.juegos.length} juegos`}
                         {s.udId
                           ? ` · ${unidades?.find((u) => u.id === s.udId)?.titulo ?? 'unidad'}`

@@ -261,6 +261,18 @@ export interface Sesion {
    * el campo existiera).
    */
   franjaInicio?: string
+  /**
+   * Sesión del plan de la unidad (`SesionPlan.id`) de la que salió esta sesión
+   * al volcar. Es el vínculo con el plan: sobrevive a que se reordenen las
+   * sesiones DENTRO de la unidad, porque no guarda la posición sino la
+   * identidad. Reordenar el plan después de volcar no descoloca lo programado.
+   */
+  sesionPlanId?: Id
+  /**
+   * Lote del volcado que la creó o la sobrescribió. Permite reconocer «lo que
+   * entró de una vez» para deshacerlo o reemplazarlo entero.
+   */
+  loteVolcado?: Id
 }
 
 /**

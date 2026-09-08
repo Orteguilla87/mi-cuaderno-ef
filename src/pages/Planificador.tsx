@@ -31,7 +31,7 @@ import { db } from '../db/db'
 import {
   anadirCursoAUnidad,
   anadirSesionPlan,
-  aplicarUnidadAGrupo,
+  aplicarVolcado,
   archivarUnidad,
   contarImpactoUnidad,
   copiarUnidad,
@@ -47,10 +47,13 @@ import {
   marcarCriteriosRevisados,
   moverUnidad,
   quitarCursoDeUnidad,
+  previsualizarVolcado,
   resumenCopia,
   sesionesDe,
   type ImpactoQuitarCurso,
   type ImpactoUnidad,
+  type ModoVolcado,
+  type PreviaVolcado,
   type ResumenCopia,
 } from '../db/planificador'
 import { huecosCanceladosDe, huecosDe, type HuecoCalendario } from '../db/sesiones'
@@ -58,7 +61,7 @@ import { ordinalesDelDia, rotuloOrdinal } from '../lib/clasesDelDia'
 import { BotonNoHayClase, FilasCanceladas } from '../components/ClasesCanceladas'
 import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
-import { aISO, formatoCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
+import { aISO, diaLectivo, formatoCorto, formatoDiaCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, etapaVisible, nivelesDe } from '../lib/etapas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
@@ -553,6 +556,12 @@ function VistaUnidades() {
  * Solo se ofrecen grupos de la misma etapa —y, en Primaria, del mismo curso—:
  * los criterios de la unidad son de un decreto y de un ciclo concretos, y
  * llevarla a otro sitio los dejaría apuntando a donde no aplican.
+ *
+ * Se elige DÍA y CLASE de arranque —un grupo con dos clases el mismo día tiene
+ * que poder empezar en la segunda—, y las sesiones caen en los huecos reales
+ * del horario, seguidas: si un día tiene dos clases se ocupan las dos antes de
+ * pasar al siguiente. Antes de escribir nada se enseña la previa, hueco a
+ * hueco, con lo que se rellena, lo que se salta y lo que se sustituye.
  */
 function HojaLlevarAGrupo({
   unidad,
@@ -564,7 +573,12 @@ function HojaLlevarAGrupo({
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [grupoId, setGrupoId] = useState('')
   const [desde, setDesde] = useState(aISO())
+  const [franja, setFranja] = useState<string | null>(null)
+  const [modo, setModo] = useState<ModoVolcado>('saltar')
+  const [reemplazar, setReemplazar] = useState(false)
+  const [previa, setPrevia] = useState<PreviaVolcado | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [guardando, setGuardando] = useState(false)
 
   const grupos = useLiveQuery(async () => {
     if (!unidad) return []
@@ -574,31 +588,90 @@ function HojaLlevarAGrupo({
       .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'))
   }, [unidad?.id])
 
+  const grupo = grupos?.find((g) => g.id === grupoId) ?? null
+
+  // Clases del grupo el día elegido: es lo que permite decir «empieza en la 2.ª».
+  const franjasDelDia = (() => {
+    const dow = diaLectivo(desde)
+    if (!grupo || dow === null) return []
+    return grupo.horario
+      .filter((f) => f.diaSemana === dow)
+      .map((f) => f.horaInicio)
+      .sort((a, b) => a.localeCompare(b))
+  })()
+
   useEffect(() => {
     if (!unidad) return
     setDesde(aISO())
+    setFranja(null)
+    setModo('saltar')
+    setReemplazar(false)
+    setPrevia(null)
     setError(null)
     setGrupoId('')
   }, [unidad])
 
+  // La previa se recalcula sola con cada cambio: cambiar de modo enseña el
+  // resultado sin salir de la hoja y sin escribir nada.
+  useEffect(() => {
+    if (!unidad || !grupoId) {
+      setPrevia(null)
+      return
+    }
+    let vigente = true
+    previsualizarVolcado({
+      udId: unidad.id,
+      grupoId,
+      desde,
+      franjaInicio: franja ?? undefined,
+      modo,
+      reemplazarPrevio: reemplazar,
+    })
+      .then((p) => {
+        if (!vigente) return
+        setPrevia(p)
+        setError(null)
+      })
+      .catch((e) => {
+        if (!vigente) return
+        setPrevia(null)
+        setError(e instanceof Error ? e.message : 'No se ha podido calcular el volcado')
+      })
+    return () => {
+      vigente = false
+    }
+  }, [unidad, grupoId, desde, franja, modo, reemplazar])
+
   if (!unidad) return null
 
-  const plan = unidad.sesiones ?? []
   const vocabulario = terminologia(unidad.etapa)
-  const variosCursos = unidad.niveles.length > 1
 
   async function llevar() {
-    if (!unidad || !grupoId) return
+    if (!unidad || !grupoId || !previa) return
+    setGuardando(true)
     setError(null)
     try {
-      const r = await aplicarUnidadAGrupo({ udId: unidad.id, grupoId, desde })
+      const r = await aplicarVolcado({
+        udId: unidad.id,
+        grupoId,
+        desde,
+        franjaInicio: franja ?? undefined,
+        modo,
+        reemplazarPrevio: reemplazar,
+      })
       onCerrar()
-      const partes = [`${r.creadas} ${r.creadas === 1 ? 'sesión colocada' : 'sesiones colocadas'}`]
-      if (r.omitidas > 0) partes.push(`${r.omitidas} ${r.omitidas === 1 ? 'clase ocupada' : 'clases ocupadas'} respetadas`)
-      if (r.sinHueco > 0) partes.push(`${r.sinHueco} sin hueco antes de fin de curso`)
+      const partes = [
+        `${r.previa.colocadas} ${r.previa.colocadas === 1 ? 'sesión colocada' : 'sesiones colocadas'}`,
+      ]
+      if (r.previa.sustituidas.length > 0)
+        partes.push(`${r.previa.sustituidas.length} sustituidas`)
+      if (r.previa.saltadas > 0) partes.push(`${r.previa.saltadas} clases ocupadas respetadas`)
+      if (r.previa.sinHueco > 0) partes.push(`${r.previa.sinHueco} sin hueco`)
       mostrarAviso(partes.join(' · '), r.deshacer)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se ha podido llevar la unidad')
+    } finally {
+      setGuardando(false)
     }
   }
 
@@ -606,10 +679,9 @@ function HojaLlevarAGrupo({
     <Hoja abierta={!!unidad} titulo={`Llevar «${unidad.titulo}» a un grupo`} onCerrar={onCerrar}>
       <div className="space-y-4">
         <p className="text-sm texto-suave">
-          {variosCursos
-            ? 'Se colocan las sesiones del curso del grupo que elijas, en sus clases seguidas a partir de la fecha.'
-            : `Las ${plan.length} sesiones de ${vocabulario.unidadEnFrase} se colocan en las clases seguidas del grupo a partir de la fecha.`}{' '}
-          Una clase que ya tenga sesión se respeta y la siguiente busca el hueco de después.
+          Las sesiones de {vocabulario.unidadEnFrase} se colocan en las clases seguidas del grupo a
+          partir del día y la clase que elijas. Un día con dos clases se ocupa entero antes de pasar
+          al siguiente.
         </p>
 
         <div>
@@ -623,7 +695,10 @@ function HojaLlevarAGrupo({
               {grupos?.map((g) => (
                 <button
                   key={g.id}
-                  onClick={() => setGrupoId(g.id)}
+                  onClick={() => {
+                    setGrupoId(g.id)
+                    setFranja(null)
+                  }}
                   aria-pressed={grupoId === g.id}
                   className={(grupoId === g.id ? 'btn-primario' : 'btn-suave') + ' px-4'}
                 >
@@ -636,28 +711,194 @@ function HojaLlevarAGrupo({
 
         <div>
           <label className="etiqueta" htmlFor="ud-desde">
-            Primera clase
+            Primer día
           </label>
           <input
             id="ud-desde"
             type="date"
             className="campo"
             value={desde}
-            onChange={(e) => setDesde(e.target.value)}
+            onChange={(e) => {
+              setDesde(e.target.value)
+              setFranja(null)
+            }}
           />
         </div>
+
+        {/* Elegir la CLASE, no solo el día: con dos clases el mismo día, «el
+            martes» no dice en cuál de las dos empieza la unidad. */}
+        {franjasDelDia.length > 1 && (
+          <div>
+            <span className="etiqueta">Clase de ese día</span>
+            <div className="flex flex-wrap gap-2">
+              {franjasDelDia.map((h, i) => (
+                <button
+                  key={h}
+                  onClick={() => setFranja(h)}
+                  aria-pressed={(franja ?? franjasDelDia[0]) === h}
+                  className={
+                    ((franja ?? franjasDelDia[0]) === h ? 'btn-primario' : 'btn-suave') + ' px-4'
+                  }
+                >
+                  <span className="cifra">
+                    {i + 1}.ª · {h}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {grupoId && (
+          <div>
+            <span className="etiqueta">Si la clase ya tiene sesión</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setModo('saltar')}
+                aria-pressed={modo === 'saltar'}
+                className={(modo === 'saltar' ? 'btn-primario' : 'btn-suave') + ' px-4'}
+              >
+                Saltarla
+              </button>
+              <button
+                onClick={() => setModo('sobrescribir')}
+                aria-pressed={modo === 'sobrescribir'}
+                className={(modo === 'sobrescribir' ? 'btn-primario' : 'btn-suave') + ' px-4'}
+              >
+                Sustituirla
+              </button>
+            </div>
+            <p className="mt-1 text-xs texto-suave">
+              {modo === 'saltar'
+                ? 'La unidad puede quedar partida: las clases con trabajo se respetan y la siguiente sesión busca el hueco de después.'
+                : 'Las sesiones ocupan huecos seguidos. Abajo está la lista de lo que se pierde; se puede deshacer.'}{' '}
+              Una clase vacía se rellena siempre: no hay nada que perder.
+            </p>
+          </div>
+        )}
+
+        {previa && <PreviaDelVolcado previa={previa} />}
+
+        {previa && previa.volcadoPrevio > 0 && (
+          <label className="panel-agua flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 shrink-0 accent-primario"
+              checked={reemplazar}
+              onChange={(e) => setReemplazar(e.target.checked)}
+            />
+            <span>
+              Esta unidad ya está volcada en el grupo ({previa.volcadoPrevio}{' '}
+              {previa.volcadoPrevio === 1 ? 'sesión' : 'sesiones'}). Marca esta casilla para{' '}
+              <strong>reemplazar el volcado anterior</strong> en vez de duplicarlo.
+            </span>
+          </label>
+        )}
 
         {error && <p className="text-sm font-semibold text-acento">{error}</p>}
 
         <button
           className="btn-primario w-full"
           onClick={() => void llevar()}
-          disabled={!grupoId || plan.length === 0}
+          disabled={!grupoId || !previa || previa.colocadas === 0 || guardando}
         >
-          Colocar {plan.length} {plan.length === 1 ? 'sesión' : 'sesiones'}
+          {previa
+            ? `Colocar ${previa.colocadas} ${previa.colocadas === 1 ? 'sesión' : 'sesiones'}`
+            : 'Elige un grupo'}
         </button>
       </div>
     </Hoja>
+  )
+}
+
+/**
+ * La previa: qué va a pasar en cada hueco, antes de escribir nada. Los avisos
+ * no bloquean —sesiones que no caben, vacaciones de por medio—, solo informan.
+ */
+function PreviaDelVolcado({ previa }: { previa: PreviaVolcado }) {
+  const avisos: string[] = []
+  if (previa.sinHueco > 0)
+    avisos.push(
+      `${previa.sinHueco} ${previa.sinHueco === 1 ? 'sesión se queda' : 'sesiones se quedan'} fuera: no hay más clases antes de fin de curso.`,
+    )
+  if (previa.periodosCruzados.length > 0)
+    avisos.push(`La unidad atraviesa ${previa.periodosCruzados.join(' y ')}.`)
+  if (previa.trimestresCruzados.length > 1)
+    avisos.push(`Se reparte entre los trimestres ${previa.trimestresCruzados.join(' y ')}.`)
+  if (previa.saltadas > 0)
+    avisos.push(
+      `${previa.saltadas} ${previa.saltadas === 1 ? 'clase ocupada se salta' : 'clases ocupadas se saltan'}: la unidad no queda seguida.`,
+    )
+
+  return (
+    <div className="space-y-2">
+      <TituloSeccion>
+        Previa · {previa.colocadas} de {previa.totalPlan}
+      </TituloSeccion>
+
+      {avisos.length > 0 && (
+        <ul className="panel-agua space-y-1 text-sm">
+          {avisos.map((a) => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
+      )}
+
+      {previa.sustituidas.length > 0 && (
+        <div className="tarjeta border-2 border-acento p-3 text-sm">
+          <p className="font-bold text-acento">
+            Se sustituyen {previa.sustituidas.length}{' '}
+            {previa.sustituidas.length === 1 ? 'sesión' : 'sesiones'} con trabajo hecho
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {previa.sustituidas.map((s) => (
+              <li key={`${s.fecha}|${s.franjaInicio}`} className="cifra">
+                {formatoDiaCorto(s.fecha)} · {s.franjaInicio} — {s.titulo}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 texto-suave">Se puede deshacer: vuelven tal como estaban.</p>
+        </div>
+      )}
+
+      {previa.pasos.length === 0 ? (
+        <p className="text-sm texto-suave">
+          No hay ninguna clase de este grupo a partir de esa fecha.
+        </p>
+      ) : (
+        <ol className="max-h-72 space-y-1 overflow-y-auto pr-1">
+          {previa.pasos.map((p) => (
+            <li
+              key={`${p.fecha}|${p.franjaInicio}`}
+              className={
+                'flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm ' +
+                (p.accion === 'saltar'
+                  ? 'bg-agua-claro/50 text-tinta-tenue dark:bg-noche-elevada'
+                  : p.accion === 'sustituir'
+                    ? 'bg-acento/10'
+                    : 'bg-agua-claro dark:bg-noche-elevada')
+              }
+            >
+              <span className="cifra shrink-0 tabular-nums">
+                {formatoDiaCorto(p.fecha)} · {p.franjaInicio}
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                {p.plan ? p.plan.titulo || 'Sesión sin título' : p.previa?.titulo}
+              </span>
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide">
+                {p.accion === 'crear'
+                  ? 'Nueva'
+                  : p.accion === 'rellenar'
+                    ? 'Rellena'
+                    : p.accion === 'sustituir'
+                      ? 'Sustituye'
+                      : 'Se salta'}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   )
 }
 
