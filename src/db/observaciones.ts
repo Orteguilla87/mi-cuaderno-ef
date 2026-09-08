@@ -33,6 +33,59 @@ export async function crearObservacion(
   }
 }
 
+/**
+ * Lo que se puede cambiar de una observación ya registrada: su CONTENIDO.
+ *
+ * La fecha queda fuera a propósito: es dato de registro —cuándo pasó—, no de
+ * contenido, y corregirla es otra operación distinta que sigue por su camino.
+ */
+export interface CambiosObservacion {
+  texto?: string
+  signo?: SignoObservacion
+  tipo?: TipoObservacion
+  tags?: string[]
+}
+
+/**
+ * Edita una observación en el sitio y devuelve su deshacer, que repone el
+ * registro ENTERO tal como estaba —incluida la marca de tiempo anterior—.
+ *
+ * `actualizadoEn` distingue una observación tocada de una recién creada. La
+ * marca de «pendiente de sincronizar» no se pone aquí: los hooks de Dexie de
+ * `db/sincro.ts` vigilan toda escritura de toda tabla, así que un `update` ya
+ * la marca por sí solo, igual que cualquier otra escritura de la app.
+ */
+export async function editarObservacion(
+  id: string,
+  cambios: CambiosObservacion,
+  ahora = Date.now(),
+): Promise<{ deshacer: () => Promise<void> }> {
+  const previa = await db.observaciones.get(id)
+  if (!previa) throw new Error('La observación ya no existe')
+
+  const siguiente: Observacion = {
+    ...previa,
+    ...(cambios.texto !== undefined ? { texto: cambios.texto.trim() } : {}),
+    ...(cambios.signo !== undefined ? { signo: cambios.signo } : {}),
+    ...(cambios.tipo !== undefined ? { tipo: cambios.tipo } : {}),
+    ...(cambios.tags !== undefined ? { tags: cambios.tags } : {}),
+    actualizadoEn: ahora,
+  }
+  await db.observaciones.put(siguiente)
+
+  return { deshacer: async () => void (await db.observaciones.put(previa)) }
+}
+
+/** Elimina una observación. El deshacer la repone intacta, con su id original. */
+export async function eliminarObservacion(
+  id: string,
+): Promise<{ deshacer: () => Promise<void> }> {
+  const previa = await db.observaciones.get(id)
+  if (!previa) throw new Error('La observación ya no existe')
+  await db.observaciones.delete(id)
+  return { deshacer: async () => void (await db.observaciones.add(previa)) }
+}
+
 export interface ContadorSigno {
   positivos: number
   negativos: number

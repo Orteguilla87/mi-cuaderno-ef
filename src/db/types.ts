@@ -324,11 +324,20 @@ export interface Observacion {
   id: Id
   alumnoId?: Id // ausente => observación de grupo
   grupoId: Id
+  /**
+   * Día al que se refiere la observación. Es dato de REGISTRO, no de contenido:
+   * no se edita en línea desde la lista, solo por el camino de siempre.
+   */
   fecha: string
   tipo: TipoObservacion
   signo: SignoObservacion
   texto: string
   tags: string[]
+  /**
+   * Marca de la última edición del contenido, en milisegundos. Ausente en las
+   * observaciones que nunca se han tocado desde que se crearon.
+   */
+  actualizadoEn?: number
 }
 
 // ——— UNIDADES ———

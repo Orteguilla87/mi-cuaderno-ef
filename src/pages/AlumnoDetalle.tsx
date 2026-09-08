@@ -7,6 +7,7 @@ import { asignar, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
 import { HojaConfirmar } from '../components/HojaConfirmar'
+import { ListaObservacionesEnLinea } from '../components/ObservacionEnLinea'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { resumirAsistencia } from '../db/asistencia'
 import { db } from '../db/db'
@@ -119,18 +120,9 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
         <section>
           <TituloSeccion>Últimas observaciones</TituloSeccion>
           {observaciones?.length ? (
-            <ul className="space-y-2">
-              {observaciones.map((o) => (
-                <li key={o.id} className="tarjeta py-3">
-                  <div className="flex items-center gap-2 text-sm texto-suave">
-                    <span className="font-bold">{o.signo}</span>
-                    <span>{o.tipo}</span>
-                    <span className="ml-auto">{o.fecha}</span>
-                  </div>
-                  <p className="mt-1">{o.texto}</p>
-                </li>
-              ))}
-            </ul>
+            // Edición en el sitio: aquí y solo aquí. La timeline y la vista de
+            // grupo enseñan lo mismo en pantallas que se proyectan.
+            <ListaObservacionesEnLinea observaciones={observaciones} contexto="ficha-alumno" />
           ) : (
             <p className="text-sm texto-suave">
               Sin observaciones. El registro llega en la fase 3.
