@@ -35,6 +35,10 @@ const TIPOS: { valor: TipoObservacion; etiqueta: string }[] = [
   { valor: 'conducta', etiqueta: 'Conducta' },
   { valor: 'aprendizaje', etiqueta: 'Aprendizaje' },
   { valor: 'salud', etiqueta: 'Salud' },
+  // Aparte de «Salud» a propósito: es la que se cruza con la etiqueta
+  // «Lesionado» (`db/etiquetasAlumno.ts`). La observación es el registro
+  // histórico; la etiqueta, el estado de hoy.
+  { valor: 'lesion', etiqueta: 'Lesión' },
   { valor: 'otro', etiqueta: 'Otro' },
 ]
 

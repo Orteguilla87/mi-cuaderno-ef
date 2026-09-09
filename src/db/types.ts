@@ -110,6 +110,23 @@ export interface Alumno {
    * array vacío. Indexado como multiEntry (`*etiquetas`).
    */
   etiquetas?: string[]
+  /**
+   * Cuándo CADUCA cada etiqueta puesta: `etiquetaId → milisegundos`. Es de la
+   * ASIGNACIÓN, no de la etiqueta: la misma «Lesionado» dura tres semanas en un
+   * niño y dos días en otro.
+   *
+   * Va aparte y no dentro de `etiquetas` para no tocar el índice multiEntry
+   * `*etiquetas` ni ninguno de los caminos que lo leen. Una etiqueta puesta sin
+   * entrada aquí es INDEFINIDA, que es lo normal.
+   *
+   * Pasada la fecha, la asignación se enseña atenuada y marcada como caducada,
+   * pero NO se retira sola: es un dato del usuario, y quitarlo por su cuenta
+   * borraría información que él no ha decidido borrar. Se retira o se prolonga
+   * de un toque desde la ficha.
+   *
+   * Es un campo de la PERSONA (`db/personas.ts`): la lesión es del niño.
+   */
+  etiquetasHasta?: Record<string, number>
   genero?: 'chico' | 'chica' | null
   /**
    * Nivel motriz 1–5 para el generador de equipos. PRIVADO: mismo tratamiento
@@ -139,6 +156,22 @@ export interface EtiquetaAlumno {
   abreviatura: string
   /** Identificador de `lib/paleta.ts`. NUNCA un hex. */
   colorId: string
+  /**
+   * Identificador del catálogo cerrado de `lib/iconosEtiqueta.ts`. OPCIONAL:
+   * sin él se pinta punto + abreviatura, como siempre; con él el icono
+   * sustituye al punto y conserva el color. Un icono que ya no exista en el
+   * catálogo vuelve al punto, no rompe nada.
+   */
+  icono?: string
+  /**
+   * Si la etiqueta describe algo TEMPORAL —una lesión— y por tanto al ponerla
+   * se propone una fecha de fin. ACNEE o TDAH no lo son.
+   *
+   * Opcional con ausencia real: las etiquetas que ya existen no lo llevan y no
+   * son temporales, que es exactamente lo que significa que falte. No hace
+   * falta migración, y no se escribe un `false` que no dice nada.
+   */
+  temporal?: boolean
   creadoEn: number
 }
 
@@ -334,7 +367,14 @@ export interface Plantilla {
   sesionesSugeridas?: string[]
 }
 
-export type TipoObservacion = 'conducta' | 'aprendizaje' | 'salud' | 'otro'
+/**
+ * `lesion` es aparte de `salud` a propósito: es la categoría que se cruza con
+ * la etiqueta «Lesionado» (`db/etiquetasAlumno.ts`). La OBSERVACIÓN es el
+ * registro histórico —qué pasó, cuándo, qué se hizo— y la ETIQUETA es el estado
+ * de hoy. Son complementarias, y por eso al registrar una observación neutra de
+ * lesión se OFRECE poner la etiqueta, nunca se pone sola.
+ */
+export type TipoObservacion = 'conducta' | 'aprendizaje' | 'salud' | 'lesion' | 'otro'
 export type SignoObservacion = '+' | '-' | 'neutro'
 
 export interface Observacion {

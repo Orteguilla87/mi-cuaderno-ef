@@ -26,6 +26,22 @@ export function deISO(iso: string): Date {
 }
 
 /**
+ * El último instante de ese día, en milisegundos locales.
+ *
+ * Es lo que se guarda como caducidad de una etiqueta: «hasta el 12» tiene que
+ * incluir el 12 entero. Con la medianoche del 12 la etiqueta habría caducado
+ * esa misma mañana, que no es lo que nadie entiende al escribir esa fecha.
+ */
+export function finDelDia(iso: string): number {
+  return deISO(iso).getTime() + 24 * 60 * 60 * 1000 - 1
+}
+
+/** Milisegundos → 'YYYY-MM-DD' local, para rellenar un `input type="date"`. */
+export function isoDeMs(ms: number): string {
+  return aISO(new Date(ms))
+}
+
+/**
  * Día lectivo 1..5 (lunes..viernes), o `null` en fin de semana.
  * Coincide con `FranjaHorario.diaSemana`.
  */

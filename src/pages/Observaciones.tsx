@@ -11,7 +11,14 @@ import { etiquetaDia } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 
-const TIPOS: (TipoObservacion | 'todos')[] = ['todos', 'conducta', 'aprendizaje', 'salud', 'otro']
+const TIPOS: (TipoObservacion | 'todos')[] = [
+  'todos',
+  'conducta',
+  'aprendizaje',
+  'salud',
+  'lesion',
+  'otro',
+]
 
 const ASPECTO_SIGNO: Record<SignoObservacion, { Icono: typeof Plus; clase: string }> = {
   '+': { Icono: Plus, clase: 'bg-lima-oscuro text-white' },

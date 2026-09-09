@@ -35,7 +35,7 @@ function sinComentarios(codigo: string): string {
  * propios, no `.etiquetas` a secas: el inventario y el banco de juegos tienen
  * sus propias etiquetas, que no son datos sensibles de nadie.
  */
-const RASTRO = /PuntoEtiquetas|etiquetasAlumno|EtiquetaAlumno|etiquetasDe\s*\(/
+const RASTRO = /PuntoEtiquetas|etiquetasAlumno|EtiquetaAlumno|etiquetas(?:Puestas)?De\s*\(/
 
 /** El campo del alumno, leído directamente sin pasar por el módulo. */
 const RASTRO_CAMPO = /\balumnos?\??\.etiquetas\b|\ba\.etiquetas\b/
@@ -71,6 +71,21 @@ describe('las etiquetas solo se pintan en las vistas de gestión', () => {
   const PINTAN = ['Cuaderno.tsx', 'GrupoDetalle.tsx', 'PaseLista.tsx', 'AlumnoDetalle.tsx']
 
   /**
+   * Vistas que TOCAN una etiqueta sin PINTAR ninguna.
+   *
+   * `HojaObservacion` ofrece poner «Lesionado» al anotar una lesión, así que
+   * nombra el módulo y su id; pero no enseña ni un punto, ni una abreviatura,
+   * ni un nombre de etiqueta que no haya escrito el propio maestro en el texto
+   * del ofrecimiento. Se les permite nombrarlo y se les prohíbe expresamente
+   * cualquier cosa que renderice, que es lo que comprueba el test de abajo: sin
+   * esa segunda mitad, esta lista sería un agujero en la regla.
+   */
+  const ASIGNAN_SIN_PINTAR = ['HojaObservacion.tsx']
+
+  /** Lo que RENDERIZA una etiqueta, que es lo que ninguna de esas puede hacer. */
+  const PINTA_ALGO = /PuntoEtiquetas|etiquetas(?:Puestas)?De\s*\(|iconoDe\s*\(|\.abreviatura\b/
+
+  /**
    * Las vistas que se proyectan en la PDI o se enseñan a pantalla completa a
    * toda la clase. Ya están cubiertas por el repaso general de arriba —no
    * aparecen en PERMITIDAS—, pero se nombran aquí una a una para que ampliar
@@ -92,6 +107,7 @@ describe('las etiquetas solo se pintan en las vistas de gestión', () => {
 
   it.each(vistas)('%s', (ruta) => {
     if (PERMITIDAS.some((p) => ruta.endsWith(p))) return
+    if (ASIGNAN_SIN_PINTAR.some((p) => ruta.endsWith(p))) return
     const encontrado = rastro(readFileSync(ruta, 'utf-8'))
     expect(
       encontrado,
@@ -119,6 +135,20 @@ describe('las etiquetas solo se pintan en las vistas de gestión', () => {
     // deuteranopia lo son del todo.
     const fuente = readFileSync(join(RAIZ, 'pages', vista), 'utf-8')
     expect(fuente).toMatch(/\{e\.abreviatura\}/)
+  })
+
+  it.each(ASIGNAN_SIN_PINTAR)('%s asigna, pero no pinta ninguna etiqueta', (vista) => {
+    const fuente = sinComentarios(readFileSync(join(RAIZ, 'components', vista), 'utf-8'))
+    const encontrado = fuente.match(PINTA_ALGO)?.[0]
+    expect(
+      encontrado,
+      `«${encontrado}»: esta vista puede poner una etiqueta, pero no enseñarla`,
+    ).toBeUndefined()
+  })
+
+  it('ninguna vista proyectable puede asignar tampoco', () => {
+    const asignan = PROYECTABLES.filter((r) => ASIGNAN_SIN_PINTAR.some((p) => r.endsWith(p)))
+    expect(asignan, 'una vista proyectable no puede ni tocar una etiqueta').toEqual([])
   })
 
   it.each(PROYECTABLES)('%s no menciona ninguna etiqueta de alumnado', (ruta) => {

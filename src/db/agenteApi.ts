@@ -18,7 +18,7 @@ const CATALOGO_HERRAMIENTAS = [
       properties: {
         alumnoToken: { type: 'string', description: 'Token [A1], [A2]… del alumno' },
         signo: { type: 'string', enum: ['+', '-', 'neutro'] },
-        tipo: { type: 'string', enum: ['conducta', 'aprendizaje', 'salud', 'otro'] },
+        tipo: { type: 'string', enum: ['conducta', 'aprendizaje', 'salud', 'lesion', 'otro'] },
         texto: { type: 'string' },
       },
       required: ['alumnoToken', 'signo', 'texto'],

@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Tags, Trash2 } from 'lucide-react'
+import { Check, Plus, Tags, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Campo } from '../components/Campo'
@@ -14,6 +14,7 @@ import {
   etiquetas as leerEtiquetas,
 } from '../db/etiquetasAlumno'
 import type { EtiquetaAlumno } from '../db/types'
+import { ICONOS_ETIQUETA, iconoDe } from '../lib/iconosEtiqueta'
 import { COLOR_POR_DEFECTO } from '../lib/paleta'
 import { useUI } from '../store/ui'
 
@@ -94,21 +95,38 @@ function FilaEtiqueta({
 
   return (
     <button className="tarjeta-pulsable flex w-full items-center gap-3 py-3" onClick={onEditar}>
-      <span
-        className="color-dato h-6 w-6 shrink-0 rounded-full"
-        style={variablesColor(etiqueta.colorId)}
-        aria-hidden
-      />
+      <Muestra etiqueta={etiqueta} />
       <span className="min-w-0 flex-1 text-left">
         <span className="block truncate font-semibold">{etiqueta.nombre}</span>
         <span className="block text-xs texto-suave">
-          {etiqueta.abreviatura} · {usos === undefined ? '…' : `${usos} alumno${usos === 1 ? '' : 's'}`}
+          {etiqueta.abreviatura}
+          {etiqueta.temporal && ' · Temporal'} ·{' '}
+          {usos === undefined ? '…' : `${usos} alumno${usos === 1 ? '' : 's'}`}
         </span>
       </span>
       <span className="text-2xl text-tinta-tenue" aria-hidden>
         ›
       </span>
     </button>
+  )
+}
+
+/**
+ * Cómo se ve la etiqueta: el icono si lo tiene, y si no el punto de color liso.
+ * El color se conserva en los dos casos —de fondo—, pero nunca es lo único que
+ * distingue una etiqueta de otra: al icono le acompaña siempre el nombre, y en
+ * las vistas de trabajo, la abreviatura.
+ */
+function Muestra({ etiqueta }: { etiqueta: EtiquetaAlumno }) {
+  const Icono = iconoDe(etiqueta.icono)
+  return (
+    <span
+      className="color-dato flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+      style={variablesColor(etiqueta.colorId)}
+      aria-hidden
+    >
+      {Icono && <Icono size={14} strokeWidth={2.5} className="color-dato-marca" />}
+    </span>
   )
 }
 
@@ -126,6 +144,8 @@ function HojaEtiqueta({
   const [nombre, setNombre] = useState('')
   const [abreviatura, setAbreviatura] = useState('')
   const [colorId, setColorId] = useState(COLOR_POR_DEFECTO)
+  const [icono, setIcono] = useState<string | undefined>(undefined)
+  const [temporal, setTemporal] = useState(false)
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
 
   const usos = useLiveQuery(
@@ -138,8 +158,10 @@ function HojaEtiqueta({
     setNombre(actual?.nombre ?? '')
     setAbreviatura(actual?.abreviatura ?? '')
     setColorId(actual?.colorId ?? COLOR_POR_DEFECTO)
+    setIcono(actual?.icono)
+    setTemporal(actual?.temporal ?? false)
     setConfirmandoBorrado(false)
-  }, [etiqueta, actual?.nombre, actual?.abreviatura, actual?.colorId])
+  }, [etiqueta, actual?.nombre, actual?.abreviatura, actual?.colorId, actual?.icono, actual?.temporal])
 
   // La abreviatura se propone a partir del nombre mientras no se toque a mano:
   // «Compensatoria» → «COM». Nunca queda vacía, porque es lo que se pinta.
@@ -148,10 +170,16 @@ function HojaEtiqueta({
   async function guardar() {
     if (!nombre.trim()) return
     if (actual) {
-      await editarEtiqueta(actual.id, { nombre, abreviatura: abreviaturaEfectiva, colorId })
+      await editarEtiqueta(actual.id, {
+        nombre,
+        abreviatura: abreviaturaEfectiva,
+        colorId,
+        icono: icono ?? '',
+        temporal,
+      })
       mostrarAviso(`«${nombre.trim()}» guardada`)
     } else {
-      await crearEtiqueta({ nombre, abreviatura: abreviaturaEfectiva, colorId })
+      await crearEtiqueta({ nombre, abreviatura: abreviaturaEfectiva, colorId, icono, temporal })
       mostrarAviso(`«${nombre.trim()}» creada`)
     }
     onCerrar()
@@ -207,6 +235,39 @@ function HojaEtiqueta({
           <SelectorColor valor={colorId} onValor={setColorId} etiqueta="Color de la etiqueta" />
         </div>
 
+        <SelectorIcono valor={icono} onValor={setIcono} colorId={colorId} />
+
+        <div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={temporal}
+            onClick={() => setTemporal((v) => !v)}
+            className={
+              'flex min-h-tap w-full items-center gap-3 rounded-xl border px-3 text-left transition ' +
+              (temporal
+                ? 'border-primario bg-agua-claro dark:bg-noche-elevada'
+                : 'border-borde dark:border-noche-borde')
+            }
+          >
+            <span
+              className={
+                'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ' +
+                (temporal ? 'border-primario bg-primario text-white' : 'border-borde dark:border-noche-borde')
+              }
+              aria-hidden
+            >
+              {temporal && <Check size={14} strokeWidth={3} />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">Es temporal</span>
+              <span className="block text-xs texto-suave">
+                Al ponérsela a un alumno se propone fecha de fin. Una lesión sí; ACNEE o TDAH, no.
+              </span>
+            </span>
+          </button>
+        </div>
+
         <button className="btn-primario w-full" disabled={!nombre.trim()} onClick={() => void guardar()}>
           {esNueva ? 'Crear etiqueta' : 'Guardar cambios'}
         </button>
@@ -236,5 +297,74 @@ function HojaEtiqueta({
         )}
       </div>
     </Hoja>
+  )
+}
+
+
+/**
+ * El icono de la etiqueta, del catálogo cerrado de `lib/iconosEtiqueta.ts`.
+ *
+ * «Sin icono» es una opción de verdad y la primera: la mayoría de las etiquetas
+ * no necesita ninguno, y el punto de color con su abreviatura ya se distingue.
+ */
+function SelectorIcono({
+  valor,
+  onValor,
+  colorId,
+}: {
+  valor: string | undefined
+  onValor: (id: string | undefined) => void
+  colorId: string
+}) {
+  return (
+    <div>
+      <span className="etiqueta">Icono</span>
+      <p className="mb-2 text-xs texto-suave">
+        Opcional. Si lo pones, sustituye al punto de color y se ve de más lejos.
+      </p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Icono de la etiqueta">
+        <button
+          type="button"
+          aria-pressed={valor === undefined}
+          onClick={() => onValor(undefined)}
+          className={
+            'flex min-h-tap items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ' +
+            (valor === undefined
+              ? 'border-primario border-2 bg-agua-claro dark:bg-noche-elevada'
+              : 'border-borde dark:border-noche-borde')
+          }
+        >
+          <span
+            className="color-dato h-4 w-4 shrink-0 rounded-full"
+            style={variablesColor(colorId)}
+            aria-hidden
+          />
+          Sin icono
+        </button>
+        {ICONOS_ETIQUETA.map(({ id, nombre, Icono }) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={valor === id}
+            aria-label={nombre}
+            onClick={() => onValor(id)}
+            className={
+              'flex min-h-tap min-w-tap items-center justify-center rounded-xl border transition ' +
+              (valor === id
+                ? 'border-primario border-2 bg-agua-claro dark:bg-noche-elevada'
+                : 'border-borde dark:border-noche-borde')
+            }
+          >
+            <span
+              className="color-dato flex h-7 w-7 items-center justify-center rounded-full"
+              style={variablesColor(colorId)}
+              aria-hidden
+            >
+              <Icono size={16} strokeWidth={2.5} className="color-dato-marca" />
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

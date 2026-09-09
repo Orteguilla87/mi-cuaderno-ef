@@ -64,13 +64,14 @@ import type {
   ValorCelda,
 } from '../db/types'
 import { contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
+import { iconoDe } from '../lib/iconosEtiqueta'
 import { formatearNombre } from '../lib/nombres'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { navegar, reemplazarRuta } from '../lib/router'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { variablesColor } from '../components/SelectorColor'
-import { etiquetasDe, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
+import { etiquetasPuestasDe, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
 
@@ -672,25 +673,41 @@ function PuntoEtiquetas({
   catalogo: EtiquetaAlumno[]
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
-  const puestas = etiquetasDe(alumno, catalogo)
+  const puestas = etiquetasPuestasDe(alumno, catalogo)
   if (puestas.length === 0) return null
 
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {puestas.map((e) => (
-        <button
-          key={e.id}
-          type="button"
-          onClick={() => mostrarAviso(e.nombre)}
-          title={e.nombre}
-          aria-label={`Etiqueta ${e.nombre}`}
-          style={variablesColor(e.colorId)}
-          className="flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde"
-        >
-          <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
-          {e.abreviatura}
-        </button>
-      ))}
+      {puestas.map(({ etiqueta: e, caducada }) => {
+        const Icono = iconoDe(e.icono)
+        return (
+          <button
+            key={e.id}
+            type="button"
+            onClick={() => mostrarAviso(caducada ? `${e.nombre} · caducada` : e.nombre)}
+            title={caducada ? `${e.nombre} (caducada)` : e.nombre}
+            aria-label={`Etiqueta ${e.nombre}${caducada ? ', caducada' : ''}`}
+            style={variablesColor(e.colorId)}
+            className={
+              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde ' +
+              // Caducada: atenuada Y tachada. La opacidad sola no se ve al sol.
+              (caducada ? 'opacity-50 line-through' : '')
+            }
+          >
+            {Icono ? (
+              <span
+                className="color-dato flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full"
+                aria-hidden
+              >
+                <Icono size={9} strokeWidth={3} className="color-dato-marca" />
+              </span>
+            ) : (
+              <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
+            )}
+            {e.abreviatura}
+          </button>
+        )
+      })}
     </span>
   )
 }

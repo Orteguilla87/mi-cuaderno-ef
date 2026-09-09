@@ -37,8 +37,9 @@ import type { Alumno, Id } from './types'
  * Lo que es de la PERSONA y no del área. Lista cerrada, y única fuente:
  * `personas.test.ts` la usa para comprobar que no se cuela nada de evaluación.
  *
- *  - `etiquetas`: ACNEE, TDAH, lesionado… es la condición del niño, no de la
- *    asignatura.
+ *  - `etiquetas` y `etiquetasHasta`: ACNEE, TDAH, lesionado… es la condición
+ *    del niño, no de la asignatura, y la fecha en que se le cura la lesión
+ *    tampoco cambia según el área.
  *  - `apoyos`: las pautas prácticas de adaptación; lo mismo.
  *  - `notasPrivadas`, `genero`, `nivelMotriz`: datos de la persona que costaría
  *    mantener a mano en dos sitios y que divergirían en cuanto se tocara uno.
@@ -52,6 +53,7 @@ import type { Alumno, Id } from './types'
  */
 export const CAMPOS_COMPARTIDOS = [
   'etiquetas',
+  'etiquetasHasta',
   'apoyos',
   'notasPrivadas',
   'genero',

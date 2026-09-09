@@ -1,16 +1,23 @@
 import { Minus, Plus, Circle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useConfig } from '../db/config'
+import { db } from '../db/db'
+import { asignar, ETIQUETA_LESIONADO, tieneEtiqueta } from '../db/etiquetasAlumno'
 import { crearObservacion } from '../db/observaciones'
 import type { Alumno, SignoObservacion, TipoObservacion } from '../db/types'
 import { useUI } from '../store/ui'
 import { CampoArea } from './Campo'
 import { Hoja } from './Hoja'
+import { HojaConfirmar } from './HojaConfirmar'
 
 const TIPOS: { valor: TipoObservacion; etiqueta: string }[] = [
   { valor: 'conducta', etiqueta: 'Conducta' },
   { valor: 'aprendizaje', etiqueta: 'Aprendizaje' },
   { valor: 'salud', etiqueta: 'Salud' },
+  // Aparte de «Salud» a propósito: es la que se cruza con la etiqueta
+  // «Lesionado» (`db/etiquetasAlumno.ts`). La observación es el registro
+  // histórico —qué pasó y cuándo—; la etiqueta, el estado de hoy.
+  { valor: 'lesion', etiqueta: 'Lesión' },
   { valor: 'otro', etiqueta: 'Otro' },
 ]
 
@@ -46,6 +53,8 @@ export function HojaObservacion({
   const [tipo, setTipo] = useState<TipoObservacion>('conducta')
   const [texto, setTexto] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  /** Alumno al que OFRECER la etiqueta «Lesionado» después de guardar. */
+  const [ofreciendo, setOfreciendo] = useState<Alumno | null>(null)
 
   // Cada apertura empieza limpia, pero respetando el signo con el que se abrió.
   useEffect(() => {
@@ -71,13 +80,26 @@ export function HojaObservacion({
       `Observación guardada${alumno ? ` · ${alumno.alias || alumno.nombre}` : ''}`,
       deshacer,
     )
+
+    // La observación es el REGISTRO —qué pasó, cuándo y qué se hizo—; la
+    // etiqueta es el ESTADO de hoy. Son complementarias, así que al anotar una
+    // lesión se OFRECE poner la etiqueta. Nunca se pone sola: una etiqueta
+    // puesta a escondidas seguiría colgada meses después de que el niño se
+    // curara, y nadie sabría de dónde salió.
+    if (alumno && signo === 'neutro' && tipo === 'lesion') {
+      const etiqueta = await db.etiquetasAlumno.get(ETIQUETA_LESIONADO)
+      const actual = await db.alumnos.get(alumno.id)
+      if (etiqueta && actual && !tieneEtiqueta(actual, ETIQUETA_LESIONADO)) setOfreciendo(actual)
+    }
+
     return observacion
   }
 
   const titulo = alumno ? alumno.alias || alumno.nombre : 'Observación de grupo'
 
   return (
-    <Hoja abierta={abierta} titulo={titulo} onCerrar={onCerrar}>
+    <>
+      <Hoja abierta={abierta} titulo={titulo} onCerrar={onCerrar}>
       <div className="space-y-4">
         <div>
           <span className="etiqueta">Signo</span>
@@ -106,7 +128,7 @@ export function HojaObservacion({
 
         <div>
           <span className="etiqueta">Tipo</span>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {TIPOS.map(({ valor, etiqueta }) => (
               <button
                 key={valor}
@@ -172,6 +194,27 @@ export function HojaObservacion({
           Guardar observación
         </button>
       </div>
-    </Hoja>
+      </Hoja>
+
+      {/* HERMANA de la hoja, no hija: `guardar()` cierra la de observación
+          antes de ofrecer nada, y dentro se desmontaría sin llegar a verse. */}
+      <HojaConfirmar
+        abierta={ofreciendo !== null}
+        titulo="¿Marcarle como lesionado?"
+        descripcion={
+          `Lo que ha pasado ya queda anotado. Si además ${ofreciendo?.alias || ofreciendo?.nombre} ` +
+          'no va a hacer las sesiones, la etiqueta «Lesionado» lo enseña de un vistazo al pasar ' +
+          'lista y en el Cuaderno. La fecha de fin se le pone desde su ficha.'
+        }
+        textoConfirmar="Marcarle"
+        onConfirmar={async () => {
+          if (!ofreciendo) return
+          await asignar(ofreciendo.id, ETIQUETA_LESIONADO, true)
+          mostrarAviso(`${ofreciendo.alias || ofreciendo.nombre} marcado como lesionado`)
+          setOfreciendo(null)
+        }}
+        onCerrar={() => setOfreciendo(null)}
+      />
+    </>
   )
 }

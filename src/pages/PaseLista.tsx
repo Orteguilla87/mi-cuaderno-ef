@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Cross,
   Eye,
   EyeOff,
   FileCheck2,
@@ -26,10 +27,17 @@ import {
   type FranjaAsistencia,
 } from '../db/asistencia'
 import { db } from '../db/db'
-import { etiquetas as leerEtiquetas, etiquetasDe } from '../db/etiquetasAlumno'
+import {
+  ETIQUETA_LESIONADO,
+  etiquetasDe,
+  etiquetasPuestasDe,
+  etiquetas as leerEtiquetas,
+  tieneEtiqueta,
+} from '../db/etiquetasAlumno'
 import type { Alumno, Asistencia, EstadoAsistencia, EtiquetaAlumno } from '../db/types'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { aISO, diaLectivo, etiquetaDia, sumarDias } from '../lib/fechas'
+import { iconoDe } from '../lib/iconosEtiqueta'
 import { navegar } from '../lib/router'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useFechaActiva } from '../store/fechaActiva'
@@ -90,6 +98,8 @@ export function PaseLista({
   // 25 alumnos, así que el botón «Deshacer» de la cabecera va vaciando la pila.
   const [pila, setPila] = useState<(() => Promise<void>)[]>([])
   const [detalle, setDetalle] = useState<Alumno | null>(null)
+  /** Filtro rápido: solo quienes llevan la etiqueta «Lesionado». */
+  const [soloLesionados, setSoloLesionados] = useState(false)
 
   const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
   const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
@@ -155,6 +165,14 @@ export function PaseLista({
       </>
     )
   }
+
+  /**
+   * Quiénes llevan la etiqueta «Lesionado», para comprobarlo de un vistazo
+   * antes de montar la sesión. Es un filtro de la VISTA: no toca la asistencia
+   * de nadie, y con él puesto se sigue pudiendo marcar.
+   */
+  const lesionados = alumnos.filter((a) => tieneEtiqueta(a, ETIQUETA_LESIONADO))
+  const visibles = soloLesionados ? lesionados : alumnos
 
   const porAlumno = registros ?? new Map<string, Asistencia>()
   const resumen = resumirAsistencia([...porAlumno.values()])
@@ -278,11 +296,31 @@ export function PaseLista({
 
             {porAlumno.size > 0 && <Resumen resumen={resumen} sinRegistrar={sinRegistrar} />}
 
+            {/* Solo aparece si hay alguno: un filtro que nunca filtra nada es
+                ruido en la pantalla que más se usa de pie y con prisa. */}
+            {lesionados.length > 0 && (
+              <button
+                onClick={() => setSoloLesionados((v) => !v)}
+                aria-pressed={soloLesionados}
+                className={
+                  'flex min-h-tap w-full items-center justify-center gap-2 rounded-xl border-2 text-sm font-bold transition ' +
+                  (soloLesionados
+                    ? 'border-acento bg-acento text-white'
+                    : 'border-borde dark:border-noche-borde')
+                }
+              >
+                <Cross size={18} strokeWidth={2.5} aria-hidden />
+                {soloLesionados
+                  ? `Viendo solo ${lesionados.length} lesionado${lesionados.length === 1 ? '' : 's'} · ver todos`
+                  : `Ver los ${lesionados.length} lesionado${lesionados.length === 1 ? '' : 's'}`}
+              </button>
+            )}
+
             {/* Girado caben cuatro tarjetas por fila: un grupo de 22 pasa de
                 11 filas a 6, o sea casi toda la clase sin desplazar en una
                 pantalla donde lo que falta es alto. */}
             <ul className="grid grid-cols-2 gap-2 apaisado:grid-cols-4">
-              {alumnos.map((a) => (
+              {visibles.map((a) => (
                 <TarjetaAlumno
                   key={a.id}
                   alumno={a}
@@ -383,22 +421,38 @@ function Resumen({
  * la pulsación larga, como todo lo demás de la tarjeta.
  */
 function PuntoEtiquetas({ alumno, catalogo }: { alumno: Alumno; catalogo: EtiquetaAlumno[] }) {
-  const puestas = etiquetasDe(alumno, catalogo)
+  const puestas = etiquetasPuestasDe(alumno, catalogo)
   if (puestas.length === 0) return null
 
   return (
     <span className="mt-1 flex flex-wrap items-center gap-1">
-      {puestas.map((e) => (
-        <span
-          key={e.id}
-          title={e.nombre}
-          style={variablesColor(e.colorId)}
-          className="flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde"
-        >
-          <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
-          {e.abreviatura}
-        </span>
-      ))}
+      {puestas.map(({ etiqueta: e, caducada }) => {
+        const Icono = iconoDe(e.icono)
+        return (
+          <span
+            key={e.id}
+            title={caducada ? `${e.nombre} (caducada)` : e.nombre}
+            style={variablesColor(e.colorId)}
+            className={
+              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde ' +
+              // Caducada: atenuada Y tachada. Al sol la opacidad sola no se ve.
+              (caducada ? 'opacity-50 line-through' : '')
+            }
+          >
+            {Icono ? (
+              <span
+                className="color-dato flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full"
+                aria-hidden
+              >
+                <Icono size={9} strokeWidth={3} className="color-dato-marca" />
+              </span>
+            ) : (
+              <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
+            )}
+            {e.abreviatura}
+          </span>
+        )
+      })}
     </span>
   )
 }

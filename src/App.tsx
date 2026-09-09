@@ -9,6 +9,7 @@ import { Snackbar } from './components/Snackbar'
 import { useConfig } from './db/config'
 import { sembrarCriterios } from './db/criterios'
 import { obtenerCursoActivo } from './db/curso'
+import { sembrarEtiquetas } from './db/etiquetasAlumno'
 import { sembrarInventario } from './db/inventario'
 import { arrancar as arrancarSincro } from './db/sincro'
 import { MS_INACTIVIDAD } from './lib/pin'
@@ -192,6 +193,9 @@ export default function App() {
     // inventa ni un cono. Un fallo aquí no puede tumbar el arranque —el
     // inventario es un módulo más, no la referencia legal que sí son los
     // criterios—, así que se registra y se sigue.
+    void sembrarEtiquetas().catch((e: unknown) =>
+      console.error('No se han podido sembrar las etiquetas de alumnado', e),
+    )
     void sembrarInventario().catch((e: unknown) =>
       console.error('No se ha podido sembrar el inventario', e),
     )
