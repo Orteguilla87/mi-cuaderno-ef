@@ -107,17 +107,18 @@ export interface Alumno {
  *
  * REGLA DURA: es un dato de categoría especial (salud, necesidades educativas).
  * Hereda entera la protección de `Alumno.apoyos` —nunca sale del dispositivo
- * salvo dentro del blob cifrado— y añade la suya: solo se pinta en la vista
- * «Cuaderno», que nunca se enseña al alumnado ni se proyecta.
+ * salvo dentro del blob cifrado— y añade la suya: solo se pinta en las vistas
+ * de gestión del maestro (Cuaderno, ficha del grupo, pase de lista y ficha del
+ * alumno), nunca en nada proyectable. Lista exacta y vigilancia en
+ * `lib/etiquetasAlumno.test.ts`.
  */
 export interface EtiquetaAlumno {
   id: Id
   /** «TDAH», «ACNEE», «Lesionado». */
   nombre: string
   /**
-   * 1–3 caracteres. Hoy no se pinta —el Cuaderno enseña solo el punto de
-   * color—, pero se guarda desde el principio: es lo que permitirá pasar a
-   * «punto + letras» sin migrar nada si el punto solo se queda corto.
+   * 1–3 caracteres. Se pinta junto al punto de color en todas las vistas que
+   * enseñan etiquetas: el color no es nunca el único portador del significado.
    */
   abreviatura: string
   /** Identificador de `lib/paleta.ts`. NUNCA un hex. */

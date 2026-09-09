@@ -323,8 +323,9 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
  * quince líneas de pintado; lo que compra es que añadir una vista con etiquetas
  * exija escribirlas otra vez y pasar por `lib/etiquetasAlumno.test.ts`.
  *
- * Es solo el punto: el nombre va en `title` y en `aria-label`, y al pulsarlo
- * sale en el aviso de abajo.
+ * Punto de color MÁS abreviatura: el color no es nunca el único portador del
+ * significado. El nombre completo va en `title` y en `aria-label`, y al
+ * pulsarlo sale en el aviso de abajo.
  */
 function PuntoEtiquetas({
   alumno,
@@ -338,7 +339,7 @@ function PuntoEtiquetas({
   if (puestas.length === 0) return null
 
   return (
-    <span className="flex shrink-0 items-center gap-0.5">
+    <span className="flex shrink-0 items-center gap-1">
       {puestas.map((e) => (
         <button
           key={e.id}
@@ -347,8 +348,11 @@ function PuntoEtiquetas({
           title={e.nombre}
           aria-label={`Etiqueta ${e.nombre}`}
           style={variablesColor(e.colorId)}
-          className="color-dato h-2.5 w-2.5 shrink-0 rounded-full"
-        />
+          className="flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde"
+        >
+          <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
+          {e.abreviatura}
+        </button>
       ))}
     </span>
   )

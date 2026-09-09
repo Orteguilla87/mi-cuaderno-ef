@@ -13,11 +13,14 @@ import type { Alumno, EtiquetaAlumno } from './types'
  *     de la sincronización. Ni a PDF, ni a XLSX, ni a CSV, ni al portapapeles,
  *     aunque la exportación salga del propio Cuaderno. Ni al agente de voz, ni
  *     siquiera pseudonimizadas.
- *  2. Solo se pintan en las vistas de gestión del maestro —«Cuaderno» y la
- *     ficha del grupo—, que nunca se enseñan al alumnado ni se proyectan. No
- *     aparecen en el pase de lista, ni en las herramientas de aula, ni en el
- *     calendario, ni en el planificador, ni en Hoy. Y en las dos que sí, tras
- *     el interruptor de `store/etiquetasVisibles.ts`.
+ *  2. Solo se pintan en las vistas de gestión del maestro —«Cuaderno», la
+ *     ficha del grupo, el pase de lista y la ficha del alumno—, que se miran de
+ *     cerca en el móvil y nunca se proyectan. NO aparecen en el generador de
+ *     equipos, ni en el sorteo de alumno, ni en el marcador, ni en la pizarra,
+ *     ni en ninguna otra vista a pantalla completa: un punto de color junto a
+ *     un nombre señala a ese alumno delante de sus compañeros. Tampoco en el
+ *     calendario, el planificador ni Hoy. Y en las que sí, tras el interruptor
+ *     GLOBAL de `store/etiquetasVisibles.ts`.
  *
  * Las dos las vigila `lib/etiquetasAlumno.test.ts`, que revisa la fuente de
  * todas las vistas y de todas las rutas de exportación.

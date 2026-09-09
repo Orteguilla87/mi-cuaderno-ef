@@ -3,7 +3,7 @@ import { Tags } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { variablesColor } from '../components/SelectorColor'
-import { asignar, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
+import { asignar, etiquetas as leerEtiquetas, etiquetasDe } from '../db/etiquetasAlumno'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
 import { HojaConfirmar } from '../components/HojaConfirmar'
@@ -11,14 +11,18 @@ import { ListaObservacionesEnLinea } from '../components/ObservacionEnLinea'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { resumirAsistencia } from '../db/asistencia'
 import { db } from '../db/db'
-import type { Alumno } from '../db/types'
+import type { Alumno, EtiquetaAlumno } from '../db/types'
 import { navegar } from '../lib/router'
+import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
 
 export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [editando, setEditando] = useState(false)
   const [confirmandoBaja, setConfirmandoBaja] = useState(false)
+
+  const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
+  const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
 
   const alumno = useLiveQuery(() => db.alumnos.get(alumnoId), [alumnoId])
   const grupo = useLiveQuery(
@@ -81,6 +85,10 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
 
       <div className="space-y-4 p-4 apaisado:grid apaisado:grid-cols-2 apaisado:items-start apaisado:gap-4 apaisado:space-y-0 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
         <div className="space-y-4">
+          {/* Se ven sin entrar a editar: es lo primero que hace falta saber al
+              abrir la ficha, se llegue desde el grupo o desde el Cuaderno. */}
+          {etiquetasVisibles && <PuntoEtiquetas alumno={alumno} catalogo={catalogoEtiquetas} />}
+
           {editando && <FormularioAlumno alumnoId={alumnoId} />}
 
           <div className="grid grid-cols-4 gap-2">
@@ -143,6 +151,41 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
   )
 }
 
+/**
+ * El punto de color y la abreviatura de las etiquetas de un alumno.
+ *
+ * VIVE AQUÍ DENTRO A PROPÓSITO, y no en `src/components/`: las etiquetas de
+ * alumnado solo se pintan en las vistas de gestión del maestro —nunca en el
+ * generador de equipos, ni en el sorteo, ni en el marcador, ni en nada que
+ * pueda acabar proyectado—, y esa condición tiene que ser física, no una prop
+ * opcional que otra vista pueda activar por descuido.
+ * `lib/etiquetasAlumno.test.ts` comprueba quién puede mencionarlo.
+ */
+function PuntoEtiquetas({ alumno, catalogo }: { alumno: Alumno; catalogo: EtiquetaAlumno[] }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const puestas = etiquetasDe(alumno, catalogo)
+  if (puestas.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {puestas.map((e) => (
+        <button
+          key={e.id}
+          type="button"
+          onClick={() => mostrarAviso(e.nombre)}
+          title={e.nombre}
+          aria-label={`Etiqueta ${e.nombre}`}
+          style={variablesColor(e.colorId)}
+          className="flex shrink-0 items-center gap-1 rounded-full border border-borde px-2 py-1 text-xs font-bold uppercase leading-none tracking-wide dark:border-noche-borde"
+        >
+          <span className="color-dato h-2.5 w-2.5 shrink-0 rounded-full" aria-hidden />
+          {e.abreviatura}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function Dato({ valor, etiqueta }: { valor: string; etiqueta: string }) {
   return (
     <div className="tarjeta py-3 text-center">
@@ -158,8 +201,9 @@ function Dato({ valor, etiqueta }: { valor: string; etiqueta: string }) {
  * del dispositivo salvo dentro de la copia cifrada.
  *
  * Aquí se ponen y se quitan; el catálogo se gestiona en «Etiquetas de
- * alumnado». Lo único que se ve de ellas fuera de esta ficha es un punto de
- * color en la columna de alumnado del Cuaderno.
+ * alumnado». Fuera de esta ficha se ven como punto de color más abreviatura en
+ * el Cuaderno, en la ficha del grupo y en el pase de lista, y en ningún sitio
+ * más.
  */
 function EtiquetasDelAlumno({ alumno }: { alumno: Alumno }) {
   const catalogo = useLiveQuery(() => leerEtiquetas(), [])
@@ -169,8 +213,8 @@ function EtiquetasDelAlumno({ alumno }: { alumno: Alumno }) {
     <div>
       <span className="etiqueta">Etiquetas</span>
       <div className="aviso mb-2 text-xs">
-        Solo se ven en el Cuaderno: nunca en informes, exportaciones, pase de lista ni nada que se
-        proyecte.
+        Solo se ven en tus pantallas de trabajo —Cuaderno, ficha del grupo, pase de lista y esta
+        ficha—: nunca en informes, exportaciones, herramientas de aula ni nada que se proyecte.
       </div>
       {catalogo && catalogo.length === 0 ? (
         <button className="btn-suave w-full" onClick={() => navegar('/etiquetas-alumnado')}>

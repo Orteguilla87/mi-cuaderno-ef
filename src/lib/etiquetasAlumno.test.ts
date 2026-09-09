@@ -49,21 +49,42 @@ describe('las etiquetas solo se pintan en las vistas de gestión', () => {
   const vistas = [...fuentes(join(RAIZ, 'pages'), ['.tsx']), ...fuentes(join(RAIZ, 'components'), ['.tsx'])]
 
   /**
-   * Las únicas vistas que pueden nombrarlas: el Cuaderno y la ficha del grupo,
-   * que pintan el punto, y la ficha del alumno junto con su pantalla de
-   * gestión, donde se ponen y se quitan. Ninguna se proyecta ni se enseña a
-   * nadie: son las pantallas de trabajo del maestro. El pase de lista, las
-   * herramientas de aula, Hoy, el planificador y el calendario siguen fuera.
+   * Las únicas vistas que pueden nombrarlas: las cuatro pantallas de trabajo
+   * del maestro —el Cuaderno, la ficha del grupo, el pase de lista y la ficha
+   * del alumno—, más la de gestión del catálogo. Se miran de cerca en el móvil;
+   * ninguna se proyecta ni se enseña a nadie. Las herramientas de aula, Hoy, el
+   * planificador y el calendario siguen fuera.
+   *
+   * Esta lista se AMPLÍA a mano cuando una vista nueva tiene que pintarlas, y
+   * nunca se sustituye por una prop opcional: la condición de contexto es
+   * física a propósito.
    */
   const PERMITIDAS = [
     'Cuaderno.tsx',
     'GrupoDetalle.tsx',
+    'PaseLista.tsx',
     'AlumnoDetalle.tsx',
     'EtiquetasAlumno.tsx',
   ]
 
   /** Las que pintan el punto, cada una con su copia. */
-  const PINTAN = ['Cuaderno.tsx', 'GrupoDetalle.tsx']
+  const PINTAN = ['Cuaderno.tsx', 'GrupoDetalle.tsx', 'PaseLista.tsx', 'AlumnoDetalle.tsx']
+
+  /**
+   * Las vistas que se proyectan en la PDI o se enseñan a pantalla completa a
+   * toda la clase. Ya están cubiertas por el repaso general de arriba —no
+   * aparecen en PERMITIDAS—, pero se nombran aquí una a una para que ampliar
+   * PERMITIDAS por descuido con cualquiera de ellas rompa el test en vez de
+   * pasar en silencio. Un punto de color junto a un nombre señala a ese alumno
+   * delante de sus compañeros.
+   */
+  const PROYECTABLES = [
+    join(RAIZ, 'pages', 'EquiposGenerador.tsx'),
+    join(RAIZ, 'pages', 'Herramientas.tsx'),
+    join(RAIZ, 'components', 'SorteoAlumno.tsx'),
+    join(RAIZ, 'components', 'Marcador.tsx'),
+    join(RAIZ, 'components', 'Pizarra.tsx'),
+  ]
 
   it('encuentra las vistas que hay que revisar', () => {
     expect(vistas.length).toBeGreaterThan(20)
@@ -90,6 +111,38 @@ describe('las etiquetas solo se pintan en las vistas de gestión', () => {
     const fuente = readFileSync(join(RAIZ, 'pages', vista), 'utf-8')
     expect(fuente).toContain('function PuntoEtiquetas')
     expect(fuente).not.toMatch(/export\s+(function|const)\s+PuntoEtiquetas/)
+  })
+
+  it.each(PINTAN)('%s pinta también la abreviatura, no solo el color', (vista) => {
+    // El color nunca es el único portador del significado: dos etiquetas de
+    // color parecido son indistinguibles de un vistazo, y bajo protanopia o
+    // deuteranopia lo son del todo.
+    const fuente = readFileSync(join(RAIZ, 'pages', vista), 'utf-8')
+    expect(fuente).toMatch(/\{e\.abreviatura\}/)
+  })
+
+  it.each(PROYECTABLES)('%s no menciona ninguna etiqueta de alumnado', (ruta) => {
+    const encontrado = rastro(readFileSync(ruta, 'utf-8'))
+    expect(
+      encontrado,
+      `«${encontrado}»: esta vista se proyecta o se enseña a toda la clase`,
+    ).toBeUndefined()
+  })
+
+  it('ninguna vista proyectable está entre las permitidas', () => {
+    const permitidas = PROYECTABLES.filter((r) => PERMITIDAS.some((p) => r.endsWith(p)))
+    expect(permitidas, 'una vista proyectable no puede pintar etiquetas').toEqual([])
+  })
+
+  it('el interruptor es global: todas las que pintan lo consultan', () => {
+    // Uno solo para toda la app. Si una vista pintara sin consultarlo, apagarlo
+    // desde otra pantalla no la apagaría a ella.
+    for (const vista of PINTAN) {
+      const fuente = readFileSync(join(RAIZ, 'pages', vista), 'utf-8')
+      expect(fuente, `${vista} pinta etiquetas sin mirar el interruptor`).toContain(
+        'useEtiquetasVisibles',
+      )
+    }
   })
 })
 

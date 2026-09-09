@@ -2,11 +2,16 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 /**
- * Si las vistas de gestión —el Cuaderno y la ficha del grupo— pintan los puntos
- * de etiqueta de alumnado.
+ * Si las vistas de gestión del maestro —el Cuaderno, la ficha del grupo, el
+ * pase de lista y la ficha del alumno— pintan las etiquetas de alumnado.
  *
- * Es UNO para las dos: lo que se decide aquí es «alguien puede acercarse a esta
- * pantalla», y eso no cambia según en qué vista se esté.
+ * Es UNO para todas, y GLOBAL: lo que se decide aquí es «alguien puede
+ * acercarse a esta pantalla», y eso no cambia según en qué vista se esté.
+ * Apagarlo desde cualquiera de ellas lo apaga en todas.
+ *
+ * No amplía dónde se pintan: las vistas proyectables —generador de equipos,
+ * sorteo de alumno, marcador, pizarra— no lo consultan siquiera, porque no
+ * mencionan las etiquetas en absoluto (`lib/etiquetasAlumno.test.ts`).
  *
  * Preferencia DE DISPOSITIVO, y a propósito fuera de la sincronización: vive en
  * `localStorage` y no en `Config`, por el mismo motivo que documenta

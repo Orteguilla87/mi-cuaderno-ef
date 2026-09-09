@@ -24,9 +24,10 @@ import { useUI } from '../store/ui'
  * hace en su ficha («Editar alumno»), que es donde ya viven los otros datos
  * sensibles y donde está el aviso que los acompaña.
  *
- * Lo que se ve de ellas en el resto de la app es un punto de color en la
- * columna de alumnado del Cuaderno, y nada más: son datos de categoría
- * especial (ver `db/etiquetasAlumno.ts`).
+ * Lo que se ve de ellas en el resto de la app es un punto de color con su
+ * abreviatura, y solo en las cuatro vistas de gestión del maestro: Cuaderno,
+ * ficha del grupo, pase de lista y ficha del alumno. En nada proyectable. Son
+ * datos de categoría especial (ver `db/etiquetasAlumno.ts`).
  */
 export function EtiquetasAlumno() {
   const [editando, setEditando] = useState<EtiquetaAlumno | 'nueva' | null>(null)
@@ -50,15 +51,16 @@ export function EtiquetasAlumno() {
       <div className="space-y-4 p-4">
         <div className="aviso text-xs">
           Datos sensibles: no salen nunca de este dispositivo salvo dentro de la copia cifrada, y
-          solo se ven en el Cuaderno. No aparecen en informes, ni en exportaciones, ni en el pase de
-          lista, ni en nada que se proyecte.
+          solo se ven en tus pantallas de trabajo —Cuaderno, ficha del grupo, pase de lista y ficha
+          del alumno—. No aparecen en informes, ni en exportaciones, ni en las herramientas de aula,
+          ni en nada que se proyecte.
         </div>
 
         {total === 0 && etiquetas && (
           <EstadoVacio
             Icono={Tags}
             titulo="Todavía no hay etiquetas"
-            descripcion="Una etiqueta es un punto de color junto al nombre en el Cuaderno: TDAH, ACNEE, lesionado…"
+            descripcion="Una etiqueta es un punto de color con su abreviatura junto al nombre: TDAH, ACNEE, lesionado…"
             accion={
               <button className="btn-primario" onClick={() => setEditando('nueva')}>
                 <Plus size={20} aria-hidden />
@@ -140,8 +142,7 @@ function HojaEtiqueta({
   }, [etiqueta, actual?.nombre, actual?.abreviatura, actual?.colorId])
 
   // La abreviatura se propone a partir del nombre mientras no se toque a mano:
-  // «Compensatoria» → «COM». Se guarda desde ya aunque el Cuaderno pinte solo
-  // el punto, para poder pasar a «punto + letras» sin migrar nada.
+  // «Compensatoria» → «COM». Nunca queda vacía, porque es lo que se pinta.
   const abreviaturaEfectiva = abreviatura.trim() || nombre.trim().slice(0, 3).toUpperCase()
 
   async function guardar() {
@@ -196,8 +197,8 @@ function HojaEtiqueta({
             placeholder={nombre.trim().slice(0, 3).toUpperCase() || 'TDA'}
           />
           <p className="mt-1 text-xs texto-suave">
-            Hasta 3 letras. Hoy el Cuaderno enseña solo el punto de color; la abreviatura se guarda
-            por si algún día hace falta distinguirlas sin mirar el color.
+            Hasta 3 letras. Es lo que se ve junto al punto de color: el color por sí solo no
+            distingue dos etiquetas parecidas.
           </p>
         </div>
 

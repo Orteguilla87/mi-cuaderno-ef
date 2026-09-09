@@ -658,10 +658,11 @@ function MenuAcciones({
  * punto con su propia copia, por ese mismo motivo.
  * `lib/etiquetasAlumno.test.ts` comprueba quién puede mencionarlo.
  *
- * Es solo el punto: el nombre va en `title` y en `aria-label`, y al pulsarlo
- * sale en el aviso de abajo. Un lector de pantalla no pierde nada; lo que se
- * pierde es distinguir dos colores parecidos de un vistazo, y por eso
- * `paleta.test.ts` verifica la paleta bajo protanopia y deuteranopia.
+ * Punto de color MÁS abreviatura: el color no es nunca el único portador del
+ * significado —dos colores parecidos se confunden de un vistazo, y por eso
+ * `paleta.test.ts` verifica la paleta bajo protanopia y deuteranopia—. El
+ * nombre completo va en `title` y en `aria-label`, y al pulsarlo sale en el
+ * aviso de abajo.
  */
 function PuntoEtiquetas({
   alumno,
@@ -675,7 +676,7 @@ function PuntoEtiquetas({
   if (puestas.length === 0) return null
 
   return (
-    <span className="flex shrink-0 items-center gap-0.5">
+    <span className="flex shrink-0 items-center gap-1">
       {puestas.map((e) => (
         <button
           key={e.id}
@@ -684,8 +685,11 @@ function PuntoEtiquetas({
           title={e.nombre}
           aria-label={`Etiqueta ${e.nombre}`}
           style={variablesColor(e.colorId)}
-          className="color-dato h-2.5 w-2.5 shrink-0 rounded-full"
-        />
+          className="flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde"
+        >
+          <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
+          {e.abreviatura}
+        </button>
       ))}
     </span>
   )

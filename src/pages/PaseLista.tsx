@@ -4,6 +4,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Eye,
+  EyeOff,
   FileCheck2,
   Shirt,
   Undo2,
@@ -14,6 +16,7 @@ import { AccionCabecera, Cabecera } from '../components/Cabecera'
 import { CampoArea } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
+import { variablesColor } from '../components/SelectorColor'
 import {
   alternarChandal,
   ciclarEstado,
@@ -23,10 +26,12 @@ import {
   type FranjaAsistencia,
 } from '../db/asistencia'
 import { db } from '../db/db'
-import type { Alumno, Asistencia, EstadoAsistencia } from '../db/types'
+import { etiquetas as leerEtiquetas, etiquetasDe } from '../db/etiquetasAlumno'
+import type { Alumno, Asistencia, EstadoAsistencia, EtiquetaAlumno } from '../db/types'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { aISO, diaLectivo, etiquetaDia, sumarDias } from '../lib/fechas'
 import { navegar } from '../lib/router'
+import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useFechaActiva } from '../store/fechaActiva'
 import { useUI } from '../store/ui'
 
@@ -85,6 +90,10 @@ export function PaseLista({
   // 25 alumnos, así que el botón «Deshacer» de la cabecera va vaciando la pila.
   const [pila, setPila] = useState<(() => Promise<void>)[]>([])
   const [detalle, setDetalle] = useState<Alumno | null>(null)
+
+  const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
+  const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
+  const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
 
   const grupo = useLiveQuery(() => db.grupos.get(grupoId), [grupoId])
   const alumnos = useLiveQuery(async () => {
@@ -189,12 +198,26 @@ export function PaseLista({
           </span>
         }
         acciones={
-          pila.length > 0 && (
-            <AccionCabecera onClick={deshacer}>
-              <Undo2 size={18} aria-hidden />
-              <span className="ml-1.5">Deshacer{pila.length > 1 ? ` (${pila.length})` : ''}</span>
+          <>
+            {/* El interruptor está aquí y no solo en el Cuaderno porque es en
+                el pase de lista donde el alumnado se arremolina alrededor del
+                móvil. Es el mismo de toda la app: apagarlo aquí lo apaga en
+                todas las vistas (`store/etiquetasVisibles.ts`). */}
+            <AccionCabecera onClick={alternarEtiquetas}>
+              {etiquetasVisibles ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
+              <span className="sr-only">
+                {etiquetasVisibles ? 'Ocultar etiquetas' : 'Mostrar etiquetas'}
+              </span>
             </AccionCabecera>
-          )
+            {pila.length > 0 && (
+              <AccionCabecera onClick={deshacer}>
+                <Undo2 size={18} aria-hidden />
+                <span className="ml-1.5">
+                  Deshacer{pila.length > 1 ? ` (${pila.length})` : ''}
+                </span>
+              </AccionCabecera>
+            )}
+          </>
         }
       />
 
@@ -263,6 +286,7 @@ export function PaseLista({
                 <TarjetaAlumno
                   key={a.id}
                   alumno={a}
+                  catalogoEtiquetas={etiquetasVisibles ? catalogoEtiquetas : undefined}
                   registro={porAlumno.get(a.id)}
                   onTocar={async () => apilar(await ciclarEstado(a.id, dia, franja))}
                   onChandal={async () => apilar(await alternarChandal(a.id, dia, franja))}
@@ -343,14 +367,53 @@ function Resumen({
   )
 }
 
+/**
+ * El punto de color y la abreviatura de las etiquetas de un alumno.
+ *
+ * VIVE AQUÍ DENTRO A PROPÓSITO, y no en `src/components/`: las etiquetas de
+ * alumnado solo se pintan en las vistas de gestión del maestro —nunca en el
+ * generador de equipos, ni en el sorteo de alumno, ni en el marcador, ni en
+ * nada que pueda acabar proyectado en la PDI—, y esa condición tiene que ser
+ * física, no una prop opcional que otra vista pueda activar por descuido.
+ * `lib/etiquetasAlumno.test.ts` comprueba quién puede mencionarlo.
+ *
+ * Aquí, a diferencia del Cuaderno y de la ficha del grupo, NO es interactivo:
+ * vive dentro del botón que cicla el estado de asistencia, y un botón dentro de
+ * otro no es HTML válido. El nombre completo va en `title`; el detalle sale con
+ * la pulsación larga, como todo lo demás de la tarjeta.
+ */
+function PuntoEtiquetas({ alumno, catalogo }: { alumno: Alumno; catalogo: EtiquetaAlumno[] }) {
+  const puestas = etiquetasDe(alumno, catalogo)
+  if (puestas.length === 0) return null
+
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1">
+      {puestas.map((e) => (
+        <span
+          key={e.id}
+          title={e.nombre}
+          style={variablesColor(e.colorId)}
+          className="flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde"
+        >
+          <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
+          {e.abreviatura}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function TarjetaAlumno({
   alumno,
+  catalogoEtiquetas,
   registro,
   onTocar,
   onChandal,
   onDetalle,
 }: {
   alumno: Alumno
+  /** Sin catálogo no se pinta ninguna: es lo que hace el interruptor. */
+  catalogoEtiquetas?: EtiquetaAlumno[]
   registro?: Asistencia
   onTocar: () => void
   onChandal: () => void
@@ -358,6 +421,10 @@ function TarjetaAlumno({
 }) {
   const estado = registro?.estado
   const aspecto = estado ? ESTADOS[estado] : null
+  // El `aria-label` del botón tapa lo que lleve dentro, así que las etiquetas
+  // se nombran aquí o no se leen.
+  const puestas = catalogoEtiquetas ? etiquetasDe(alumno, catalogoEtiquetas) : []
+  const sufijoEtiquetas = puestas.length > 0 ? ` · ${puestas.map((e) => e.nombre).join(', ')}` : ''
 
   // Pulsación larga para el detalle; el toque normal cicla el estado.
   const larga = usePulsacionLarga(onDetalle)
@@ -381,7 +448,7 @@ function TarjetaAlumno({
             if (larga.fueLargo.current) return
             onTocar()
           }}
-          aria-label={`${alumno.alias || alumno.nombre}: ${aspecto?.etiqueta ?? 'sin registrar'}`}
+          aria-label={`${alumno.alias || alumno.nombre}: ${aspecto?.etiqueta ?? 'sin registrar'}${sufijoEtiquetas}`}
         >
           <span className="block truncate text-base font-bold leading-tight">
             {alumno.alias || alumno.nombre}
@@ -400,6 +467,7 @@ function TarjetaAlumno({
               'Sin registrar'
             )}
           </span>
+          {catalogoEtiquetas && <PuntoEtiquetas alumno={alumno} catalogo={catalogoEtiquetas} />}
         </button>
 
         <button
