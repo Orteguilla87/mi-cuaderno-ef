@@ -151,3 +151,105 @@ describe('filtrarPorPresentes', () => {
     expect(resultado.some((a) => a.id === 'a1' || a.id === 'a3' || a.id === 'a5')).toBe(false)
   })
 })
+
+/**
+ * El nivel motriz es una valoración del maestro sobre un niño y no puede
+ * asomarse a la pantalla de equipos, que se proyecta o se enseña a la clase.
+ * No basta con no pintarlo: si los miembros salen ordenados por nivel, el
+ * ORDEN lo delata igual. Por eso el motor baraja dentro de cada equipo.
+ */
+describe('el nivel motriz no se filtra por el orden de los miembros', () => {
+  it('en modo homogéneo el primero del equipo no es siempre el de más nivel', () => {
+    // 20 alumnos con niveles bien separados: en homogéneo los equipos salen
+    // por tramos, así que dentro de cada uno hay de sobra con quién barajarse.
+    const niveles = [5, 5, 5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1] as const
+    const alumnos = niveles.map((n, i) => alumno(`a${i}`, { nivelMotriz: n }))
+    const nivelDe = new Map(alumnos.map((a) => [a.id, a.nivelMotriz!]))
+    const tamanios = resolverTamanios(alumnos.length, { porNumEquipos: 4, sobra: 'repartir' })
+
+    // Con una sola semilla podría salir ordenado por casualidad; se repite y se
+    // exige que al menos una vez el primero NO sea el de nivel más alto.
+    let algunaVezDesordenado = false
+    for (let semilla = 1; semilla <= 25; semilla++) {
+      const { equipos } = generarEquipos({
+        alumnos,
+        tamanios,
+        modo: 'homogeneo',
+        aleatorio: rngDeterminista(semilla),
+      })
+      for (const eq of equipos) {
+        const orden = eq.map((id) => nivelDe.get(id)!)
+        const maximo = Math.max(...orden)
+        if (orden[0] !== maximo || orden.some((n, i) => i > 0 && n > orden[i - 1]))
+          algunaVezDesordenado = true
+      }
+    }
+
+    expect(algunaVezDesordenado).toBe(true)
+  })
+
+  it('no pierde ni duplica a nadie al barajar', () => {
+    const alumnos = Array.from({ length: 17 }, (_, i) =>
+      alumno(`a${i}`, { nivelMotriz: ((i % 5) + 1) as 1 | 2 | 3 | 4 | 5 }),
+    )
+    const tamanios = resolverTamanios(alumnos.length, { porNumEquipos: 4, sobra: 'repartir' })
+
+    const { equipos } = generarEquipos({
+      alumnos,
+      tamanios,
+      modo: 'heterogeneo',
+      aleatorio: rngDeterminista(3),
+    })
+
+    expect(equipos.flat().sort()).toEqual(alumnos.map((a) => a.id).sort())
+  })
+})
+
+/**
+ * Un grupo recién creado no tiene a nadie valorado, y lo normal es tener el
+ * nivel a medias. Ni el reparto se rompe ni los que no tienen nivel acaban
+ * juntos en un equipo de «sin nivel».
+ */
+describe('alumnado sin nivel valorado', () => {
+  it('reparte con normalidad cuando nadie tiene nivel', () => {
+    const alumnos = Array.from({ length: 12 }, (_, i) => alumno(`a${i}`))
+    const tamanios = resolverTamanios(alumnos.length, { porNumEquipos: 3, sobra: 'repartir' })
+
+    for (const modo of ['aleatorio', 'heterogeneo', 'homogeneo'] as const) {
+      const { equipos } = generarEquipos({
+        alumnos,
+        tamanios,
+        modo,
+        aleatorio: rngDeterminista(11),
+      })
+      expect(equipos.map((e) => e.length)).toEqual(tamanios)
+      expect(equipos.flat().sort()).toEqual(alumnos.map((a) => a.id).sort())
+    }
+  })
+
+  it('los que no tienen nivel no acaban todos en el mismo equipo', () => {
+    // 6 valorados y 6 sin valorar: si los sin nivel se agruparan aparte,
+    // llenarían dos equipos enteros de tres.
+    const alumnos = [
+      ...[5, 5, 4, 2, 1, 1].map((n, i) => alumno(`v${i}`, { nivelMotriz: n as 1 | 2 | 4 | 5 })),
+      ...Array.from({ length: 6 }, (_, i) => alumno(`s${i}`)),
+    ]
+    const tamanios = resolverTamanios(alumnos.length, { porNumEquipos: 4, sobra: 'repartir' })
+
+    let repartidos = false
+    for (let semilla = 1; semilla <= 20; semilla++) {
+      const { equipos } = generarEquipos({
+        alumnos,
+        tamanios,
+        modo: 'heterogeneo',
+        aleatorio: rngDeterminista(semilla),
+      })
+      const sinNivelPorEquipo = equipos.map(
+        (eq) => eq.filter((id) => id.startsWith('s')).length,
+      )
+      if (sinNivelPorEquipo.every((n) => n < 3)) repartidos = true
+    }
+
+    expect(repartidos).toBe(true)
+  })
+})

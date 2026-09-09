@@ -398,5 +398,16 @@ export function generarEquipos(opciones: OpcionesGeneracion): ResultadoGeneracio
     priorizarNuevosCompaneros(equipos, equipoDe, historial, vinculos, fijadosSet, aleatorio)
   }
 
-  return { equipos, advertencia }
+  // 4) Barajar DENTRO de cada equipo antes de devolverlos.
+  //
+  // El reparto coloca a la gente en orden de nivel —en homogéneo el primero de
+  // la lista es siempre el de nivel más alto—, y la pantalla de equipos pinta
+  // los miembros en ese mismo orden. Sin este barajado, el orden de aparición
+  // delata la valoración delante de toda la clase, que es exactamente lo que
+  // el nivel motriz no puede hacer nunca (§ regla de `lib/nivelMotriz.ts`).
+  // Va aquí y no en la pantalla para que valga también para lo que se guarda
+  // en `Equipo.miembros` y para la pizarra.
+  const barajados = equipos.map((eq) => mezclar(eq, aleatorio))
+
+  return { equipos: barajados, advertencia }
 }

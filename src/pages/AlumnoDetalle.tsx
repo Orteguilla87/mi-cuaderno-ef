@@ -26,6 +26,7 @@ import { ICONOS_ETIQUETA, iconoDe } from '../lib/iconosEtiqueta'
 import { COLOR_POR_DEFECTO } from '../lib/paleta'
 import { normalizarTexto } from '../lib/texto'
 import { navegar } from '../lib/router'
+import { SelectorNivelMotriz } from '../components/SelectorNivelMotriz'
 import { useAvisosVistos } from '../store/avisosVistos'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
@@ -867,6 +868,21 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
       </div>
 
       <EtiquetasDelAlumno alumno={alumno} />
+
+      <div>
+        <label className="etiqueta" htmlFor="f-nivel-motriz">
+          Nivel motriz
+        </label>
+        <div className="aviso mb-2 text-xs">
+          Es tu valoración sobre este niño y solo sirve para repartir equipos. Nunca aparece en
+          la pantalla de equipos, ni en el marcador, ni en informes o exportaciones.
+        </div>
+        <SelectorNivelMotriz
+          id="f-nivel-motriz"
+          valor={alumno.nivelMotriz}
+          onCambio={(nivelMotriz) => actualizarCompartido({ nivelMotriz })}
+        />
+      </div>
 
       <div>
         <label className="etiqueta" htmlFor="f-notas">

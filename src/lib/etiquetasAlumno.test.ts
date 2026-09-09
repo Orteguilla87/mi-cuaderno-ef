@@ -203,7 +203,7 @@ describe('las etiquetas nunca salen del dispositivo', () => {
   it('tampoco tocan `apoyos`, `notasPrivadas` ni `nivelMotriz` en crudo', () => {
     // La misma protección de la que las etiquetas son herederas. Estaba escrita
     // solo en comentarios; aquí queda comprobada.
-    const sensibles = /\.(apoyos|notasPrivadas)\b/
+    const sensibles = /\.(apoyos|notasPrivadas|nivelMotriz)\b/
     const culpables = SALIDAS.filter(
       (r) => r !== join(RAIZ, 'db', 'equipos.ts') && sinComentarios(readFileSync(r, 'utf-8')).match(sensibles),
     )
@@ -263,5 +263,60 @@ describe('las etiquetas nunca salen del dispositivo', () => {
     // Bloqueo estructural: si no llega como prop, no se puede filtrar.
     const pizarra = readFileSync(join(RAIZ, 'components', 'Pizarra.tsx'), 'utf-8')
     expect(rastro(pizarra)).toBeUndefined()
+  })
+})
+
+/**
+ * El nivel motriz (`Alumno.nivelMotriz`, `lib/nivelMotriz.ts`) hereda la regla
+ * de contexto de las etiquetas, y por el mismo motivo: es una valoración del
+ * maestro sobre un niño. Enseñar en la pizarra quién es «nivel 1» delante de
+ * toda la clase es exactamente lo que no puede pasar.
+ *
+ * Se vigila igual que arriba, sobre la fuente. La salida del dispositivo ya la
+ * cubre el test de `.nivelMotriz` en las SALIDAS.
+ */
+describe('el nivel motriz solo se ve en las vistas de gestión', () => {
+  const vistas = [
+    ...fuentes(join(RAIZ, 'pages'), ['.tsx']),
+    ...fuentes(join(RAIZ, 'components'), ['.tsx']),
+  ]
+
+  const RASTRO_NIVEL = /\bnivelMotriz\b|SelectorNivelMotriz|NIVEL(?:ES)?_MOTRI[CZ]|etiquetaNivelMotriz/
+
+  /**
+   * Dónde se valora: la ficha del alumno y la vista de lote del grupo. Y el
+   * control en sí, que a diferencia del punto de etiquetas SÍ vive en
+   * `components/`: es un editor —un `input`, no un adorno junto a un nombre—,
+   * y quién lo monta lo sigue decidiendo esta lista.
+   */
+  const PERMITIDAS_NIVEL = [
+    'AlumnoDetalle.tsx',
+    'EdicionMasivaAlumnos.tsx',
+    'SelectorNivelMotriz.tsx',
+  ]
+
+  /** Las mismas de arriba: lo que se proyecta o se enseña a la clase entera. */
+  const PROYECTABLES_NIVEL = [
+    join(RAIZ, 'pages', 'EquiposGenerador.tsx'),
+    join(RAIZ, 'pages', 'Herramientas.tsx'),
+    join(RAIZ, 'components', 'SorteoAlumno.tsx'),
+    join(RAIZ, 'components', 'Marcador.tsx'),
+    join(RAIZ, 'components', 'Pizarra.tsx'),
+  ]
+
+  it.each(vistas)('%s', (ruta) => {
+    if (PERMITIDAS_NIVEL.some((p) => ruta.endsWith(p))) return
+    const encontrado = sinComentarios(readFileSync(ruta, 'utf-8')).match(RASTRO_NIVEL)?.[0]
+    expect(
+      encontrado,
+      `«${encontrado}»: el nivel motriz solo se ve en ${PERMITIDAS_NIVEL.join(', ')}`,
+    ).toBeUndefined()
+  })
+
+  it.each(PROYECTABLES_NIVEL)('%s se proyecta: jamás el nivel', (ruta) => {
+    // Redundante con el repaso de arriba a propósito: si alguien añade una de
+    // estas a PERMITIDAS_NIVEL por descuido, esto rompe igual.
+    expect(PERMITIDAS_NIVEL.some((p) => ruta.endsWith(p))).toBe(false)
+    expect(sinComentarios(readFileSync(ruta, 'utf-8')).match(RASTRO_NIVEL)?.[0]).toBeUndefined()
   })
 })

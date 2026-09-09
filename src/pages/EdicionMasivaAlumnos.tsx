@@ -7,9 +7,9 @@ import { leerCursoActivo } from '../db/curso'
 import { escribirCompartido } from '../db/personas'
 import type { Alumno } from '../db/types'
 import { navegar } from '../lib/router'
+import { SelectorNivelMotriz } from '../components/SelectorNivelMotriz'
 import { useUI } from '../store/ui'
 
-const NIVELES = [1, 2, 3, 4, 5] as const
 const GENEROS = [
   { valor: 'chico' as const, etiqueta: 'Chico' },
   { valor: 'chica' as const, etiqueta: 'Chica' },
@@ -128,25 +128,10 @@ function FilaAlumno({ alumno }: { alumno: Alumno }) {
         ))}
       </div>
 
-      <div className="flex gap-1.5">
-        {NIVELES.map((n) => (
-          <button
-            key={n}
-            onClick={() => actualizar({ nivelMotriz: alumno.nivelMotriz === n ? null : n })}
-            aria-pressed={alumno.nivelMotriz === n}
-            aria-label={`Nivel motriz ${n}`}
-            className={
-              'flex h-11 flex-1 items-center justify-center rounded-xl text-sm font-bold transition ' +
-              'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
-              (alumno.nivelMotriz === n
-                ? 'bg-primario text-white'
-                : 'border border-borde text-tinta-suave dark:border-noche-borde')
-            }
-          >
-            {n}
-          </button>
-        ))}
-      </div>
+      <SelectorNivelMotriz
+        valor={alumno.nivelMotriz}
+        onCambio={(nivelMotriz) => actualizar({ nivelMotriz })}
+      />
     </li>
   )
 }
