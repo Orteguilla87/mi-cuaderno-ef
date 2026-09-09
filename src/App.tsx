@@ -17,6 +17,7 @@ import { INFANTIL_HABILITADO } from './lib/etapas'
 import { segmentos, useRuta } from './lib/router'
 import { useBloqueo } from './store/bloqueo'
 import { useUI } from './store/ui'
+import { useVistaPlanificador, type VistaPlanificador } from './store/vistaPlanificador'
 import { Ajustes } from './pages/Ajustes'
 import { AlumnoDetalle } from './pages/AlumnoDetalle'
 import { Calendario } from './pages/Calendario'
@@ -50,8 +51,15 @@ import { SesionDetalle } from './pages/SesionDetalle'
 // que a `lg:max-w-7xl` se estiraban a una medida de lectura absurda.
 const SECCIONES_ANCHO_COMPLETO = new Set(['cuaderno', 'infantil', 'rubricas', 'cobertura'])
 
-function anchoCompleto(ruta: string): boolean {
-  return SECCIONES_ANCHO_COMPLETO.has(segmentos(ruta)[0] ?? 'hoy')
+/**
+ * `vistaPlan` es la pestaña abierta del Planificador. Solo la de Grupo pide el
+ * ancho entero —es la tira de columnas, una por grupo—; Semana y Unidades
+ * siguen en la medida de lectura de siempre, que es lo que les conviene.
+ */
+function anchoCompleto(ruta: string, vistaPlan: VistaPlanificador): boolean {
+  const seccion = segmentos(ruta)[0] ?? 'hoy'
+  if (seccion === 'planificador') return vistaPlan === 'grupo'
+  return SECCIONES_ANCHO_COMPLETO.has(seccion)
 }
 
 /**
@@ -153,6 +161,7 @@ function Contenido({ ruta }: { ruta: string }) {
 export default function App() {
   const ruta = useRuta()
   const config = useConfig()
+  const vistaPlan = useVistaPlanificador((s) => s.vista)
   const hayPin = !!config.pin
   const { bloqueado, bloquear, desbloquear } = useBloqueo()
   const capasAbiertas = useUI((s) => s.capasAbiertas)
@@ -254,7 +263,7 @@ export default function App() {
           // Lo que evita la línea de texto kilométrica no es el margen, son
           // las rejillas a dos columnas de cada pantalla.
           'carril-fab mx-auto max-w-lg md:max-w-3xl apaisado:max-w-none lg:px-6 ' +
-          (anchoCompleto(ruta) ? 'lg:max-w-7xl' : 'lg:max-w-4xl')
+          (anchoCompleto(ruta, vistaPlan) ? 'lg:max-w-7xl' : 'lg:max-w-4xl')
         }
       >
         <AvisoSemilla />

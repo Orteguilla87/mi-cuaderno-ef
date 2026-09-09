@@ -71,15 +71,18 @@ function horariosDeSesiones(sesiones: Sesion[], grupo: Grupo | null): string[] {
  * Planificación de un grupo entero (§ petición del usuario): lo normal es
  * programar de un tirón todas las sesiones de 1ºA, y solo después retocar un
  * día suelto desde la vista semanal.
+ *
+ * En móvil se ve un grupo cada vez, el elegido en el desplegable. En escritorio
+ * (`lg:` en adelante, el mismo corte que la barra lateral) se ven TODOS a la
+ * vez, uno por columna y con scroll horizontal: con nueve grupos, comparar cómo
+ * va cada uno era entrar y salir del desplegable nueve veces. El contenido de
+ * cada columna es exactamente el mismo que el de móvil —el mismo componente—;
+ * solo cambia la disposición.
  */
 export function PlanGrupo() {
-  const mostrarAviso = useUI((s) => s.mostrarAviso)
   // Grupo activo compartido con el Cuaderno (§ Bloque 6.3).
   const grupoId = useGrupoActivo((s) => s.grupoId)
   const fijarGrupoActivo = useGrupoActivo((s) => s.fijarGrupo)
-  const [copiando, setCopiando] = useState(false)
-  const [editandoHorario, setEditandoHorario] = useState(false)
-  const [confirmandoVaciar, setConfirmandoVaciar] = useState(false)
 
   const grupos = useLiveQuery(async () => {
     return gruposVisibles()
@@ -95,12 +98,95 @@ export function PlanGrupo() {
   }, [grupos, grupoId, fijarGrupoActivo])
 
   const grupo = grupos?.find((g) => g.id === grupoId) ?? null
-  const sesiones = useLiveQuery(
-    async () => (grupoId ? sesionesDeGrupo(grupoId) : []),
-    [grupoId],
+  const { sesionCopiada, limpiar: limpiarPortapapeles } = usePortapapeles()
+
+  if (grupos?.length === 0) {
+    return (
+      <div className="tarjeta text-center">
+        <Users className="mx-auto text-tinta-tenue" size={32} aria-hidden />
+        <p className="mt-2 text-base font-semibold">Todavía no hay grupos</p>
+        <p className="mt-1 text-sm texto-suave">
+          La planificación se construye sobre el horario de cada grupo.
+        </p>
+        <button className="btn-primario mt-4 w-full" onClick={() => navegar('/grupos')}>
+          Ir a Grupos
+        </button>
+      </div>
+    )
+  }
+
+  // El portapapeles es uno solo para toda la app, no de cada grupo: se avisa
+  // una vez, por encima de las columnas, en vez de repetido en cada una.
+  const avisoCopiado = sesionCopiada ? (
+    <div className="panel-agua flex items-center gap-2 text-sm">
+      <Clipboard size={16} className="shrink-0 text-primario dark:text-agua" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">
+        Copiado: <strong>{sesionCopiada.origenResumen}</strong>
+      </span>
+      <button
+        onClick={limpiarPortapapeles}
+        className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+        aria-label="Descartar lo copiado"
+      >
+        <ClipboardX size={18} aria-hidden />
+      </button>
+    </div>
+  ) : null
+
+  return (
+    <div className="space-y-4">
+      {avisoCopiado}
+
+      {/* Móvil y tableta: el desplegable de siempre, un grupo cada vez. */}
+      <div className="space-y-4 lg:hidden">
+        <SelectorGrupo grupos={grupos ?? []} valor={grupoId} onCambio={fijarGrupoActivo} />
+        {grupo && <ColumnaGrupo grupo={grupo} grupos={grupos ?? []} />}
+      </div>
+
+      {/* Escritorio: una columna por grupo. Cada columna hace su propio scroll
+          vertical para que su cabecera se quede fija arriba y no se pierda de
+          vista de quién es la sesión que se está leyendo. El ancho es fijo
+          (`shrink-0`) para que el contenido no se comprima, y la tira scrollea
+          en horizontal; el `pr-4` deja aire tras la última columna. */}
+      <div className="hidden gap-4 overflow-x-auto pb-2 pr-4 lg:flex">
+        {(grupos ?? []).map((g) => (
+          <div
+            key={g.id}
+            className="max-h-[70dvh] w-[22rem] shrink-0 space-y-4 overflow-y-auto overflow-x-hidden px-0.5 pb-1"
+          >
+            <ColumnaGrupo grupo={g} grupos={grupos ?? []} pegajosa />
+          </div>
+        ))}
+      </div>
+    </div>
   )
+}
+
+/**
+ * Un grupo: su cabecera, sus acciones y sus sesiones. Es el mismo bloque en
+ * móvil (uno solo, el del desplegable) y en escritorio (uno por columna), así
+ * que vive en un único sitio.
+ *
+ * `pegajosa` solo fija la cabecera arriba mientras se recorre la columna: no
+ * cambia nada de lo que se muestra.
+ */
+function ColumnaGrupo({
+  grupo,
+  grupos,
+  pegajosa = false,
+}: {
+  grupo: Grupo
+  grupos: Grupo[]
+  pegajosa?: boolean
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [copiando, setCopiando] = useState(false)
+  const [editandoHorario, setEditandoHorario] = useState(false)
+  const [confirmandoVaciar, setConfirmandoVaciar] = useState(false)
+
+  const sesiones = useLiveQuery(async () => sesionesDeGrupo(grupo.id), [grupo.id])
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
-  const { sesionCopiada, copiar: copiarEnPortapapeles, limpiar: limpiarPortapapeles } = usePortapapeles()
+  const { sesionCopiada, copiar: copiarEnPortapapeles } = usePortapapeles()
 
   // Hora de cada sesión, en paralelo a la lista. Sin ella, dos clases del mismo
   // grupo el mismo día se ven como dos filas idénticas y no hay forma de saber
@@ -120,7 +206,7 @@ export function PlanGrupo() {
       recursos: s.recursos,
       recursosNecesarios: s.recursosNecesarios,
       comentarios: s.comentarios,
-      origenResumen: `${s.titulo || 'Sesión sin título'} · ${grupo?.nombre ?? ''}`,
+      origenResumen: `${s.titulo || 'Sesión sin título'} · ${grupo.nombre}`,
     })
     mostrarAviso('Sesión copiada. Ve al grupo que quieras y pégala en la sesión que decidas.')
   }
@@ -132,7 +218,6 @@ export function PlanGrupo() {
   }
 
   async function anadirSiguiente() {
-    if (!grupo) return
     // La siguiente CLASE libre a partir de hoy, no el siguiente día: un grupo
     // con dos clases el mismo día tiene dos huecos que llenar, y contando por
     // fechas se saltaba el segundo.
@@ -145,7 +230,6 @@ export function PlanGrupo() {
   }
 
   async function generarCurso() {
-    if (!grupo) return
     const { resultado, deshacer } = await generarCursoCompleto(grupo.id)
     mostrarAviso(
       resultado.creadas === 0
@@ -156,206 +240,170 @@ export function PlanGrupo() {
   }
 
   async function vaciar() {
-    if (!grupo) return
     const { eliminadas, deshacer } = await eliminarSesionesDeGrupo(grupo.id)
     mostrarAviso(`${eliminadas} sesiones eliminadas`, deshacer)
   }
 
-  if (grupos?.length === 0) {
-    return (
-      <div className="tarjeta text-center">
-        <Users className="mx-auto text-tinta-tenue" size={32} aria-hidden />
-        <p className="mt-2 text-base font-semibold">Todavía no hay grupos</p>
-        <p className="mt-1 text-sm texto-suave">
-          La planificación se construye sobre el horario de cada grupo.
-        </p>
-        <button className="btn-primario mt-4 w-full" onClick={() => navegar('/grupos')}>
-          Ir a Grupos
-        </button>
-      </div>
-    )
-  }
-
   return (
     <>
-      <SelectorGrupo grupos={grupos ?? []} valor={grupoId} onCambio={fijarGrupoActivo} />
-
-      {grupo && (
-        <>
-          <div className="tarjeta flex items-center gap-3 py-3">
-            <span
-              className="color-dato h-10 w-2 shrink-0 rounded-full"
-              style={variablesColor(grupo.colorId ?? grupo.color)}
-              aria-hidden
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="truncate text-lg font-bold">{grupo.nombre}</span>
-                <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
-              </div>
-              <p className="cifra mt-0.5 text-sm texto-suave">
-                {sesiones?.length ?? 0}{' '}
-                {(sesiones?.length ?? 0) === 1 ? 'sesión programada' : 'sesiones programadas'}
-              </p>
+      {/* El `pb-4 -mb-4` tapa el hueco que deja el `space-y-4`: sin él se ven
+          pasar las sesiones por esa franja al scrollear bajo la cabecera. */}
+      <div
+        className={
+          pegajosa ? 'sticky top-0 z-10 -mb-4 bg-hueso pb-4 dark:bg-noche-fondo' : undefined
+        }
+      >
+        <div className="tarjeta flex items-center gap-3 py-3">
+          <span
+            className="color-dato h-10 w-2 shrink-0 rounded-full"
+            style={variablesColor(grupo.colorId ?? grupo.color)}
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-lg font-bold">{grupo.nombre}</span>
+              <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
             </div>
+            <p className="cifra mt-0.5 text-sm texto-suave">
+              {sesiones?.length ?? 0}{' '}
+              {(sesiones?.length ?? 0) === 1 ? 'sesión programada' : 'sesiones programadas'}
+            </p>
           </div>
+        </div>
+      </div>
 
-          {grupo.horario.length === 0 ? (
-            <div className="tarjeta text-center">
-              <p className="text-base font-semibold">{grupo.nombre} no tiene horario</p>
-              <p className="mt-1 text-sm texto-suave">
-                Sin horario no se puede saber qué días tiene clase, así que no hay nada que
-                planificar.
-              </p>
-              <button className="btn-primario mt-4 w-full" onClick={() => setEditandoHorario(true)}>
-                <Clock size={18} aria-hidden />
-                Poner horario
-              </button>
-            </div>
-          ) : (
-            <>
-              <button className="btn-primario w-full" onClick={() => void generarCurso()}>
-                <CalendarPlus size={18} aria-hidden />
-                Generar curso completo
-              </button>
+      {grupo.horario.length === 0 ? (
+        <div className="tarjeta text-center">
+          <p className="text-base font-semibold">{grupo.nombre} no tiene horario</p>
+          <p className="mt-1 text-sm texto-suave">
+            Sin horario no se puede saber qué días tiene clase, así que no hay nada que
+            planificar.
+          </p>
+          <button className="btn-primario mt-4 w-full" onClick={() => setEditandoHorario(true)}>
+            <Clock size={18} aria-hidden />
+            Poner horario
+          </button>
+        </div>
+      ) : (
+        <>
+          <button className="btn-primario w-full" onClick={() => void generarCurso()}>
+            <CalendarPlus size={18} aria-hidden />
+            Generar curso completo
+          </button>
 
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  className="btn-suave px-0 text-xs"
-                  onClick={() => void anadirSiguiente()}
-                >
-                  + Sesión
-                </button>
-                <button
-                  className="btn-suave px-0 text-xs"
-                  onClick={() => setCopiando(true)}
-                  disabled={(sesiones?.length ?? 0) === 0}
-                >
-                  <Copy size={16} aria-hidden />
-                  Copiar a…
-                </button>
-                <button
-                  className="btn-suave px-0 text-xs"
-                  onClick={() => setEditandoHorario(true)}
-                >
-                  <Clock size={16} aria-hidden />
-                  Horario
-                </button>
-              </div>
-            </>
-          )}
-
-          {sesionCopiada && (
-            <div className="panel-agua flex items-center gap-2 text-sm">
-              <Clipboard size={16} className="shrink-0 text-primario dark:text-agua" aria-hidden />
-              <span className="min-w-0 flex-1 truncate">
-                Copiado: <strong>{sesionCopiada.origenResumen}</strong>
-              </span>
-              <button
-                onClick={limpiarPortapapeles}
-                className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
-                aria-label="Descartar lo copiado"
-              >
-                <ClipboardX size={18} aria-hidden />
-              </button>
-            </div>
-          )}
-
-          {sesiones?.length === 0 ? (
-            <div className="tarjeta text-center">
-              <p className="text-base font-semibold">Sin sesiones programadas</p>
-              <p className="mt-1 text-sm texto-suave">
-                «Nueva sesión» las va colocando en las próximas clases del horario.
-              </p>
-            </div>
-          ) : (
-            <ol className="space-y-2">
-              {sesiones?.map((s, i) => (
-                <li key={s.id} className="tarjeta flex items-center gap-1 py-2 pl-3 pr-2">
-                  <button
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                    onClick={() => navegar(`/sesiones/${s.id}`)}
-                  >
-                    <span className="cifra flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-agua-claro text-sm font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
-                      {i + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-bold">
-                        {s.titulo || 'Sesión sin título'}
-                      </span>
-                      <span className="cifra mt-0.5 block truncate text-sm texto-suave">
-                        {formatoDiaCorto(s.fecha)}
-                        {horarios[i] && ` · ${horarios[i]}`}
-                        {s.juegos.length > 0 && ` · ${s.juegos.length} juegos`}
-                        {s.udId
-                          ? ` · ${unidades?.find((u) => u.id === s.udId)?.titulo ?? 'unidad'}`
-                          : ' · sin unidad'}
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => copiarSesion(s)}
-                    className="flex min-h-tap min-w-tap shrink-0 items-center justify-center text-tinta-tenue"
-                    aria-label={`Copiar sesión ${i + 1}`}
-                  >
-                    <Copy size={18} aria-hidden />
-                  </button>
-                  {sesionCopiada && (
-                    <button
-                      onClick={() => void pegarEn(s.id)}
-                      className="flex min-h-tap min-w-tap shrink-0 items-center justify-center text-primario dark:text-agua"
-                      aria-label={`Pegar en sesión ${i + 1}`}
-                    >
-                      <Clipboard size={18} aria-hidden />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
-
-          {/* Una sesión sin unidad es perfectamente válida —hay clases que no
-              pertenecen a ninguna UD—, pero conviene saber cuántas hay: no
-              cuentan para la cobertura de criterios de su unidad. Se informa,
-              no se corrige por nadie. */}
-          {sinUnidad.length > 0 && (
-            <div className="panel-agua text-sm">
-              {sinUnidad.length} {sinUnidad.length === 1 ? 'sesión' : 'sesiones'} sin unidad
-              didáctica. Son válidas; simplemente no cuentan para ninguna unidad.
-            </div>
-          )}
-
-          {(sesiones?.length ?? 0) > 0 && (
-            <button className="btn-peligro w-full" onClick={() => setConfirmandoVaciar(true)}>
-              <Trash2 size={18} aria-hidden />
-              Vaciar planificación de {grupo.nombre}
+          <div className="grid grid-cols-3 gap-2">
+            <button className="btn-suave px-0 text-xs" onClick={() => void anadirSiguiente()}>
+              + Sesión
             </button>
-          )}
-
-          <HojaConfirmar
-            abierta={confirmandoVaciar}
-            titulo="Vaciar planificación"
-            descripcion={`¿Eliminar las ${sesiones?.length ?? 0} sesiones de ${grupo.nombre}? Se puede deshacer.`}
-            textoConfirmar="Vaciar"
-            onConfirmar={vaciar}
-            onCerrar={() => setConfirmandoVaciar(false)}
-          />
-
-          <HojaCopiarPlan
-            abierta={copiando}
-            origen={grupo}
-            sesiones={sesiones ?? []}
-            grupos={grupos ?? []}
-            onCerrar={() => setCopiando(false)}
-          />
-
-          <HojaHorario
-            abierta={editandoHorario}
-            grupo={grupo}
-            onCerrar={() => setEditandoHorario(false)}
-          />
+            <button
+              className="btn-suave px-0 text-xs"
+              onClick={() => setCopiando(true)}
+              disabled={(sesiones?.length ?? 0) === 0}
+            >
+              <Copy size={16} aria-hidden />
+              Copiar a…
+            </button>
+            <button className="btn-suave px-0 text-xs" onClick={() => setEditandoHorario(true)}>
+              <Clock size={16} aria-hidden />
+              Horario
+            </button>
+          </div>
         </>
       )}
+
+      {sesiones?.length === 0 ? (
+        <div className="tarjeta text-center">
+          <p className="text-base font-semibold">Sin sesiones programadas</p>
+          <p className="mt-1 text-sm texto-suave">
+            «Nueva sesión» las va colocando en las próximas clases del horario.
+          </p>
+        </div>
+      ) : (
+        <ol className="space-y-2">
+          {sesiones?.map((s, i) => (
+            <li key={s.id} className="tarjeta flex items-center gap-1 py-2 pl-3 pr-2">
+              <button
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                onClick={() => navegar(`/sesiones/${s.id}`)}
+              >
+                <span className="cifra flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-agua-claro text-sm font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold">
+                    {s.titulo || 'Sesión sin título'}
+                  </span>
+                  <span className="cifra mt-0.5 block truncate text-sm texto-suave">
+                    {formatoDiaCorto(s.fecha)}
+                    {horarios[i] && ` · ${horarios[i]}`}
+                    {s.juegos.length > 0 && ` · ${s.juegos.length} juegos`}
+                    {s.udId
+                      ? ` · ${unidades?.find((u) => u.id === s.udId)?.titulo ?? 'unidad'}`
+                      : ' · sin unidad'}
+                  </span>
+                </span>
+              </button>
+              <button
+                onClick={() => copiarSesion(s)}
+                className="flex min-h-tap min-w-tap shrink-0 items-center justify-center text-tinta-tenue"
+                aria-label={`Copiar sesión ${i + 1}`}
+              >
+                <Copy size={18} aria-hidden />
+              </button>
+              {sesionCopiada && (
+                <button
+                  onClick={() => void pegarEn(s.id)}
+                  className="flex min-h-tap min-w-tap shrink-0 items-center justify-center text-primario dark:text-agua"
+                  aria-label={`Pegar en sesión ${i + 1}`}
+                >
+                  <Clipboard size={18} aria-hidden />
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {/* Una sesión sin unidad es perfectamente válida —hay clases que no
+          pertenecen a ninguna UD—, pero conviene saber cuántas hay: no
+          cuentan para la cobertura de criterios de su unidad. Se informa,
+          no se corrige por nadie. */}
+      {sinUnidad.length > 0 && (
+        <div className="panel-agua text-sm">
+          {sinUnidad.length} {sinUnidad.length === 1 ? 'sesión' : 'sesiones'} sin unidad
+          didáctica. Son válidas; simplemente no cuentan para ninguna unidad.
+        </div>
+      )}
+
+      {(sesiones?.length ?? 0) > 0 && (
+        <button className="btn-peligro w-full" onClick={() => setConfirmandoVaciar(true)}>
+          <Trash2 size={18} aria-hidden />
+          Vaciar planificación de {grupo.nombre}
+        </button>
+      )}
+
+      <HojaConfirmar
+        abierta={confirmandoVaciar}
+        titulo="Vaciar planificación"
+        descripcion={`¿Eliminar las ${sesiones?.length ?? 0} sesiones de ${grupo.nombre}? Se puede deshacer.`}
+        textoConfirmar="Vaciar"
+        onConfirmar={vaciar}
+        onCerrar={() => setConfirmandoVaciar(false)}
+      />
+
+      <HojaCopiarPlan
+        abierta={copiando}
+        origen={grupo}
+        sesiones={sesiones ?? []}
+        grupos={grupos}
+        onCerrar={() => setCopiando(false)}
+      />
+
+      <HojaHorario
+        abierta={editandoHorario}
+        grupo={grupo}
+        onCerrar={() => setEditandoHorario(false)}
+      />
     </>
   )
 }
