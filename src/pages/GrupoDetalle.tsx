@@ -10,8 +10,9 @@ import {
   Shuffle,
   Table2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
+import { SelectorGrupo } from '../components/SelectorGrupo'
 import { Cabecera } from '../components/Cabecera'
 import { Campo } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
@@ -21,6 +22,7 @@ import { HojaObservacion } from '../components/HojaObservacion'
 import { variablesColor } from '../components/SelectorColor'
 import { db, nuevoId } from '../db/db'
 import { etiquetasPuestasDe, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
+import { gruposVisibles } from '../db/grupos'
 import { contadoresPorAlumno } from '../db/observaciones'
 import type {
   Alumno,
@@ -34,7 +36,8 @@ import type {
 } from '../db/types'
 import { aliasPorDefecto, parsearAlumnos } from '../lib/importAlumnos'
 import { iconoDe } from '../lib/iconosEtiqueta'
-import { navegar } from '../lib/router'
+import { rutaEnOtroGrupo } from '../lib/rutaGrupo'
+import { navegar, reemplazarRuta, useRuta } from '../lib/router'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
 import { EditorHorario } from './Grupos'
@@ -51,7 +54,17 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
   const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
   const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
 
+  // El desplegable de la cabecera cambia la prop sin desmontar la pantalla, así
+  // que lo abierto sobre el grupo anterior —una hoja, un alumno— se cierra aquí.
+  useEffect(() => {
+    setHoja('ninguna')
+    setObservando(null)
+    setConfirmandoBorrado(false)
+  }, [grupoId])
+
+  const ruta = useRuta()
   const grupo = useLiveQuery(() => db.grupos.get(grupoId), [grupoId])
+  const grupos = useLiveQuery(() => gruposVisibles(), []) ?? []
   const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
   const contadores = useLiveQuery(() => contadoresPorAlumno(grupoId), [grupoId])
   const alumnos = useLiveQuery(async () => {
@@ -126,6 +139,24 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
       <Cabecera
         titulo={grupo.nombre}
         atras
+        /* El nombre del grupo ES el desplegable: con nueve grupos, comparar dos
+           listados eran tres toques —atrás, elegir, entrar— y ahora es uno. Se
+           REEMPLAZA la ruta, no se apila: cambiar de grupo es un movimiento
+           lateral, y «Atrás» tiene que seguir saliendo al listado de grupos y
+           no ir devolviendo por los grupos que se han ido mirando. */
+        tituloSlot={
+          grupos.length > 1 ? (
+            <SelectorGrupo
+              grupos={grupos}
+              valor={grupo.id}
+              tono="cabecera"
+              onCambio={(id) => {
+                const destino = grupos.find((g) => g.id === id)
+                if (destino) reemplazarRuta(rutaEnOtroGrupo(ruta, destino))
+              }}
+            />
+          ) : undefined
+        }
         subtitulo={
           <span className="flex items-center gap-2">
             <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />

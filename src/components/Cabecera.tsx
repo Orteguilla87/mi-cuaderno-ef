@@ -10,11 +10,18 @@ import { volver } from '../lib/router'
  */
 export function Cabecera({
   titulo,
+  tituloSlot,
   subtitulo,
   atras = false,
   acciones,
 }: {
   titulo: string
+  /**
+   * Sustituye al `<h1>` cuando el título no es solo texto: dentro de un grupo
+   * es un desplegable que lleva a los demás. `titulo` sigue haciendo falta —es
+   * lo que se lee si el slot no se pasa, y el nombre accesible del que sí—.
+   */
+  tituloSlot?: ReactNode
   subtitulo?: ReactNode
   atras?: boolean
   acciones?: ReactNode
@@ -36,7 +43,11 @@ export function Cabecera({
           </button>
         )}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-bold tracking-tight apaisado:text-xl">{titulo}</h1>
+          {tituloSlot ?? (
+            <h1 className="truncate text-2xl font-bold tracking-tight apaisado:text-xl">
+              {titulo}
+            </h1>
+          )}
         </div>
         <IndicadorSincro />
         {acciones}

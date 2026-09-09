@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Grupo } from '../db/types'
 import { BadgeEtapa } from './Badge'
@@ -14,10 +14,22 @@ export function SelectorGrupo({
   grupos,
   valor,
   onCambio,
+  tono = 'claro',
 }: {
   grupos: Grupo[]
   valor: string | null
   onCambio: (id: string) => void
+  /**
+   * `'cabecera'` lo pinta blanco sobre la barra primaria, donde es el TÍTULO de
+   * la pantalla: tipografía de título, sin caja y sin borde. La lista
+   * desplegada es la misma en los dos casos —fondo claro—, porque flota sobre
+   * el contenido y no sobre la barra.
+   *
+   * Es una variante de tono, no un componente aparte: la lista de grupos, el
+   * cierre al pulsar fuera, el Escape y el `role="listbox"` son los mismos, y
+   * dos copias se separarían a la primera.
+   */
+  tono?: 'claro' | 'cabecera'
 }) {
   const [abierto, setAbierto] = useState(false)
   const contenedorRef = useRef<HTMLDivElement>(null)
@@ -43,10 +55,15 @@ export function SelectorGrupo({
     <div ref={contenedorRef} className="relative">
       <button
         type="button"
-        className="desplegable w-full"
+        className={
+          tono === 'cabecera'
+            ? 'flex w-full items-center gap-2 rounded-xl py-0.5 text-left text-white transition active:bg-white/15 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50'
+            : 'desplegable w-full'
+        }
         onClick={() => setAbierto((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={abierto}
+        aria-label={`Grupo: ${grupo?.nombre ?? 'ninguno'}. Cambiar de grupo`}
       >
         {grupo && (
           <span
@@ -55,12 +72,17 @@ export function SelectorGrupo({
             aria-hidden
           />
         )}
-        <span className="min-w-0 flex-1 truncate text-left text-sm font-bold">
+        <span
+          className={
+            'min-w-0 flex-1 truncate text-left font-bold ' +
+            (tono === 'cabecera' ? 'text-2xl tracking-tight apaisado:text-xl' : 'text-sm')
+          }
+        >
           {grupo?.nombre ?? 'Elige un grupo'}
         </span>
-        {grupo && <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />}
+        {grupo && tono === 'claro' && <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />}
         <ChevronDown
-          size={18}
+          size={tono === 'cabecera' ? 22 : 18}
           className={'shrink-0 transition-transform ' + (abierto ? 'rotate-180' : '')}
           aria-hidden
         />
@@ -95,6 +117,11 @@ export function SelectorGrupo({
                   aria-hidden
                 />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold">{g.nombre}</span>
+                {/* El grupo activo se marca con la palomita, no solo con el
+                    fondo: el color no puede ser lo único que lo diga. */}
+                {g.id === valor && (
+                  <Check size={16} strokeWidth={3} className="shrink-0 text-primario dark:text-agua" aria-hidden />
+                )}
                 <BadgeEtapa etapa={g.etapa} nivel={g.nivel} />
               </button>
             </li>

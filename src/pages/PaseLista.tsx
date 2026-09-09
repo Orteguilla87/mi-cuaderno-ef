@@ -17,6 +17,7 @@ import { AccionCabecera, Cabecera } from '../components/Cabecera'
 import { CampoArea } from '../components/Campo'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
+import { SelectorGrupo } from '../components/SelectorGrupo'
 import { variablesColor } from '../components/SelectorColor'
 import {
   alternarChandal,
@@ -27,6 +28,7 @@ import {
   type FranjaAsistencia,
 } from '../db/asistencia'
 import { db } from '../db/db'
+import { gruposVisibles } from '../db/grupos'
 import {
   ETIQUETA_LESIONADO,
   etiquetasDe,
@@ -38,7 +40,8 @@ import type { Alumno, Asistencia, EstadoAsistencia, EtiquetaAlumno } from '../db
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
 import { aISO, diaLectivo, etiquetaDia, sumarDias } from '../lib/fechas'
 import { iconoDe } from '../lib/iconosEtiqueta'
-import { navegar } from '../lib/router'
+import { navegar, reemplazarRuta, useRuta } from '../lib/router'
+import { rutaEnOtroGrupo } from '../lib/rutaGrupo'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useFechaActiva } from '../store/fechaActiva'
 import { useUI } from '../store/ui'
@@ -94,6 +97,16 @@ export function PaseLista({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Cambiar de grupo desde el desplegable NO desmonta la pantalla: solo cambia
+  // la prop. Así que lo que era del grupo anterior hay que soltarlo a mano —el
+  // alumno abierto en el detalle y la pila de deshacer son suyos, no de este—.
+  useEffect(() => {
+    setDetalle(null)
+    setPila([])
+    setElegida(undefined)
+    setSoloLesionados(false)
+  }, [grupoId])
+
   // Pila local de deshacer: un snackbar por cada toque sería insoportable con
   // 25 alumnos, así que el botón «Deshacer» de la cabecera va vaciando la pila.
   const [pila, setPila] = useState<(() => Promise<void>)[]>([])
@@ -105,7 +118,9 @@ export function PaseLista({
   const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
   const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
 
+  const ruta = useRuta()
   const grupo = useLiveQuery(() => db.grupos.get(grupoId), [grupoId])
+  const grupos = useLiveQuery(() => gruposVisibles(), []) ?? []
   const alumnos = useLiveQuery(async () => {
     const lista = await db.alumnos.where('grupoId').equals(grupoId).toArray()
     return lista
@@ -205,6 +220,24 @@ export function PaseLista({
       <Cabecera
         titulo={grupo.nombre}
         atras
+        /* Pasar lista de dos grupos seguidos es lo más normal del mundo: el
+           desplegable ahorra salir y volver a entrar. Se reemplaza la ruta —no
+           se apila— y se cae en la fecha de hoy del grupo nuevo, porque la
+           fecha y la franja de la que se venía son de OTRO horario
+           (`lib/rutaGrupo.ts`). */
+        tituloSlot={
+          grupos.length > 1 ? (
+            <SelectorGrupo
+              grupos={grupos}
+              valor={grupo.id}
+              tono="cabecera"
+              onCambio={(id) => {
+                const destino = grupos.find((g) => g.id === id)
+                if (destino) reemplazarRuta(rutaEnOtroGrupo(ruta, destino))
+              }}
+            />
+          ) : undefined
+        }
         subtitulo={
           <span className="flex items-center gap-2">
             <span>{etiquetaDia(dia)}</span>
