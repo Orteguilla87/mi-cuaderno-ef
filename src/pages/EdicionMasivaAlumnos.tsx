@@ -4,6 +4,7 @@ import { Cabecera } from '../components/Cabecera'
 import { db } from '../db/db'
 import { sugerirNivelesDesdeMedia } from '../db/equipos'
 import { leerCursoActivo } from '../db/curso'
+import { escribirCompartido } from '../db/personas'
 import type { Alumno } from '../db/types'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
@@ -18,6 +19,10 @@ const GENEROS = [
  * Edición en serie de género y nivel motriz (§ Generador de equipos). Ambos
  * campos son privados como `apoyos`: nunca se leen en informes ni en el modo
  * pizarra, solo aquí y dentro del cálculo del generador.
+ *
+ * Y son de la PERSONA, no del área: si la ficha está vinculada con la de otro
+ * grupo, se escriben en las dos (`db/personas.ts`). Rellenarlos dos veces a
+ * mano acabaría con los dos valores distintos y nadie sabría cuál vale.
  */
 export function EdicionMasivaAlumnos({ grupoId }: { grupoId: string }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -52,9 +57,8 @@ export function EdicionMasivaAlumnos({ grupoId }: { grupoId: string }) {
     const tramo = curso.trimestres.find((t) => hoy >= t.inicio && hoy <= t.fin)
     const trimestre = tramo?.n ?? 1
     const sugeridos = await sugerirNivelesDesdeMedia(grupoId, trimestre)
-    await db.transaction('rw', db.alumnos, async () => {
-      for (const [alumnoId, nivel] of sugeridos) await db.alumnos.update(alumnoId, { nivelMotriz: nivel })
-    })
+    for (const [alumnoId, nivel] of sugeridos)
+      await escribirCompartido(alumnoId, { nivelMotriz: nivel })
     mostrarAviso(`Niveles sugeridos para ${sugeridos.size} alumnos. Ajusta los que no encajen.`)
   }
 
@@ -96,7 +100,9 @@ export function EdicionMasivaAlumnos({ grupoId }: { grupoId: string }) {
 }
 
 function FilaAlumno({ alumno }: { alumno: Alumno }) {
-  const actualizar = (cambios: Partial<Alumno>) => void db.alumnos.update(alumno.id, cambios)
+  // Por `escribirCompartido`: género y nivel motriz son de la persona.
+  const actualizar = (cambios: Parameters<typeof escribirCompartido>[1]) =>
+    void escribirCompartido(alumno.id, cambios)
 
   return (
     <li className="tarjeta space-y-2 py-3">

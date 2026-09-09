@@ -541,6 +541,30 @@ class CuadernoDB extends Dexie {
             if (franjas.length > 0) s.franjaInicio = franjas[0]
           })
       })
+
+    /**
+     * v25 — `Alumno.personaId`: dos fichas del mismo niño en grupos distintos.
+     *
+     * El maestro da dos áreas al mismo grupo de personas y tiene dos grupos
+     * independientes; `personaId` dice que dos fichas son la misma persona, y
+     * lo que es de la persona —etiquetas y pautas de apoyo— se propaga entre
+     * ellas al escribirlo (`db/personas.ts`). Lo del área no se comparte nunca.
+     *
+     * ADITIVA e IDEMPOTENTE, y sin `upgrade()`: no hay ningún dato que
+     * transformar. Los alumnos existentes se quedan SIN el campo —ausencia
+     * real, no una cadena vacía— y se comportan exactamente como antes hasta
+     * que el usuario vincule a mano. El índice sirve para encontrar las
+     * hermanas de una ficha sin recorrer la tabla; IndexedDB no indexa las
+     * filas a las que les falta la clave, así que las no vinculadas ni
+     * aparecen.
+     *
+     * No necesita espejo en `backup.ts`: no hay migración de datos que
+     * reproducir, y `volcarTablas()` recorre `db.tables`, así que el campo
+     * entra solo en la copia cifrada y en la sincronización.
+     */
+    this.version(25).stores({
+      alumnos: 'id, grupoId, apellidos, activo, [grupoId+activo], *etiquetas, personaId',
+    })
   }
 }
 
@@ -561,7 +585,7 @@ function diaDeLaSemana(iso: string): number {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 24
+export const ESQUEMA_ACTUAL = 25
 
 export const db = new CuadernoDB()
 

@@ -81,7 +81,9 @@ describe('migración v23 → v24 sobre una base con datos', () => {
 
     const { db, ESQUEMA_ACTUAL } = await import('./db')
     await db.open()
-    expect(ESQUEMA_ACTUAL).toBe(24)
+    // La base vieja ha subido hasta la última versión: se comprueba «al menos»
+    // y no «igual», para que subir el esquema por otra cosa no rompa este test.
+    expect(ESQUEMA_ACTUAL).toBeGreaterThanOrEqual(24)
 
     // La franja más temprana del día, que es donde ya se pintaba.
     expect((await db.sesiones.get('s-martes'))!.franjaInicio).toBe('10:00')

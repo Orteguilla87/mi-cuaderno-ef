@@ -78,6 +78,22 @@ export interface Grupo {
 export interface Alumno {
   id: Id
   grupoId: Id
+  /**
+   * La PERSONA detrás de la ficha. Dos fichas con el mismo `personaId` son el
+   * mismo niño en dos grupos distintos —el maestro le da dos áreas y cada una
+   * tiene su grupo—, y comparten lo que es de la persona: sus etiquetas, sus
+   * pautas de apoyo, su nota privada, su género y su nivel motriz
+   * (`db/personas.ts`, `CAMPOS_COMPARTIDOS`).
+   *
+   * NO comparten nada del área: calificaciones, asistencia, celdas del Cuaderno
+   * y contadores cuelgan de `id`, no de aquí.
+   *
+   * Opcional de verdad: la inmensa mayoría de las fichas no lo tienen y se
+   * comportan exactamente como antes de que existiera. Nunca lo escribe la app
+   * por su cuenta —dos alumnos pueden llamarse igual—: lo pone el usuario,
+   * ficha a ficha, desde «Vincular alumnado».
+   */
+  personaId?: Id
   nombre: string
   apellidos: string
   alias: string

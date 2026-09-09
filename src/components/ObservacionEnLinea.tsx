@@ -41,18 +41,77 @@ const TIPOS: { valor: TipoObservacion; etiqueta: string }[] = [
 export function ListaObservacionesEnLinea({
   observaciones,
   contexto,
+  grupoPropio,
+  nombresGrupo,
 }: {
   observaciones: Observacion[]
   /** Literal, no booleano: la edición en línea es de la ficha del alumno. */
   contexto: ContextoEdicion
+  /**
+   * El grupo de la ficha que se está mirando. Las observaciones de OTRO grupo
+   * —las de la otra área de una persona con las fichas vinculadas— se ven, pero
+   * en lectura: se editan desde la ficha de ese grupo y en ningún otro sitio.
+   * Así el registro se toca donde se tomó, con su contexto delante.
+   */
+  grupoPropio: string
+  /** id → nombre, para el distintivo de cada fila. */
+  nombresGrupo: Map<string, string>
 }) {
   if (contexto !== 'ficha-alumno') return null
   return (
     <ul className="space-y-2">
-      {observaciones.map((o) => (
-        <FilaObservacion key={o.id} observacion={o} />
-      ))}
+      {observaciones.map((o) =>
+        o.grupoId === grupoPropio ? (
+          <FilaObservacion key={o.id} observacion={o} />
+        ) : (
+          <FilaAjena key={o.id} observacion={o} grupo={nombresGrupo.get(o.grupoId)} />
+        ),
+      )}
     </ul>
+  )
+}
+
+/**
+ * Una observación de OTRA de las fichas de la misma persona: de la otra área.
+ *
+ * Se enseña porque el niño es uno y saber que en Lengua lleva tres semanas
+ * revuelto explica lo que pasa en EF. No se edita ni se borra desde aquí —hay
+ * que ir a la ficha de ese grupo— y, sobre todo, NO cuenta para el balance de
+ * este grupo: los contadores salen de `contadoresPorAlumno(grupoId)`, que
+ * consulta por grupo y no ve nada de esto.
+ *
+ * El distintivo es el nombre del grupo escrito, no un color: hay que poder leer
+ * de dónde viene sin interpretar una tonalidad.
+ */
+function FilaAjena({ observacion: o, grupo }: { observacion: Observacion; grupo?: string }) {
+  const signo = SIGNOS.find((s) => s.valor === o.signo)
+  const tipo = TIPOS.find((t) => t.valor === o.tipo)
+
+  return (
+    <li className="tarjeta border-dashed py-3 opacity-90">
+      <div className="flex items-center gap-2">
+        {signo && (
+          <span
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${signo.clase}`}
+            aria-hidden
+          >
+            <signo.Icono size={16} strokeWidth={3} />
+          </span>
+        )}
+        <span className="pildora bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+          {grupo ?? 'Otro grupo'}
+        </span>
+        <span className="cifra ml-auto shrink-0 text-sm texto-suave">{formatoCorto(o.fecha)}</span>
+      </div>
+
+      <p className="mt-2 px-1">{o.texto}</p>
+
+      <p className="mt-2 text-xs texto-suave">
+        {signo?.etiqueta}
+        {tipo ? ` · ${tipo.etiqueta}` : ''} · Se edita desde la ficha de{' '}
+        {grupo ?? 'ese grupo'}, y no cuenta en el balance de este.
+      </p>
+    </li>
   )
 }
 

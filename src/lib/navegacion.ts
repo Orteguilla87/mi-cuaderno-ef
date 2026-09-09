@@ -4,6 +4,7 @@ import {
   CalendarRange,
   ClipboardList,
   FileText,
+  Link2,
   ListChecks,
   MessageSquareText,
   Package,
@@ -106,8 +107,15 @@ export const ENTRADAS_MAS: EntradaMas[] = [
   {
     ruta: '/etiquetas-alumnado',
     titulo: 'Etiquetas de alumnado',
-    descripcion: 'Puntos de color en el Cuaderno; nunca salen del dispositivo',
+    descripcion: 'Puntos de color en tus pantallas; nunca salen del dispositivo',
     Icono: Tags,
+    disponible: true,
+  },
+  {
+    ruta: '/vincular-alumnado',
+    titulo: 'Vincular alumnado',
+    descripcion: 'La misma persona en dos grupos: comparte etiquetas y apoyos, no las notas',
+    Icono: Link2,
     disponible: true,
   },
   {

@@ -1,4 +1,5 @@
 import { db, nuevoId } from './db'
+import { escribirCompartido } from './personas'
 import type { Alumno, EtiquetaAlumno } from './types'
 
 /**
@@ -91,7 +92,15 @@ export async function borrarEtiqueta(etiquetaId: string): Promise<() => Promise<
   }
 }
 
-/** Pone o quita una etiqueta a un alumno. Idempotente en las dos direcciones. */
+/**
+ * Pone o quita una etiqueta a un alumno. Idempotente en las dos direcciones.
+ *
+ * Va por `escribirCompartido` y no por `db.alumnos.update`: la etiqueta es del
+ * NIÑO, no de la asignatura, así que si su ficha está vinculada con la de otro
+ * grupo la etiqueta aparece —o desaparece— en las dos (`db/personas.ts`). Sin
+ * vincular, `escribirCompartido` escribe exactamente en una ficha y esto se
+ * comporta igual que antes.
+ */
 export async function asignar(alumnoId: string, etiquetaId: string, puesta: boolean): Promise<void> {
   const alumno = await db.alumnos.get(alumnoId)
   if (!alumno) return
@@ -99,7 +108,9 @@ export async function asignar(alumnoId: string, etiquetaId: string, puesta: bool
   const yaEsta = actuales.includes(etiquetaId)
   if (puesta === yaEsta) return
   const siguientes = puesta ? [...actuales, etiquetaId] : actuales.filter((e) => e !== etiquetaId)
-  await db.alumnos.update(alumnoId, {
+  // Sin etiquetas, el campo desaparece: no se deja un array vacío, que
+  // significaría «tiene lista, vacía» en vez de «no tiene».
+  await escribirCompartido(alumnoId, {
     etiquetas: siguientes.length > 0 ? siguientes : undefined,
   })
 }

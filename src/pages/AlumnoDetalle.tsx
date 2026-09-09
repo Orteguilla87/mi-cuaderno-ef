@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Tags } from 'lucide-react'
+import { Link2, Link2Off, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { variablesColor } from '../components/SelectorColor'
 import { asignar, etiquetas as leerEtiquetas, etiquetasDe } from '../db/etiquetasAlumno'
+import { desvincular, escribirCompartido, fichasDe, otrasFichasDe } from '../db/personas'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
 import { HojaConfirmar } from '../components/HojaConfirmar'
@@ -13,6 +14,7 @@ import { resumirAsistencia } from '../db/asistencia'
 import { db } from '../db/db'
 import type { Alumno, EtiquetaAlumno } from '../db/types'
 import { navegar } from '../lib/router'
+import { useAvisosVistos } from '../store/avisosVistos'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
 
@@ -33,10 +35,37 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
     () => db.asistencias.where('alumnoId').equals(alumnoId).toArray(),
     [alumnoId],
   )
+  /**
+   * Las fichas de la MISMA PERSONA: esta y las de sus otras áreas, si el
+   * usuario las vinculó. Sin vincular es solo esta, y todo lo de abajo se
+   * comporta exactamente igual que antes.
+   */
+  const fichas = useLiveQuery(
+    async () => (alumno ? fichasDe(alumno) : []),
+    [alumno?.id, alumno?.personaId],
+  )
+  const otras = (fichas ?? []).filter((f) => f.id !== alumnoId)
+
+  const gruposDeLaPersona = useLiveQuery(
+    async () => db.grupos.bulkGet((fichas ?? []).map((f) => f.grupoId)),
+    [fichas],
+  )
+  const nombresGrupo = new Map(
+    (gruposDeLaPersona ?? []).filter((g) => g !== undefined).map((g) => [g.id, g.nombre]),
+  )
+
+  /**
+   * Las observaciones de TODAS sus fichas: el niño es uno, y saber que en
+   * Lengua lleva tres semanas revuelto explica lo que pasa en EF. Las de otra
+   * área se pintan en lectura y NO cuentan en el balance de este grupo, que
+   * sale de `contadoresPorAlumno(grupoId)` y no ve nada de esto.
+   */
   const observaciones = useLiveQuery(async () => {
-    const lista = await db.observaciones.where('alumnoId').equals(alumnoId).toArray()
+    const ids = (fichas ?? [alumno]).filter((f) => f !== undefined).map((f) => f.id)
+    if (ids.length === 0) return []
+    const lista = await db.observaciones.where('alumnoId').anyOf(ids).toArray()
     return lista.sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5)
-  }, [alumnoId])
+  }, [fichas])
 
   if (alumno === undefined) return null
   if (alumno === null) {
@@ -89,6 +118,10 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
               abrir la ficha, se llegue desde el grupo o desde el Cuaderno. */}
           {etiquetasVisibles && <PuntoEtiquetas alumno={alumno} catalogo={catalogoEtiquetas} />}
 
+          {otras.length > 0 && (
+            <FichasVinculadas alumno={alumno} otras={otras} nombresGrupo={nombresGrupo} />
+          )}
+
           {editando && <FormularioAlumno alumnoId={alumnoId} />}
 
           <div className="grid grid-cols-4 gap-2">
@@ -130,7 +163,12 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
           {observaciones?.length ? (
             // Edición en el sitio: aquí y solo aquí. La timeline y la vista de
             // grupo enseñan lo mismo en pantallas que se proyectan.
-            <ListaObservacionesEnLinea observaciones={observaciones} contexto="ficha-alumno" />
+            <ListaObservacionesEnLinea
+              observaciones={observaciones}
+              contexto="ficha-alumno"
+              grupoPropio={alumno.grupoId}
+              nombresGrupo={nombresGrupo}
+            />
           ) : (
             <p className="text-sm texto-suave">
               Sin observaciones. El registro llega en la fase 3.
@@ -148,6 +186,79 @@ export function AlumnoDetalle({ alumnoId }: { alumnoId: string }) {
         onCerrar={() => setConfirmandoBaja(false)}
       />
     </>
+  )
+}
+
+/**
+ * En qué otros grupos existe la MISMA PERSONA, y cómo llegar a esas fichas.
+ *
+ * Discreto a propósito: es contexto, no una acción del día a día. Lo que tiene
+ * que quedar claro de un vistazo es que lo que se toque aquí de la persona
+ * —etiquetas y pautas— se toca también allí, y que lo del área no.
+ */
+function FichasVinculadas({
+  alumno,
+  otras,
+  nombresGrupo,
+}: {
+  alumno: Alumno
+  otras: Alumno[]
+  nombresGrupo: Map<string, string>
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [confirmando, setConfirmando] = useState(false)
+
+  async function separar() {
+    setConfirmando(false)
+    const { deshacer } = await desvincular(alumno.id)
+    mostrarAviso('Ficha desvinculada', deshacer)
+  }
+
+  return (
+    <section className="tarjeta space-y-2 py-3">
+      <div className="flex items-center gap-2">
+        <Link2 size={18} className="shrink-0 text-primario dark:text-agua" aria-hidden />
+        <span className="etiqueta mb-0">La misma persona, en otros grupos</span>
+      </div>
+
+      <ul className="flex flex-wrap gap-2">
+        {otras.map((f) => (
+          <li key={f.id}>
+            <button
+              className="btn-suave"
+              onClick={() => navegar(`/alumnos/${f.id}`)}
+              aria-label={`Abrir su ficha de ${nombresGrupo.get(f.grupoId) ?? 'otro grupo'}`}
+            >
+              {nombresGrupo.get(f.grupoId) ?? 'Otro grupo'}
+              <span aria-hidden>›</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <p className="text-xs texto-suave">
+        Las etiquetas y las pautas de apoyo se comparten entre estas fichas. Las notas, la
+        asistencia y el Cuaderno son de cada área.
+      </p>
+
+      <button className="btn-fantasma w-full" onClick={() => setConfirmando(true)}>
+        <Link2Off size={18} aria-hidden />
+        Desvincular esta ficha
+      </button>
+
+      <HojaConfirmar
+        abierta={confirmando}
+        titulo="Desvincular esta ficha"
+        descripcion={
+          'Dejará de compartir etiquetas y pautas con las demás. Lo que ya tenga se CONSERVA ' +
+          'aquí y allí, como propio de cada ficha: no se borra nada. Puedes volver a vincularla ' +
+          'cuando quieras.'
+        }
+        textoConfirmar="Desvincular"
+        onConfirmar={separar}
+        onCerrar={() => setConfirmando(false)}
+      />
+    </section>
   )
 }
 
@@ -209,6 +320,31 @@ function EtiquetasDelAlumno({ alumno }: { alumno: Alumno }) {
   const catalogo = useLiveQuery(() => leerEtiquetas(), [])
   const puestas = new Set(alumno.etiquetas ?? [])
 
+  // Las otras fichas de la misma persona: si las hay, la etiqueta que se
+  // toque aquí se toca también allí, y eso hay que decirlo antes de la primera
+  // vez, no después.
+  const otras = useLiveQuery(async () => otrasFichasDe(alumno), [alumno.id, alumno.personaId]) ?? []
+  const pendiente = useAvisosVistos((s) => s.pendiente('etiquetas-compartidas'))
+  const marcarVisto = useAvisosVistos((s) => s.marcarVisto)
+  const [confirmando, setConfirmando] = useState<{ etiquetaId: string; poner: boolean } | null>(
+    null,
+  )
+
+  async function alternar(etiquetaId: string, poner: boolean) {
+    if (otras.length > 0 && pendiente) {
+      setConfirmando({ etiquetaId, poner })
+      return
+    }
+    await asignar(alumno.id, etiquetaId, poner)
+  }
+
+  async function confirmar() {
+    if (!confirmando) return
+    marcarVisto('etiquetas-compartidas')
+    await asignar(alumno.id, confirmando.etiquetaId, confirmando.poner)
+    setConfirmando(null)
+  }
+
   return (
     <div>
       <span className="etiqueta">Etiquetas</span>
@@ -216,6 +352,12 @@ function EtiquetasDelAlumno({ alumno }: { alumno: Alumno }) {
         Solo se ven en tus pantallas de trabajo —Cuaderno, ficha del grupo, pase de lista y esta
         ficha—: nunca en informes, exportaciones, herramientas de aula ni nada que se proyecte.
       </div>
+      {otras.length > 0 && (
+        <p className="mb-2 text-xs texto-suave">
+          Es la condición del niño, no de la asignatura: lo que pongas o quites aquí aparece
+          también en sus otras fichas.
+        </p>
+      )}
       {catalogo && catalogo.length === 0 ? (
         <button className="btn-suave w-full" onClick={() => navegar('/etiquetas-alumnado')}>
           <Tags size={20} aria-hidden />
@@ -229,7 +371,7 @@ function EtiquetasDelAlumno({ alumno }: { alumno: Alumno }) {
               <button
                 key={e.id}
                 aria-pressed={activa}
-                onClick={() => void asignar(alumno.id, e.id, !activa)}
+                onClick={() => void alternar(e.id, !activa)}
                 style={variablesColor(e.colorId)}
                 className={
                   'flex min-h-tap items-center gap-2 rounded-full border px-3 text-sm font-semibold transition active:scale-95 ' +
@@ -245,6 +387,19 @@ function EtiquetasDelAlumno({ alumno }: { alumno: Alumno }) {
           })}
         </div>
       )}
+
+      <HojaConfirmar
+        abierta={confirmando !== null}
+        titulo="Esta etiqueta se comparte"
+        descripcion={
+          `Esta ficha está vinculada con ${otras.length === 1 ? 'otra' : `otras ${otras.length}`} ` +
+          'de la misma persona. Las etiquetas son del niño, no de la asignatura, así que este ' +
+          'cambio aparecerá en todas sus fichas. Solo se avisa esta vez.'
+        }
+        textoConfirmar={confirmando?.poner ? 'Poner en todas' : 'Quitar de todas'}
+        onConfirmar={confirmar}
+        onCerrar={() => setConfirmando(null)}
+      />
     </div>
   )
 }
@@ -256,6 +411,14 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
 
   const actualizar = (cambios: Parameters<typeof db.alumnos.update>[1]) =>
     void db.alumnos.update(alumnoId, cambios)
+
+  /**
+   * Los campos de la PERSONA van por `escribirCompartido`: si la ficha está
+   * vinculada con la de otra área, las pautas y la nota se escriben en las dos.
+   * Sin vincular escribe exactamente en una y es lo mismo que `actualizar`.
+   */
+  const actualizarCompartido = (cambios: Parameters<typeof escribirCompartido>[1]) =>
+    void escribirCompartido(alumnoId, cambios)
 
   return (
     <div className="tarjeta space-y-4">
@@ -308,7 +471,7 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
           id="f-apoyos"
           className="campo h-24 resize-none py-2"
           valor={alumno.apoyos ?? ''}
-          onValor={(v) => actualizar({ apoyos: v })}
+          onValor={(v) => actualizarCompartido({ apoyos: v })}
           placeholder="Se sitúa cerca de mí al explicar; necesita consigna corta."
         />
       </div>
@@ -323,7 +486,7 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
           id="f-notas"
           className="campo h-24 resize-none py-2"
           valor={alumno.notasPrivadas ?? ''}
-          onValor={(v) => actualizar({ notasPrivadas: v })}
+          onValor={(v) => actualizarCompartido({ notasPrivadas: v })}
         />
       </div>
     </div>
