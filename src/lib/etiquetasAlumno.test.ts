@@ -129,12 +129,22 @@ describe('las etiquetas solo se pintan en las vistas de gestión', () => {
     expect(fuente).not.toMatch(/export\s+(function|const)\s+PuntoEtiquetas/)
   })
 
-  it.each(PINTAN)('%s pinta también la abreviatura, no solo el color', (vista) => {
-    // El color nunca es el único portador del significado: dos etiquetas de
-    // color parecido son indistinguibles de un vistazo, y bajo protanopia o
-    // deuteranopia lo son del todo.
+  it.each(PINTAN)('%s no deja el color como único portador', (vista) => {
+    // Dos etiquetas de color parecido son indistinguibles de un vistazo, y bajo
+    // protanopia o deuteranopia lo son del todo. Así que junto al color va
+    // SIEMPRE algo más: la abreviatura, o el icono cuando la etiqueta lo tiene
+    // —que es lo que hace el Cuaderno, donde la columna de nombres es la
+    // congelada y lo que ocupa se lo quita a las notas—.
     const fuente = readFileSync(join(RAIZ, 'pages', vista), 'utf-8')
-    expect(fuente).toMatch(/\{e\.abreviatura\}/)
+    expect(fuente).toMatch(/e\.abreviatura/)
+  })
+
+  it('el Cuaderno solo se queda sin abreviatura cuando hay icono', () => {
+    // La versión compacta se apoya en el icono. Si algún día se pintara sin
+    // icono y sin abreviatura, el color quedaría solo.
+    const fuente = sinComentarios(readFileSync(join(RAIZ, 'pages', 'Cuaderno.tsx'), 'utf-8'))
+    expect(fuente).toMatch(/const soloIcono = Icono && !caducada/)
+    expect(fuente).toMatch(/\{!soloIcono && e\.abreviatura\}/)
   })
 
   it.each(ASIGNAN_SIN_PINTAR)('%s asigna, pero no pinta ninguna etiqueta', (vista) => {

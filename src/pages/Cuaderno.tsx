@@ -715,6 +715,13 @@ function PuntoEtiquetas({
     <span className="flex shrink-0 items-center gap-1">
       {puestas.map(({ etiqueta: e, caducada }) => {
         const Icono = iconoDe(e.icono)
+        // El icono ya es un portador de significado que no es el color, así
+        // que en la rejilla basta con él: la abreviatura al lado multiplicaba
+        // el ancho de la columna de nombres, que aquí es espacio caro —es la
+        // columna congelada, y lo que ocupa se lo quita a las notas—. El
+        // nombre entero sigue en `title`, en `aria-label` y en el aviso al
+        // pulsarlo, y las demás vistas la siguen pintando.
+        const soloIcono = Icono && !caducada
         return (
           <button
             key={e.id}
@@ -724,22 +731,30 @@ function PuntoEtiquetas({
             aria-label={`Etiqueta ${e.nombre}${caducada ? ', caducada' : ''}`}
             style={variablesColor(e.colorId)}
             className={
-              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde ' +
+              'flex shrink-0 items-center gap-1 rounded-full leading-none ' +
+              (soloIcono
+                ? ''
+                : 'border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide dark:border-noche-borde ') +
               // Caducada: atenuada Y tachada. La opacidad sola no se ve al sol.
+              // Por eso una caducada NUNCA es solo icono: sin texto no hay qué
+              // tachar, y la atenuación se quedaría sola.
               (caducada ? 'opacity-50 line-through' : '')
             }
           >
             {Icono ? (
               <span
-                className="color-dato flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full"
+                className={
+                  'color-dato flex shrink-0 items-center justify-center rounded-full ' +
+                  (soloIcono ? 'h-[18px] w-[18px]' : 'h-3.5 w-3.5')
+                }
                 aria-hidden
               >
-                <Icono size={9} strokeWidth={3} className="color-dato-marca" />
+                <Icono size={soloIcono ? 11 : 9} strokeWidth={3} className="color-dato-marca" />
               </span>
             ) : (
               <span className="color-dato h-2 w-2 shrink-0 rounded-full" aria-hidden />
             )}
-            {e.abreviatura}
+            {!soloIcono && e.abreviatura}
           </button>
         )
       })}
