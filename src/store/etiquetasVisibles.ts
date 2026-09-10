@@ -3,7 +3,10 @@ import { persist } from 'zustand/middleware'
 
 /**
  * Si las vistas de gestión del maestro —el Cuaderno, la ficha del grupo, el
- * pase de lista y la ficha del alumno— pintan las etiquetas de alumnado.
+ * pase de lista y la ficha del alumno— pintan las etiquetas de alumnado, y con
+ * ellas el nivel motriz que el Cuaderno enseña junto al nombre: lo que decide
+ * este interruptor es «alguien puede acercarse a esta pantalla», y eso tapa
+ * por igual todo lo que es una valoración sobre un niño.
  *
  * Es UNO para todas, y GLOBAL: lo que se decide aquí es «alguien puede
  * acercarse a esta pantalla», y eso no cambia según en qué vista se esté.

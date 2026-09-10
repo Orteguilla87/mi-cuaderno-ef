@@ -74,6 +74,7 @@ import { variablesColor } from '../components/SelectorColor'
 import { etiquetasPuestasDe, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
 import { useUI } from '../store/ui'
+import { etiquetaNivelMotriz } from '../lib/nivelMotriz'
 
 /**
  * Ancho de la columna de alumnado congelada (§ Bloque 4), en px. Se aplica
@@ -89,7 +90,8 @@ const ANCHO_COLUMNA_ALUMNO_PX: Record<AnchoColumnaAlumno, number> = {
 /** `grupoId`: llegada directa desde otra pantalla (p. ej. el icono de grupo en Hoy). */
 export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {}) {
   // Preferencia de este dispositivo, fuera de la sincronización: un toque para
-  // que los puntos de etiqueta desaparezcan si alguien se acerca a la pantalla.
+  // que los puntos de etiqueta y el nivel motriz desaparezcan si alguien se
+  // acerca a la pantalla.
   const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
   const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -412,7 +414,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
                 : []),
               { etiqueta: 'Vista de la rejilla', Icono: Columns3, onClick: () => setVistaAbierta(true) },
               {
-                etiqueta: etiquetasVisibles ? 'Ocultar etiquetas' : 'Mostrar etiquetas',
+                etiqueta: etiquetasVisibles ? 'Ocultar etiquetas y nivel' : 'Mostrar etiquetas y nivel',
                 Icono: etiquetasVisibles ? EyeOff : Eye,
                 onClick: alternarEtiquetas,
               },
@@ -665,6 +667,39 @@ function MenuAcciones({
  * nombre completo va en `title` y en `aria-label`, y al pulsarlo sale en el
  * aviso de abajo.
  */
+/**
+ * Nivel motriz en la columna de nombres. Igual que el punto de etiquetas: vive
+ * AQUÍ y no en `components/`, para que ninguna otra vista pueda montarlo por
+ * descuido —el control compartido de `components/SelectorNivelMotriz` es el
+ * EDITOR, que es otra cosa—. `lib/etiquetasAlumno.test.ts` vigila quién puede
+ * nombrarlo, y las vistas proyectables no están en esa lista.
+ *
+ * Un tono neutro para los cinco niveles, no una escala de color: pintar el 1
+ * en rojo y el 5 en verde es poner una nota a un niño en la pantalla. El
+ * número dice poco por sí solo, así que el rótulo en llano va en `title`, en
+ * `aria-label` y en el aviso al pulsarlo.
+ *
+ * Sin valorar no pinta nada: la ausencia es un estado real, no un cero.
+ */
+function NivelMotrizDelAlumno({ alumno }: { alumno: Alumno }) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const nivel = alumno.nivelMotriz
+  if (!nivel) return null
+
+  const rotulo = etiquetaNivelMotriz(nivel)
+  return (
+    <button
+      type="button"
+      onClick={() => mostrarAviso(`Nivel motriz ${nivel}: ${rotulo}`)}
+      title={`Nivel motriz ${nivel}: ${rotulo}`}
+      aria-label={`Nivel motriz ${nivel}: ${rotulo}`}
+      className="cifra flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-borde text-[10px] font-bold leading-none text-tinta-suave dark:border-noche-borde dark:text-noche-suave"
+    >
+      {nivel}
+    </button>
+  )
+}
+
 function PuntoEtiquetas({
   alumno,
   catalogo,
@@ -862,6 +897,7 @@ function Rejilla({
                 style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               >
                 <div className="flex items-center gap-1">
+                  {etiquetasVisibles && <NivelMotrizDelAlumno alumno={a} />}
                   {etiquetasVisibles && <PuntoEtiquetas alumno={a} catalogo={catalogoEtiquetas} />}
                   <button
                     className="min-w-0 flex-1 truncate text-left underline-offset-2 active:underline"

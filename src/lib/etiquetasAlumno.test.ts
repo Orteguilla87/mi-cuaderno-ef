@@ -284,12 +284,15 @@ describe('el nivel motriz solo se ve en las vistas de gestión', () => {
   const RASTRO_NIVEL = /\bnivelMotriz\b|SelectorNivelMotriz|NIVEL(?:ES)?_MOTRI[CZ]|etiquetaNivelMotriz/
 
   /**
-   * Dónde se valora: la ficha del alumno y la vista de lote del grupo. Y el
-   * control en sí, que a diferencia del punto de etiquetas SÍ vive en
-   * `components/`: es un editor —un `input`, no un adorno junto a un nombre—,
-   * y quién lo monta lo sigue decidiendo esta lista.
+   * Dónde se valora: la ficha del alumno y la vista de lote del grupo. Más el
+   * Cuaderno, que lo ENSEÑA junto al nombre —con su propia copia del chip, como
+   * el punto de etiquetas— para valorar mientras se pone nota, sin salir de la
+   * rejilla. Y el control en sí, que a diferencia del punto de etiquetas SÍ
+   * vive en `components/`: es un editor —un `input`, no un adorno junto a un
+   * nombre—, y quién lo monta lo sigue decidiendo esta lista.
    */
   const PERMITIDAS_NIVEL = [
+    'Cuaderno.tsx',
     'AlumnoDetalle.tsx',
     'EdicionMasivaAlumnos.tsx',
     'SelectorNivelMotriz.tsx',
