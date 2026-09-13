@@ -147,6 +147,16 @@ describe('las etiquetas solo se pintan en las vistas de gestión', () => {
     expect(fuente).toMatch(/\{!soloIcono && e\.abreviatura\}/)
   })
 
+  it('en móvil el Cuaderno compacta a marcas, y el nombre sale al pulsarlas', () => {
+    // Única excepción a «nunca solo color»: la columna congelada del Cuaderno
+    // en móvil. A cambio, el nombre va en `aria-label` y en una hoja con la
+    // lista completa, que se abre sin salir de la rejilla.
+    const fuente = sinComentarios(readFileSync(join(RAIZ, 'pages', 'Cuaderno.tsx'), 'utf-8'))
+    expect(fuente).toMatch(/function PuntosEtiquetasCompactos/)
+    expect(fuente).toMatch(/aria-label=\{`Etiquetas: \$\{nombres\}`\}/)
+    expect(fuente).toMatch(/<Hoja[\s\S]*titulo=\{`Etiquetas de/)
+  })
+
   it.each(ASIGNAN_SIN_PINTAR)('%s asigna, pero no pinta ninguna etiqueta', (vista) => {
     const fuente = sinComentarios(readFileSync(join(RAIZ, 'components', vista), 'utf-8'))
     const encontrado = fuente.match(PINTA_ALGO)?.[0]

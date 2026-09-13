@@ -712,7 +712,10 @@ function PuntoEtiquetas({
   if (puestas.length === 0) return null
 
   return (
-    <span className="flex shrink-0 items-center gap-1">
+    <>
+    <PuntosEtiquetasCompactos alumno={alumno} puestas={puestas} />
+    {/* Escritorio: el formato de siempre. En móvil, los puntos compactos. */}
+    <span className="hidden shrink-0 items-center gap-1 lg:flex">
       {puestas.map(({ etiqueta: e, caducada }) => {
         const Icono = iconoDe(e.icono)
         // El icono ya es un portador de significado que no es el color, así
@@ -759,6 +762,110 @@ function PuntoEtiquetas({
         )
       })}
     </span>
+    </>
+  )
+}
+
+/** Cuántas marcas caben apiladas en la altura de la fila sin estirarla. */
+const MARCAS_VISIBLES = 2
+
+/**
+ * Etiquetas del Cuaderno en MÓVIL: solo marcas de color, apiladas en vertical
+ * dentro de un ancho fijo, para que la columna congelada no se ensanche y le
+ * quite sitio a las notas. Hasta dos marcas; con más, un guion mínimo debajo.
+ * Una etiqueta con icono (Lesionado…) pinta el icono reducido en vez del punto.
+ *
+ * Sin texto, el color deja de ir acompañado a la vista, así que el nombre no
+ * se puede quedar escondido: va en `aria-label` y, al pulsar, en una hoja con
+ * la lista completa —sin salir del Cuaderno—.
+ */
+function PuntosEtiquetasCompactos({
+  alumno,
+  puestas,
+}: {
+  alumno: Alumno
+  puestas: ReturnType<typeof etiquetasPuestasDe>
+}) {
+  const [abierta, setAbierta] = useState(false)
+  const nombres = puestas
+    .map(({ etiqueta: e, caducada }) => (caducada ? `${e.nombre} (caducada)` : e.nombre))
+    .join(', ')
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierta(true)}
+        aria-label={`Etiquetas: ${nombres}`}
+        title={nombres}
+        // FUERA DEL FLUJO, sobre el relleno izquierdo de la celda (`px-2`, 8 px):
+        // en el flujo, por estrechas que fueran, las marcas sumaban su ancho al
+        // del nombre más largo, y la columna —que en una tabla crece hasta su
+        // contenido— se ensanchaba igual. La celda es `sticky`, así que es ella
+        // el bloque contenedor. Alta como la fila entera: esa es la zona de toque.
+        className="absolute inset-y-0 left-0 flex w-2 flex-col items-center justify-center gap-0.5 lg:hidden"
+      >
+        {puestas.slice(0, MARCAS_VISIBLES).map(({ etiqueta: e, caducada }) => {
+          const Icono = iconoDe(e.icono)
+          return Icono ? (
+            <span
+              key={e.id}
+              style={variablesColor(e.colorId)}
+              className={
+                'color-dato flex h-2 w-2 shrink-0 items-center justify-center rounded-full ' +
+                (caducada ? 'opacity-50' : '')
+              }
+              aria-hidden
+            >
+              <Icono size={7} strokeWidth={3} className="color-dato-marca" />
+            </span>
+          ) : (
+            <span
+              key={e.id}
+              style={variablesColor(e.colorId)}
+              className={'color-dato h-2 w-2 shrink-0 rounded-full ' + (caducada ? 'opacity-50' : '')}
+              aria-hidden
+            />
+          )
+        })}
+        {puestas.length > MARCAS_VISIBLES && (
+          <span className="h-0.5 w-2 shrink-0 rounded-full bg-tinta-tenue dark:bg-noche-suave" aria-hidden />
+        )}
+      </button>
+
+      <Hoja
+        abierta={abierta}
+        titulo={`Etiquetas de ${alumno.alias || alumno.nombre}`}
+        onCerrar={() => setAbierta(false)}
+      >
+        <ul className="space-y-2">
+          {puestas.map(({ etiqueta: e, caducada }) => {
+            const Icono = iconoDe(e.icono)
+            return (
+              <li
+                key={e.id}
+                style={variablesColor(e.colorId)}
+                className={'tarjeta flex items-center gap-3 py-2 ' + (caducada ? 'opacity-60' : '')}
+              >
+                <span
+                  className="color-dato flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                  aria-hidden
+                >
+                  {Icono && <Icono size={14} strokeWidth={3} className="color-dato-marca" />}
+                </span>
+                <span className={'min-w-0 flex-1 font-semibold ' + (caducada ? 'line-through' : '')}>
+                  {e.nombre}
+                </span>
+                <span className="shrink-0 rounded-full border border-borde px-2 py-0.5 text-xs font-bold uppercase tracking-wide dark:border-noche-borde">
+                  {e.abreviatura}
+                </span>
+                {caducada && <span className="shrink-0 text-xs texto-suave">caducada</span>}
+              </li>
+            )
+          })}
+        </ul>
+      </Hoja>
+    </>
   )
 }
 
