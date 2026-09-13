@@ -251,7 +251,7 @@ describe('el volcado nunca crea ni resucita sesiones', () => {
     expect(await db.sesiones.count()).toBe(0)
   })
 
-  it('regenerar el curso no resucita una clase eliminada con su cancelación', async () => {
+  it('regenerar el curso SÍ recupera una clase eliminada, y deshacer la vuelve a quitar', async () => {
     const lunes = await sesionEn('2026-09-07', '09:00')
     await db.sesiones.delete(lunes.id)
     await db.clasesCanceladas.add({
@@ -262,10 +262,16 @@ describe('el volcado nunca crea ni resucita sesiones', () => {
       creado: '2026-09-01T10:00:00.000Z',
     })
 
-    const { resultado } = await generarCursoCompleto(GRUPO_ID)
-    expect(resultado.creadas).toBe(0)
-    expect(resultado.eliminadas).toBe(1)
+    const { resultado, deshacer } = await generarCursoCompleto(GRUPO_ID)
+    expect(resultado.creadas).toBe(1)
+    expect(resultado.recuperadas).toBe(1)
+    expect((await db.sesiones.toArray()).filter((s) => s.fecha === '2026-09-07')).toHaveLength(1)
+    // La clase vuelve a existir: su cancelación ya no tiene sentido.
+    expect(await db.clasesCanceladas.count()).toBe(0)
+
+    await deshacer()
     expect((await db.sesiones.toArray()).some((s) => s.fecha === '2026-09-07')).toBe(false)
+    expect(await db.clasesCanceladas.get('c1')).toBeDefined()
   })
 })
 

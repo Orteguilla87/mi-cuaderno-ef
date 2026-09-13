@@ -187,12 +187,19 @@ describe('ninguna opción crea sesiones ni toca el horario', () => {
     expect(despues.grupo).toEqual(antes.grupo)
   })
 
-  it('regenerar el curso no devuelve la sesión eliminada', async () => {
+  it('regenerar el curso vuelve a crear la clase eliminada, vacía', async () => {
     const s = await lista()
+    await poner(s[0], { titulo: 'T0' })
     await eliminarClase(s[0].id, 'eliminar')
+
     const { resultado } = await generarCursoCompleto(GRUPO_ID)
-    expect(resultado.creadas).toBe(0)
-    expect(await db.sesiones.get(s[0].id)).toBeUndefined()
+    expect(resultado.creadas).toBe(1)
+    expect(resultado.recuperadas).toBe(1)
+    const recuperada = (await lista()).find(
+      (x) => x.fecha === s[0].fecha && x.franjaInicio === s[0].franjaInicio,
+    )
+    expect(recuperada?.titulo).toBe('')
+    expect(await db.clasesCanceladas.count()).toBe(0)
   })
 })
 

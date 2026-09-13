@@ -1531,8 +1531,8 @@ export interface ResultadoGeneracion {
   creadas: number
   /** Clases que ya tenían sesión y se han respetado. */
   existentes: number
-  /** Clases que el docente eliminó: no se vuelven a crear. */
-  eliminadas: number
+  /** De las creadas, cuántas eran clases que el docente había eliminado. */
+  recuperadas: number
   total: number
 }
 
@@ -1541,9 +1541,9 @@ export interface ResultadoGeneracion {
  * entre el inicio y el fin del curso, saltando festivos y vacaciones.
  *
  * Es el ÚNICO sitio que crea sesiones a partir del horario. Nunca pisa una
- * sesión existente, y nunca resucita una clase que el docente eliminó (su
- * `ClaseCancelada`): regenerar tras añadir vacaciones o cambiar el horario no
- * devuelve lo que se quitó a propósito.
+ * sesión existente, y SÍ vuelve a crear las clases que el docente eliminó: es
+ * la forma de recuperar el curso entero. Al hacerlo retira su `ClaseCancelada`
+ * —la clase vuelve a existir—, y deshacer devuelve las dos cosas.
  */
 export async function generarCursoCompleto(
   grupoId: string,
@@ -1556,15 +1556,13 @@ export async function generarCursoCompleto(
   const ocupadas = clavesOcupadas(await db.sesiones.where('grupoId').equals(grupoId).toArray(), grupo)
   const canceladas = await db.clasesCanceladas.where('grupoId').equals(grupoId).toArray()
   // Misma regla que `tapa` en `db/sesiones.ts`: sin franja, cancela el día entero.
-  const eliminada = (h: HuecoDeClase) =>
-    canceladas.some(
-      (c) => c.fecha === h.fecha && (c.horaInicio === undefined || c.horaInicio === h.franjaInicio),
-    )
+  const tapa = (c: ClaseCancelada, h: HuecoDeClase) =>
+    c.fecha === h.fecha && (c.horaInicio === undefined || c.horaInicio === h.franjaInicio)
   const libres = huecos.filter((h) => !ocupadas.has(claveHueco(h)))
-  const eliminadas = libres.filter(eliminada).length
+  const recuperadas = libres.filter((h) => canceladas.some((c) => tapa(c, h))).length
+  const retiradas = canceladas.filter((c) => libres.some((h) => tapa(c, h)))
 
   const nuevas: Sesion[] = libres
-    .filter((h) => !eliminada(h))
     .map((h) => ({
       id: nuevoId(),
       grupoId,
@@ -1576,17 +1574,25 @@ export async function generarCursoCompleto(
       franjaInicio: h.franjaInicio,
     }))
 
-  await db.sesiones.bulkAdd(nuevas)
+  await db.transaction('rw', db.sesiones, db.clasesCanceladas, async () => {
+    await db.sesiones.bulkAdd(nuevas)
+    if (retiradas.length) await db.clasesCanceladas.bulkDelete(retiradas.map((c) => c.id))
+  })
   const ids = nuevas.map((s) => s.id)
 
   return {
     resultado: {
       creadas: nuevas.length,
       existentes: huecos.length - libres.length,
-      eliminadas,
+      recuperadas,
       total: huecos.length,
     },
-    deshacer: async () => void (await db.sesiones.bulkDelete(ids)),
+    deshacer: async () => {
+      await db.transaction('rw', db.sesiones, db.clasesCanceladas, async () => {
+        await db.sesiones.bulkDelete(ids)
+        if (retiradas.length) await db.clasesCanceladas.bulkPut(retiradas)
+      })
+    },
   }
 }
 
