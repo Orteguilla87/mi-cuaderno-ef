@@ -332,6 +332,8 @@ export interface ResumenSesion {
   asistencias: number
   /** Observaciones del grupo ese día: también sobreviven. */
   observaciones: number
+  /** Notas del Cuaderno en columnas fechadas ese día: tampoco se borran. */
+  calificaciones: number
 }
 
 /**
@@ -364,7 +366,26 @@ export async function resumenSesion(sesionId: string): Promise<ResumenSesion | u
     .equals([sesion.grupoId, sesion.fecha])
     .count()
 
+  // Calificaciones de ese día: celdas del Cuaderno en columnas fechadas ese día,
+  // más las del modelo antiguo (`calificaciones`), que llevan fecha propia.
+  const columnas = await db.columnas
+    .where('grupoId')
+    .equals(sesion.grupoId)
+    .filter((c) => c.fecha === sesion.fecha)
+    .toArray()
+  let calificaciones = 0
+  for (const c of columnas)
+    calificaciones += await db.valores
+      .where('columnaId')
+      .equals(c.id)
+      .filter((v) => delGrupo.has(v.alumnoId))
+      .count()
+  calificaciones += await db.calificaciones
+    .filter((c) => c.fecha === sesion.fecha && delGrupo.has(c.alumnoId))
+    .count()
+
   return {
+    calificaciones,
     juegos: sesion.juegos.length,
     tieneNotas: Boolean(sesion.notas?.trim() || sesion.comentarios?.trim()),
     tieneValoracion: sesion.valoracion != null,

@@ -13,16 +13,22 @@ import { db } from '../db/db'
 import { gruposVisibles } from '../db/grupos'
 import { resumenSesion, type ResumenSesion } from '../db/sesiones'
 import {
+  deshacerLote,
   duplicarSesion,
   editarSesion,
-  eliminarSesion,
+  eliminarClase,
   pegarEnSesion,
+  previsualizarEliminarClase,
   sesionAPlantilla,
+  type ClaseEnPrevia,
+  type ModoEliminarClase,
+  type PreviaEliminarClase,
 } from '../db/planificador'
 import type { Sesion, UnidadDidactica } from '../db/types'
-import { diaLectivo, formatoDiaCorto, formatoCorto } from '../lib/fechas'
+import { diaLectivo, formatoDiaCorto } from '../lib/fechas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
+import { useLotesPlan } from '../store/lotesPlan'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
 
@@ -375,13 +381,13 @@ function HojaDuplicar({
 }
 
 /**
- * Eliminar una sesión: tres cosas distintas que antes se confundían en una.
+ * Eliminar una sesión: EXACTAMENTE dos opciones (`eliminarClase`).
  *
- * «Eliminar esta clase» quita la clase de ESE día —el hueco viene del horario
- * del grupo, así que sin cancelarlo la clase reaparecía vacía y parecía que no
- * se había borrado nada—. «Vaciar la planificación» hace lo de antes: borra el
- * contenido y deja el hueco libre. Y cambiar el horario del grupo, que afecta a
- * TODAS las semanas, se enseña como lo que es: otra acción, en otro sitio.
+ * «Eliminar y mover a la derecha» es la clase que no se da —excursión, salida—:
+ * todo lo programado se retrasa una sesión. «Eliminar la sesión» la quita con su
+ * contenido y no mueve nada más. Antes de confirmar se enseña la previa: qué
+ * contenido va a qué clase, qué desaparece y qué se queda sin ubicación. Y si
+ * la clase tiene registros del alumnado, cuántos, aunque no se borren.
  */
 function HojaEliminarSesion({
   abierta,
@@ -393,112 +399,214 @@ function HojaEliminarSesion({
   onCerrar: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const registrarLote = useLotesPlan((s) => s.registrar)
+  const quitarLote = useLotesPlan((s) => s.quitar)
+  const [modo, setModo] = useState<ModoEliminarClase | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
   // Solo mientras la hoja está abierta: recontar en cada render de la página
   // sería trabajo para nada.
   const resumen = useLiveQuery(
     async () => (abierta ? resumenSesion(sesion.id) : undefined),
     [abierta, sesion.id],
   )
+  const previa = useLiveQuery(
+    async () => (abierta && modo ? previsualizarEliminarClase(sesion.id, modo) : undefined),
+    [abierta, modo, sesion.id],
+  )
 
-  async function eliminar(opciones: { desplazar?: boolean; cancelar?: boolean }) {
-    const deshacer = await eliminarSesion(sesion.id, !!opciones.desplazar, !!opciones.cancelar)
+  function cerrar() {
+    setModo(null)
+    setError(null)
     onCerrar()
-    navegar('/planificador')
-    mostrarAviso(
-      opciones.desplazar
-        ? 'Sesión eliminada; las siguientes se han corrido'
-        : opciones.cancelar
-          ? `Clase cancelada el ${formatoCorto(sesion.fecha)}`
-          : 'Planificación vaciada',
-      deshacer,
-    )
+  }
+
+  async function confirmar() {
+    if (!modo) return
+    try {
+      const { lote } = await eliminarClase(sesion.id, modo)
+      registrarLote(lote)
+      cerrar()
+      navegar('/planificador')
+      mostrarAviso(
+        modo === 'mover' ? 'Sesión eliminada; lo programado se ha retrasado' : 'Sesión eliminada',
+        async () => {
+          await deshacerLote(lote)
+          quitarLote(lote.id)
+        },
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se ha podido eliminar la sesión')
+    }
   }
 
   return (
-    <Hoja abierta={abierta} titulo="Eliminar sesión" onCerrar={onCerrar}>
+    <Hoja abierta={abierta} titulo="Eliminar sesión" onCerrar={cerrar}>
       <div className="space-y-3">
-        {resumen && <AvisoContenido resumen={resumen} />}
+        {resumen && <AvisoRegistros resumen={resumen} />}
 
-        <button className="btn-primario w-full" onClick={() => void eliminar({ cancelar: true })}>
-          Eliminar esta clase
-        </button>
-        <p className="text-xs texto-suave">
-          Quita la clase del {formatoCorto(sesion.fecha)} de Hoy, del planificador y del calendario.
-          El horario del grupo no cambia: el resto de semanas siguen igual, y puedes restaurarla
-          desde ese mismo día.
-        </p>
+        {!modo ? (
+          <>
+            <button className="btn-primario w-full" onClick={() => setModo('mover')}>
+              Eliminar y mover a la derecha
+            </button>
+            <p className="text-xs texto-suave">
+              La clase no se da (excursión, salida…): su contenido y el de las sesiones siguientes
+              pasan una sesión adelante. No se pierde nada, se pospone.
+            </p>
 
-        <button className="btn-suave w-full" onClick={() => void eliminar({ desplazar: true })}>
-          Eliminar y desplazar las siguientes
-        </button>
-        <p className="text-xs texto-suave">
-          Cada sesión posterior pasa a la clase anterior de la secuencia, cerrando el hueco.
-        </p>
+            <button className="btn-suave w-full" onClick={() => setModo('eliminar')}>
+              Eliminar la sesión
+            </button>
+            <p className="text-xs texto-suave">
+              La sesión desaparece con su contenido. El resto de la programación se queda
+              exactamente donde está.
+            </p>
 
-        <button className="btn-suave w-full" onClick={() => void eliminar({})}>
-          Vaciar la planificación
-        </button>
-        <p className="text-xs texto-suave">
-          Borra el contenido pero mantiene la clase en el calendario, lista para planificar de
-          nuevo.
-        </p>
+            <button className="btn w-full" onClick={cerrar}>
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <>
+            {previa ? (
+              <PreviaEliminar previa={previa} resumen={resumen} />
+            ) : (
+              <p className="text-sm texto-suave">Calculando…</p>
+            )}
 
-        <button
-          className="btn w-full"
-          onClick={() => {
-            onCerrar()
-            navegar(`/grupos/${sesion.grupoId}`)
-          }}
-        >
-          Cambiar el horario del grupo
-        </button>
-        <p className="text-xs texto-suave">
-          Ojo: el horario afecta a todas las semanas del curso, no solo a este día.
-        </p>
+            {error && <p className="text-sm font-semibold text-acento">{error}</p>}
 
-        <button className="btn w-full" onClick={onCerrar}>
-          Cancelar
-        </button>
+            <button
+              className="btn-peligro w-full"
+              onClick={() => void confirmar()}
+              disabled={!previa}
+            >
+              <Trash2 size={18} aria-hidden />
+              {modo === 'mover' ? 'Eliminar y mover' : 'Eliminar la sesión'}
+            </button>
+            <button className="btn w-full" onClick={() => setModo(null)}>
+              Volver
+            </button>
+          </>
+        )}
       </div>
     </Hoja>
   )
 }
 
-/**
- * Qué se pierde y qué no, con cifras (§ M9: nunca destruir datos en silencio).
- * La asistencia y las observaciones van por fecha y grupo, no por sesión, así
- * que sobreviven al borrado — y decirlo evita tanto la sorpresa como el susto.
- */
-function AvisoContenido({ resumen }: { resumen: ResumenSesion }) {
-  const pierde = [
-    resumen.juegos > 0 && `${resumen.juegos} ${resumen.juegos === 1 ? 'juego' : 'juegos'}`,
-    resumen.tieneNotas && 'la descripción y los comentarios',
-    resumen.tieneValoracion && 'la valoración',
-  ].filter((x): x is string => typeof x === 'string')
+const rotuloClase = (c: ClaseEnPrevia) => `${formatoDiaCorto(c.fecha)}${c.franja ? ` · ${c.franja}` : ''}`
 
-  const conserva = [
+/** La previa de la eliminación, antes de escribir nada. */
+function PreviaEliminar({
+  previa,
+  resumen,
+}: {
+  previa: PreviaEliminarClase
+  resumen: ResumenSesion | undefined
+}) {
+  const { eliminada } = previa
+
+  if (previa.modo === 'eliminar') {
+    const pierde = resumen
+      ? [
+          !eliminada.vacia && `«${eliminada.titulo}»`,
+          resumen.juegos > 0 && `${resumen.juegos} ${resumen.juegos === 1 ? 'juego' : 'juegos'}`,
+          resumen.tieneNotas && 'la descripción y los comentarios',
+          resumen.tieneValoracion && 'la valoración',
+        ].filter((x): x is string => typeof x === 'string')
+      : []
+    return (
+      <div className="tarjeta space-y-1 border-l-4 border-acento text-sm">
+        <p>
+          Desaparece la sesión del <strong className="cifra">{rotuloClase(eliminada)}</strong>
+          {pierde.length > 0 ? (
+            <>
+              {' '}
+              y con ella <strong>{enumerar(pierde)}</strong>.
+            </>
+          ) : (
+            '. No tenía contenido.'
+          )}
+        </p>
+        <p className="texto-suave">Nada más se mueve: el resto de la programación sigue igual.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="tarjeta space-y-2 text-sm">
+        <p>
+          Desaparece la sesión del <strong className="cifra">{rotuloClase(eliminada)}</strong>.
+        </p>
+        {eliminada.vacia ? (
+          <p className="texto-suave">Estaba vacía: no hay contenido que mover.</p>
+        ) : (
+          <>
+            <p className="texto-suave">Lo programado pasa una sesión adelante:</p>
+            <ol className="max-h-60 space-y-1 overflow-y-auto pr-1">
+              {previa.movimientos.map((m) => (
+                <li
+                  key={`${m.a.fecha}|${m.a.franja}`}
+                  className="flex items-center gap-2 rounded-xl bg-agua-claro px-3 py-1.5 dark:bg-noche-elevada"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {m.titulo}
+                    {m.unidad && <span className="texto-suave"> · {m.unidad}</span>}
+                  </span>
+                  <span className="cifra shrink-0 text-xs font-semibold">→ {rotuloClase(m.a)}</span>
+                </li>
+              ))}
+            </ol>
+            {previa.seDetieneEn && (
+              <p className="texto-suave">
+                Se detiene en la sesión vacía del{' '}
+                <span className="cifra">{rotuloClase(previa.seDetieneEn)}</span>: de ahí en adelante
+                no cambia nada.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {previa.sinUbicacion && (
+        <div className="tarjeta border-2 border-acento p-3 text-sm">
+          <p className="font-bold text-acento">Un contenido se queda sin ubicación</p>
+          <p className="mt-1">
+            «{previa.sinUbicacion.titulo}»
+            {previa.sinUbicacion.unidad ? ` (${previa.sinUbicacion.unidad})` : ' (sin unidad)'} no
+            tiene ninguna sesión vacía por delante donde ir. No se crea ninguna sesión nueva: si
+            sigues, ese contenido se pierde. Se puede deshacer.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Registros del alumnado de esa clase, con cifras (§ M9: nunca destruir datos en
+ * silencio). Van por fecha y grupo, no por sesión, así que NO se borran: se
+ * cuentan antes de confirmar para que no haya sorpresa ni susto.
+ */
+function AvisoRegistros({ resumen }: { resumen: ResumenSesion }) {
+  const registros = [
     resumen.asistencias > 0 &&
       `${resumen.asistencias} ${resumen.asistencias === 1 ? 'registro' : 'registros'} de asistencia`,
     resumen.observaciones > 0 &&
       `${resumen.observaciones} ${resumen.observaciones === 1 ? 'observación' : 'observaciones'}`,
+    resumen.calificaciones > 0 &&
+      `${resumen.calificaciones} ${resumen.calificaciones === 1 ? 'calificación' : 'calificaciones'}`,
   ].filter((x): x is string => typeof x === 'string')
 
+  if (registros.length === 0) return null
   return (
-    <div className="tarjeta space-y-1 border-l-4 border-acento">
-      <p className="text-sm">
-        {pierde.length > 0 ? (
-          <>
-            Se pierde el contenido de la sesión: <strong>{enumerar(pierde)}</strong>.
-          </>
-        ) : (
-          'Esta sesión no tiene contenido guardado.'
-        )}
+    <div className="tarjeta space-y-1 border-l-4 border-acento text-sm">
+      <p>
+        Esta clase tiene datos registrados: <strong>{enumerar(registros)}</strong>.
       </p>
-      {conserva.length > 0 && (
-        <p className="text-sm texto-suave">
-          No se borra nada más: {enumerar(conserva)} de ese día se conservan.
-        </p>
-      )}
+      <p className="texto-suave">No se borran: siguen guardados con su fecha.</p>
     </div>
   )
 }

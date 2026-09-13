@@ -12,7 +12,8 @@ import {
   reubicarSesionesNoLectivas,
   sesionesEnDiasNoLectivos,
 } from './sesiones'
-import { crearSesion, eliminarSesion } from './planificador'
+import { crearSesion, eliminarClase } from './planificador'
+import { deshacerLote } from './lotes'
 
 const CURSO_ID = 'curso1'
 const GRUPO_ID = 'g1'
@@ -290,7 +291,7 @@ describe('clases canceladas de un día suelto', () => {
     const id = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote y conducción' })
     expect(await huecosDe(SEMANA)).toHaveLength(1)
 
-    await eliminarSesion(id, false, true)
+    await eliminarClase(id, 'eliminar')
 
     // Las cuatro vistas de hueco (Hoy día, Hoy semana, Planificador semana y
     // Calendario semana) leen de `huecosDe`; Calendario mes, de `getSesiones`.
@@ -301,7 +302,7 @@ describe('clases canceladas de un día suelto', () => {
 
   it('la cancelación persiste: releer la base no la resucita', async () => {
     const id = await crearSesion(GRUPO_ID, MARTES)
-    await eliminarSesion(id, false, true)
+    await eliminarClase(id, 'eliminar')
 
     // Equivalente a recargar la app: nada en memoria, todo desde Dexie.
     expect(await db.clasesCanceladas.count()).toBe(1)
@@ -310,7 +311,7 @@ describe('clases canceladas de un día suelto', () => {
 
   it('no afecta a la misma franja de otras semanas', async () => {
     const id = await crearSesion(GRUPO_ID, MARTES)
-    await eliminarSesion(id, false, true)
+    await eliminarClase(id, 'eliminar')
 
     const siguiente = await huecosDe(SEMANA_SIGUIENTE)
     expect(siguiente).toHaveLength(1)
@@ -322,7 +323,7 @@ describe('clases canceladas de un día suelto', () => {
   it('no afecta a otros grupos del mismo día', async () => {
     await otroGrupoLosMartes()
     const id = await crearSesion(GRUPO_ID, MARTES)
-    await eliminarSesion(id, false, true)
+    await eliminarClase(id, 'eliminar')
 
     const quedan = await huecosDe(SEMANA)
     expect(quedan).toHaveLength(1)
@@ -331,7 +332,7 @@ describe('clases canceladas de un día suelto', () => {
 
   it('la clase cancelada se lista aparte, para poder restaurarla', async () => {
     const id = await crearSesion(GRUPO_ID, MARTES)
-    await eliminarSesion(id, false, true)
+    await eliminarClase(id, 'eliminar')
 
     const canceladas = await huecosCanceladosDe(SEMANA)
     expect(canceladas).toHaveLength(1)
@@ -341,7 +342,7 @@ describe('clases canceladas de un día suelto', () => {
 
   it('restaurar devuelve el hueco a todas las vistas', async () => {
     const id = await crearSesion(GRUPO_ID, MARTES)
-    await eliminarSesion(id, false, true)
+    await eliminarClase(id, 'eliminar')
 
     await restaurarClase(GRUPO_ID, MARTES)
     expect(await huecosDe(SEMANA)).toHaveLength(1)
@@ -350,23 +351,14 @@ describe('clases canceladas de un día suelto', () => {
 
   it('deshacer el borrado devuelve sesión y clase de una vez', async () => {
     const id = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote y conducción' })
-    const deshacer = await eliminarSesion(id, false, true)
+    const { lote } = await eliminarClase(id, 'eliminar')
 
-    await deshacer()
+    await deshacerLote(lote)
 
     const huecos = await huecosDe(SEMANA)
     expect(huecos).toHaveLength(1)
     expect(huecos[0].sesion?.titulo).toBe('Bote y conducción')
     expect(await db.clasesCanceladas.count()).toBe(0)
-  })
-
-  it('«vaciar la planificación» borra la sesión pero deja el hueco', async () => {
-    const id = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote y conducción' })
-    await eliminarSesion(id, false, false)
-
-    const huecos = await huecosDe(SEMANA)
-    expect(huecos).toHaveLength(1)
-    expect(huecos[0].sesion).toBeUndefined()
   })
 
   it('una sesión persistida siempre se ve, aunque quede una cancelación vieja', async () => {
@@ -515,12 +507,13 @@ describe('dos clases del mismo grupo el mismo día', () => {
     const a = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Bote', franjaInicio: '10:00' })
     const b = await crearSesion(GRUPO_ID, MARTES, { titulo: 'Saltos', franjaInicio: '12:30' })
 
-    await eliminarSesion(a, false, false)
+    await eliminarClase(a, 'eliminar')
 
+    // Solo se cancela la franja de la eliminada: la otra clase sigue en pie.
     const huecos = await huecosDe(SEMANA)
-    expect(huecos).toHaveLength(2)
-    expect(huecos[1].sesion?.id).toBe(b)
-    expect(huecos[1].sesion?.titulo).toBe('Saltos')
+    expect(huecos).toHaveLength(1)
+    expect(huecos[0].sesion?.id).toBe(b)
+    expect(huecos[0].sesion?.titulo).toBe('Saltos')
     // La superviviente sigue en su franja: no se ha adelantado a la vacante.
     expect((await db.sesiones.get(b))!.franjaInicio).toBe('12:30')
   })

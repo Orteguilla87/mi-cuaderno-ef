@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarPlus, Clipboard, ClipboardX, Clock, Copy, Trash2, Users } from 'lucide-react'
+import { CalendarPlus, Clipboard, ClipboardX, Clock, Copy, Trash2, Undo2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Hoja } from '../components/Hoja'
@@ -24,7 +24,9 @@ import type { FranjaHorario, Grupo, Sesion } from '../db/types'
 import { aISO, diaLectivo, formatoDiaCorto } from '../lib/fechas'
 import { rotuloOrdinal } from '../lib/clasesDelDia'
 import { navegar } from '../lib/router'
+import { cambiosPosteriores, deshacerLote, type LotePlan } from '../db/lotes'
 import { useGrupoActivo } from '../store/grupoActivo'
+import { MAX_LOTES, useLotesPlan } from '../store/lotesPlan'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
 import { EditorHorario } from './Grupos'
@@ -183,6 +185,11 @@ function ColumnaGrupo({
   const [copiando, setCopiando] = useState(false)
   const [editandoHorario, setEditandoHorario] = useState(false)
   const [confirmandoVaciar, setConfirmandoVaciar] = useState(false)
+  const [deshaciendo, setDeshaciendo] = useState(false)
+  // Se lee la lista entera y se filtra aquí: filtrar dentro del selector daría
+  // un array nuevo en cada lectura y el store volvería a pintar sin parar.
+  const todosLosLotes = useLotesPlan((s) => s.lotes)
+  const lotes = todosLosLotes.filter((l) => l.grupoId === grupo.id)
 
   const sesiones = useLiveQuery(async () => sesionesDeGrupo(grupo.id), [grupo.id])
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
@@ -269,6 +276,16 @@ function ColumnaGrupo({
               {(sesiones?.length ?? 0) === 1 ? 'sesión programada' : 'sesiones programadas'}
             </p>
           </div>
+          {lotes.length > 0 && (
+            <button
+              onClick={() => setDeshaciendo(true)}
+              className="flex min-h-tap min-w-tap shrink-0 items-center justify-center rounded-xl text-primario dark:text-agua"
+              aria-label={`Deshacer cambios recientes de ${grupo.nombre}`}
+              title="Deshacer cambios recientes"
+            >
+              <Undo2 size={20} aria-hidden />
+            </button>
+          )}
         </div>
       </div>
 
@@ -391,6 +408,13 @@ function ColumnaGrupo({
         onCerrar={() => setConfirmandoVaciar(false)}
       />
 
+      <HojaDeshacer
+        abierta={deshaciendo}
+        grupo={grupo}
+        lotes={lotes}
+        onCerrar={() => setDeshaciendo(false)}
+      />
+
       <HojaCopiarPlan
         abierta={copiando}
         origen={grupo}
@@ -405,6 +429,103 @@ function ColumnaGrupo({
         onCerrar={() => setEditandoHorario(false)}
       />
     </>
+  )
+}
+
+/** «hoy 10:42», «ayer 18:05» o «12/09 09:30»: cuándo se hizo, sin segundos. */
+function cuando(iso: string): string {
+  const f = new Date(iso)
+  const hora = f.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  const dia = aISO(f)
+  const hoy = aISO()
+  if (dia === hoy) return `hoy ${hora}`
+  const ayer = new Date()
+  ayer.setDate(ayer.getDate() - 1)
+  if (dia === aISO(ayer)) return `ayer ${hora}`
+  return `${formatoDiaCorto(dia)} ${hora}`
+}
+
+/**
+ * Historial de cambios de la planificación del grupo (`store/lotesPlan.ts`).
+ * Se deshace por orden, empezando por el último: deshacer uno antiguo con otros
+ * más recientes encima dejaría la planificación en un estado que nunca existió.
+ */
+function HojaDeshacer({
+  abierta,
+  grupo,
+  lotes,
+  onCerrar,
+}: {
+  abierta: boolean
+  grupo: Grupo
+  lotes: LotePlan[]
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const quitar = useLotesPlan((s) => s.quitar)
+  const [ocupado, setOcupado] = useState(false)
+  const ultimo = lotes[0]
+
+  const cambios = useLiveQuery(
+    async () => (abierta && ultimo ? cambiosPosteriores(ultimo) : 0),
+    [abierta, ultimo?.id],
+  )
+
+  async function deshacer() {
+    if (!ultimo) return
+    setOcupado(true)
+    try {
+      await deshacerLote(ultimo)
+      quitar(ultimo.id)
+      mostrarAviso('Deshecho')
+      if (lotes.length <= 1) onCerrar()
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  return (
+    <Hoja abierta={abierta} titulo={`Deshacer en ${grupo.nombre}`} onCerrar={onCerrar}>
+      <div className="space-y-3">
+        <p className="text-sm texto-suave">
+          Las últimas {MAX_LOTES} operaciones sobre la planificación (llevar una unidad, eliminar
+          sesiones) de este dispositivo. Se deshacen en orden, empezando por la más reciente.
+        </p>
+
+        {lotes.length === 0 ? (
+          <p className="text-sm texto-suave">No hay nada que deshacer.</p>
+        ) : (
+          <ol className="space-y-2">
+            {lotes.map((l, i) => (
+              <li
+                key={l.id}
+                className={'tarjeta py-2 text-sm ' + (i === 0 ? 'border-l-4 border-primario' : 'opacity-60')}
+              >
+                <p className="font-semibold">{l.descripcion}</p>
+                <p className="cifra text-xs texto-suave">{cuando(l.creado)}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {ultimo && (cambios ?? 0) > 0 && (
+          <p className="tarjeta border-l-4 border-acento text-sm">
+            {cambios} {cambios === 1 ? 'sesión ha cambiado' : 'sesiones han cambiado'} desde entonces.
+            Deshacer las devuelve a como estaban antes de la operación.
+          </p>
+        )}
+
+        {ultimo && (
+          <button className="btn-primario w-full" onClick={() => void deshacer()} disabled={ocupado}>
+            <Undo2 size={18} aria-hidden />
+            Deshacer la última
+          </button>
+        )}
+        <button className="btn w-full" onClick={onCerrar}>
+          Cerrar
+        </button>
+      </div>
+    </Hoja>
   )
 }
 

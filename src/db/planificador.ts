@@ -1,9 +1,10 @@
 import { cicloDeCurso, cicloDeUnidad, idCriterioPrimaria, ordinalCiclo } from '../lib/ciclos'
 import { estadoDia, trimestreDe, type CursoFechas } from '../lib/calendarioEscolar'
-import { aISO, deISO, diaLectivo, sumarDias } from '../lib/fechas'
+import { aISO, deISO, diaLectivo, formatoDiaCorto, sumarDias } from '../lib/fechas'
 import { esEnlace } from '../lib/importarTexto'
 import { criteriosDeGrupo } from './criterios'
 import { db, nuevoId } from './db'
+import { crearLote, deshacerLote, type LotePlan } from './lotes'
 import {
   NIVEL_CICLO_INFANTIL,
   type ClaseCancelada,
@@ -185,95 +186,196 @@ export async function editarSesion(
   return async () => void (await db.sesiones.put(antes))
 }
 
-/**
- * Elimina una sesión. Tres desenlaces distintos para el hueco que deja, porque
- * borrar el contenido y quitar la clase del día NO son lo mismo (y confundirlos
- * era el motivo de que «eliminar» pareciera no hacer nada: el hueco se genera
- * del horario y volvía a salir vacío):
- *  - `cancelarHueco`: además de borrar la sesión, marca «ese día, ese grupo, no
- *    hay clase» en `db.clasesCanceladas`. El horario semanal no se toca.
- *  - `desplazarSiguientes`: las sesiones posteriores del mismo grupo se corren
- *    una posición hacia el hueco (misma lógica de secuencia que
- *    `copiarPlanificacion`: se avanza sobre las clases reales del grupo, no
- *    sobre fechas de calendario sueltas). Ahí el hueco debe seguir existiendo.
- *  - Ninguno de los dos: se vacía la planificación y el hueco queda libre.
+/* ————————————————— Eliminar una sesión de la planificación —————————————————
+ *
+ * Exactamente dos opciones, y ninguna crea sesiones, cambia el horario ni toca
+ * el calendario:
+ *  - «mover»: la sesión desaparece y su contenido, y el de las posteriores del
+ *    grupo, avanza una sesión (a la siguiente que existe, en orden real). Nada
+ *    se pierde, se pospone. El desplazamiento se detiene en la primera sesión
+ *    VACÍA: a partir de ahí no hay nada que mover. Si no hay ninguna vacía por
+ *    delante, el último contenido se queda sin ubicación y se avisa.
+ *  - «eliminar»: la sesión desaparece con su contenido. Nada más se mueve.
+ *
+ * En los dos casos la clase de ese día queda marcada en `clasesCanceladas`: el
+ * hueco sale del horario, y sin la marca Hoy y el Calendario volverían a
+ * enseñarla vacía como si no se hubiera eliminado.
+ *
+ * Se mueve CONTENIDO, no sesiones: cada fila conserva su fecha, su franja y su
+ * hora ajustada. Se mueve todo el contenido, comentarios y valoración
+ * incluidos: son sesiones futuras.
  */
-export async function eliminarSesion(
-  sesionId: string,
-  desplazarSiguientes: boolean,
-  cancelarHueco = false,
-): Promise<() => Promise<void>> {
+
+export type ModoEliminarClase = 'mover' | 'eliminar'
+
+/** Una clase concreta, para enseñarla: fecha y franja. */
+export interface ClaseEnPrevia {
+  fecha: string
+  franja: string
+}
+
+export interface MovimientoContenido {
+  titulo: string
+  unidad: string | null
+  de: ClaseEnPrevia
+  a: ClaseEnPrevia
+}
+
+export interface PreviaEliminarClase {
+  modo: ModoEliminarClase
+  eliminada: ClaseEnPrevia & { id: string; titulo: string; unidad: string | null; vacia: boolean }
+  /** Solo en «mover»: qué contenido pasa a qué clase. */
+  movimientos: MovimientoContenido[]
+  /** Sesión vacía que recibe el último contenido y detiene el desplazamiento. */
+  seDetieneEn: ClaseEnPrevia | null
+  /** Contenido que se queda sin sesión donde ir. Nunca se crea una para él. */
+  sinUbicacion: { titulo: string; unidad: string | null } | null
+}
+
+/** Franja que ocupa una sesión: la suya o, sin ella (antes de v24), la primera de su día. */
+function franjaDe(s: Sesion, grupo: Grupo): string {
+  if (s.franjaInicio !== undefined) return s.franjaInicio
+  const dow = diaLectivo(s.fecha)
+  const delDia = grupo.horario
+    .filter((f) => f.diaSemana === dow)
+    .map((f) => f.horaInicio)
+    .sort((a, b) => a.localeCompare(b))
+  return delDia[0] ?? ''
+}
+
+/** Lo que se mueve de una sesión a otra: todo menos lo que la hace ser esa clase. */
+function contenidoDe(s: Sesion): Partial<Sesion> {
+  const { id, grupoId, fecha, franjaInicio, horaInicio, horaFin, ...contenido } = s
+  void [id, grupoId, fecha, franjaInicio, horaInicio, horaFin]
+  return contenido
+}
+
+const tituloVisible = (s: Sesion) => s.titulo.trim() || 'Sesión sin título'
+
+async function calcularEliminacion(sesionId: string, modo: ModoEliminarClase) {
   const sesion = await db.sesiones.get(sesionId)
   if (!sesion) throw new Error('La sesión ya no existe')
+  const grupo = await db.grupos.get(sesion.grupoId)
+  if (!grupo) throw new Error('El grupo ya no existe')
+  const curso = await db.cursos.filter((c) => c.activo).first()
+  const unidades = new Map((await db.unidades.toArray()).map((u) => [u.id, u.titulo]))
+  const unidadDe = (s: Sesion) => (s.udId ? (unidades.get(s.udId) ?? null) : null)
 
-  if (!desplazarSiguientes) {
-    if (!cancelarHueco) {
-      await db.sesiones.delete(sesionId)
-      return async () => void (await db.sesiones.add(sesion))
-    }
+  const franja = franjaDe(sesion, grupo)
+  const movimientos: MovimientoContenido[] = []
+  const despues: Sesion[] = []
+  const tocadas: Sesion[] = []
+  let seDetieneEn: ClaseEnPrevia | null = null
+  let sinUbicacion: PreviaEliminarClase['sinUbicacion'] = null
 
-    const cancelada: ClaseCancelada = {
-      id: nuevoId(),
-      grupoId: sesion.grupoId,
-      fecha: sesion.fecha,
-      creado: new Date().toISOString(),
+  if (modo === 'mover' && !sesionVacia(sesion)) {
+    if (!curso) throw new Error('No hay ningún curso escolar activo')
+    const posteriores = sesionesEnOrden(
+      await db.sesiones.where('grupoId').equals(sesion.grupoId).toArray(),
+      grupo,
+      curso,
+      sesion.fecha,
+      franja,
+    ).filter((x) => x.sesion.id !== sesion.id && (x.sesion.fecha > sesion.fecha || x.franja > franja))
+
+    // `enMano` es el contenido que busca sitio: primero el de la eliminada; al
+    // caer sobre una sesión con contenido, el de esa pasa a buscar la siguiente.
+    let enMano: Sesion | null = sesion
+    let desde: ClaseEnPrevia = { fecha: sesion.fecha, franja }
+    for (const { sesion: destino, franja: franjaDestino } of posteriores) {
+      if (!enMano) break
+      const a = { fecha: destino.fecha, franja: franjaDestino }
+      movimientos.push({ titulo: tituloVisible(enMano), unidad: unidadDe(enMano), de: desde, a })
+      tocadas.push(destino)
+      despues.push({ ...sinContenido(destino), ...contenidoDe(enMano) })
+      if (sesionVacia(destino)) {
+        seDetieneEn = a
+        enMano = null
+      } else {
+        enMano = destino
+        desde = a
+      }
     }
-    await db.transaction('rw', [db.sesiones, db.clasesCanceladas], async () => {
-      await db.sesiones.delete(sesionId)
-      await db.clasesCanceladas.add(cancelada)
-    })
-    // Deshacer devuelve las dos cosas a la vez: la sesión y la clase del día.
-    return async () => {
-      await db.transaction('rw', [db.sesiones, db.clasesCanceladas], async () => {
-        await db.clasesCanceladas.delete(cancelada.id)
-        await db.sesiones.add(sesion)
-      })
-    }
+    if (enMano) sinUbicacion = { titulo: tituloVisible(enMano), unidad: unidadDe(enMano) }
   }
 
-  const grupo = await db.grupos.get(sesion.grupoId)
-  const curso = await db.cursos.filter((c) => c.activo).first()
-  if (!grupo || !curso) throw new Error('Falta el grupo o el curso activo')
+  // La clase del día queda cancelada, salvo que no salga del horario (sesión
+  // movida a mano a un día sin franja) o que ya lo estuviera.
+  let cancelacion: ClaseCancelada | null = null
+  const enHorario = grupo.horario.some(
+    (f) => f.diaSemana === diaLectivo(sesion.fecha) && f.horaInicio === franja,
+  )
+  if (enHorario) {
+    const previas = await db.clasesCanceladas
+      .where('[grupoId+fecha]')
+      .equals([sesion.grupoId, sesion.fecha])
+      .toArray()
+    if (!previas.some((c) => c.horaInicio === undefined || c.horaInicio === franja))
+      cancelacion = {
+        id: nuevoId(),
+        grupoId: sesion.grupoId,
+        fecha: sesion.fecha,
+        horaInicio: franja,
+        creado: new Date().toISOString(),
+      }
+  }
 
-  const siguientes = (await db.sesiones.where('grupoId').equals(sesion.grupoId).toArray())
-    .filter((s) => s.fecha > sesion.fecha)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const previa: PreviaEliminarClase = {
+    modo,
+    eliminada: {
+      id: sesion.id,
+      fecha: sesion.fecha,
+      franja,
+      titulo: tituloVisible(sesion),
+      unidad: unidadDe(sesion),
+      vacia: sesionVacia(sesion),
+    },
+    movimientos,
+    seDetieneEn,
+    sinUbicacion,
+  }
+  return { sesion, grupo, previa, tocadas, despues, cancelacion }
+}
 
-  // huecos[0] es la propia CLASE que se libera; cada sesión posterior ocupa la
-  // posición anterior de la secuencia, cerrando el hueco. Se recorre por clases
-  // y no por fechas: en un grupo con dos franjas el mismo día, contar por días
-  // adelantaba las sesiones el doble de lo debido.
-  const huecos = huecosDeClase(grupo, curso, sesion.fecha)
-  const cambios = siguientes
-    .map((s, i) => ({
-      id: s.id,
-      antes: { fecha: s.fecha, franjaInicio: s.franjaInicio },
-      despues: huecos[i],
-    }))
-    .filter((c) => c.despues !== undefined)
-    .filter(
-      (c) => c.despues.fecha !== c.antes.fecha || c.despues.franjaInicio !== c.antes.franjaInicio,
-    )
+/** Qué pasaría al eliminar, sin escribir nada. */
+export async function previsualizarEliminarClase(
+  sesionId: string,
+  modo: ModoEliminarClase,
+): Promise<PreviaEliminarClase> {
+  return (await calcularEliminacion(sesionId, modo)).previa
+}
 
-  await db.transaction('rw', db.sesiones, async () => {
-    await db.sesiones.delete(sesionId)
-    for (const c of cambios)
-      await db.sesiones.update(c.id, {
-        fecha: c.despues.fecha,
-        franjaInicio: c.despues.franjaInicio,
-      })
+/**
+ * Elimina la sesión según `modo`, en una sola transacción, y devuelve el lote
+ * con el estado exacto de antes para poder deshacerlo (`deshacerLote`).
+ */
+export async function eliminarClase(
+  sesionId: string,
+  modo: ModoEliminarClase,
+): Promise<{ previa: PreviaEliminarClase; lote: LotePlan }> {
+  const { sesion, grupo, previa, tocadas, despues, cancelacion } = await calcularEliminacion(
+    sesionId,
+    modo,
+  )
+
+  await db.transaction('rw', db.sesiones, db.clasesCanceladas, async () => {
+    await db.sesiones.delete(sesion.id)
+    if (despues.length) await db.sesiones.bulkPut(despues)
+    if (cancelacion) await db.clasesCanceladas.add(cancelacion)
   })
 
-  return async () => {
-    await db.transaction('rw', db.sesiones, async () => {
-      for (const c of cambios)
-        await db.sesiones.update(c.id, {
-          fecha: c.antes.fecha,
-          franjaInicio: c.antes.franjaInicio,
-        })
-      await db.sesiones.add(sesion)
-    })
-  }
+  const cuando = `${formatoDiaCorto(sesion.fecha)}${previa.eliminada.franja ? ` · ${previa.eliminada.franja}` : ''}`
+  const lote = crearLote({
+    grupoId: grupo.id,
+    tipo: modo === 'mover' ? 'eliminar-mover' : 'eliminar',
+    descripcion:
+      modo === 'mover'
+        ? `Eliminar y mover a la derecha: ${cuando} en ${grupo.nombre}`
+        : `Eliminar la sesión del ${cuando} en ${grupo.nombre}`,
+    antes: { sesiones: [sesion, ...tocadas], cancelaciones: [] },
+    despues: { sesiones: despues, cancelaciones: cancelacion ? [cancelacion] : [] },
+  })
+  return { previa, lote }
 }
 
 /** Guarda una sesión como plantilla reutilizable. */
@@ -1848,6 +1950,8 @@ async function contextoVolcado(op: OpcionesVolcado) {
 
   return { ud, grupo, plan, curso, sesiones }
 }
+// `deshacerLote` se reexporta para que las vistas no tengan que conocer dos módulos.
+export { deshacerLote }
 
 /**
  * Calcula el volcado sin escribir nada. Recorre los huecos REALES del horario
@@ -1955,10 +2059,13 @@ function calcularPrevia(
  * anterior exacto. Sin esto, sobrescribir sería pérdida irreversible de trabajo
  * programado.
  */
-export async function aplicarVolcado(
-  op: OpcionesVolcado,
-): Promise<{ previa: PreviaVolcado; loteId: string; deshacer: () => Promise<void> }> {
-  const { grupo, plan, curso, sesiones } = await contextoVolcado(op)
+export async function aplicarVolcado(op: OpcionesVolcado): Promise<{
+  previa: PreviaVolcado
+  loteId: string
+  lote: LotePlan
+  deshacer: () => Promise<void>
+}> {
+  const { ud, grupo, plan, curso, sesiones } = await contextoVolcado(op)
   const previa = calcularPrevia(op, grupo, plan, curso, sesiones)
   const loteId = nuevoId()
   const porId = new Map(sesiones.map((s) => [s.id, s]))
@@ -1994,15 +2101,14 @@ export async function aplicarVolcado(
     for (const s of nuevas.values()) await db.sesiones.put(s)
   })
 
-  return {
-    previa,
-    loteId,
-    deshacer: async () => {
-      await db.transaction('rw', db.sesiones, async () => {
-        if (antes.length > 0) await db.sesiones.bulkPut(antes)
-      })
-    },
-  }
+  const lote = crearLote({
+    grupoId: grupo.id,
+    tipo: 'volcado',
+    descripcion: `Llevar «${ud.titulo}» a ${grupo.nombre}`,
+    antes: { sesiones: antes, cancelaciones: [] },
+    despues: { sesiones: [...nuevas.values()], cancelaciones: [] },
+  })
+  return { previa, loteId, lote, deshacer: () => deshacerLote(lote) }
 }
 
 /**

@@ -65,6 +65,7 @@ import { aISO, diaLectivo, formatoCorto, formatoDiaCorto, NOMBRES_DIA, sumarDias
 import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, etapaVisible, nivelesDe } from '../lib/etapas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
+import { useLotesPlan } from '../store/lotesPlan'
 import { useUI } from '../store/ui'
 import { useVistaPlanificador, type VistaPlanificador } from '../store/vistaPlanificador'
 import { PlanGrupo } from './PlanGrupo'
@@ -594,6 +595,8 @@ function HojaLlevarAGrupo({
   onCerrar: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const registrarLote = useLotesPlan((s) => s.registrar)
+  const quitarLote = useLotesPlan((s) => s.quitar)
   const [grupoId, setGrupoId] = useState('')
   const [desde, setDesde] = useState(aISO())
   const [franja, setFranja] = useState<string | null>(null)
@@ -690,7 +693,11 @@ function HojaLlevarAGrupo({
         partes.push(`${r.previa.sustituidas.length} sustituidas`)
       if (r.previa.saltadas > 0) partes.push(`${r.previa.saltadas} clases ocupadas respetadas`)
       if (r.previa.sinHueco > 0) partes.push(`${r.previa.sinHueco} sin hueco`)
-      mostrarAviso(partes.join(' · '), r.deshacer)
+      registrarLote(r.lote)
+      mostrarAviso(partes.join(' · '), async () => {
+        await r.deshacer()
+        quitarLote(r.lote.id)
+      })
     } catch (e) {
       setError(mensajeVolcado(e))
     } finally {
