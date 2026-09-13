@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
-import { aplicarUnidadAGrupo, importarUnidad } from './planificador'
+import { aplicarUnidadAGrupo, generarCursoCompleto, importarUnidad } from './planificador'
 import { analizarTexto } from '../lib/importarTexto'
 import { textoMaterial } from '../lib/recursosTexto'
 
@@ -137,10 +137,13 @@ describe('una unidad real, de punta a punta', () => {
       { tipo: 'enlace', valor: 'https://ejemplo.org/reglas-diez-pases' },
     ])
 
+    await generarCursoCompleto(GRUPO_ID)
     const aplicada = await aplicarUnidadAGrupo({ udId: id, grupoId: GRUPO_ID, desde: '2026-10-06' })
-    expect(aplicada).toMatchObject({ creadas: 3, omitidas: 0, sinHueco: 0 })
+    expect(aplicada).toMatchObject({ colocadas: 3, omitidas: 0, sinHueco: 0 })
 
-    const sesiones = (await db.sesiones.toArray()).sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const sesiones = (await db.sesiones.where('udId').equals(id).toArray()).sort((a, b) =>
+      a.fecha.localeCompare(b.fecha),
+    )
     // Martes seguidos saltando el festivo del 13.
     expect(sesiones.map((s) => s.fecha)).toEqual(['2026-10-06', '2026-10-20', '2026-10-27'])
 
@@ -211,8 +214,11 @@ describe('material en bloque, con un enlace dentro', () => {
     expect(ud?.sesiones?.[0].recursosNecesarios).toBe('20 combas cortas, 2 combas largas, ver vídeo')
     expect(ud?.sesiones?.[0].recursos).toEqual([{ tipo: 'enlace', valor: 'https://ejemplo.org/comba' }])
 
+    await generarCursoCompleto(GRUPO_ID)
     await aplicarUnidadAGrupo({ udId: id, grupoId: GRUPO_ID, desde: '2026-10-06' })
-    const sesiones = (await db.sesiones.toArray()).sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const sesiones = (await db.sesiones.where('udId').equals(id).toArray()).sort((a, b) =>
+      a.fecha.localeCompare(b.fecha),
+    )
 
     const texto = textoMaterial(
       sesiones.map((s) => ({ fecha: s.fecha, clases: [{ grupo: '4ºB', texto: s.recursosNecesarios }] })),

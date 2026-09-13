@@ -13,10 +13,15 @@ import {
 import type { FranjaHorario } from './types'
 
 /**
- * Volcar una unidad a un grupo. El fallo que motiva estas pruebas: en un grupo
- * con el curso ya generado, el volcado saltaba TODOS los huecos por «ocupados»
- * salvo las segundas franjas del día —las únicas que la migración v24 no había
- * marcado—, y la unidad caía a razón de una sesión por semana.
+ * Volcar una unidad a un grupo.
+ *
+ * Regla dura: el volcado solo RELLENA sesiones que ya existen. Nunca crea, nunca
+ * resucita una eliminada, nunca toca el horario ni las cancelaciones. El fallo
+ * que la motiva: el volcado recorría el horario, así que las clases que el
+ * docente había eliminado volvían a aparecer al llevar una unidad nueva.
+ *
+ * Por eso cada prueba parte de un curso YA GENERADO: es lo único que crea
+ * sesiones.
  */
 
 const CURSO_ID = 'curso1'
@@ -57,6 +62,7 @@ beforeEach(async () => {
     orden: 0,
     horario: HORARIO_CUATRO,
   })
+  await generarCursoCompleto(GRUPO_ID)
 })
 
 afterEach(async () => {
@@ -79,10 +85,11 @@ async function unidadDe(cuantas: number) {
   return id
 }
 
-/** «fecha franja título», en el orden real en que ocurren las clases. */
+/** «fecha franja título» de las sesiones CON contenido, en el orden real de las clases. */
 async function programacion() {
   const lista = await db.sesiones.toArray()
   return lista
+    .filter((s) => s.titulo)
     .sort(
       (a, b) =>
         a.fecha.localeCompare(b.fecha) ||
@@ -91,30 +98,34 @@ async function programacion() {
     .map((s) => `${s.fecha} ${s.franjaInicio} ${s.titulo}`)
 }
 
-describe('volcado sobre huecos reales', () => {
+/** La sesión del esqueleto en esa clase. */
+async function sesionEn(fecha: string, franjaInicio: string) {
+  const s = await db.sesiones
+    .where('[grupoId+fecha+franjaInicio]')
+    .equals([GRUPO_ID, fecha, franjaInicio])
+    .first()
+  if (!s) throw new Error(`No hay sesión el ${fecha} a las ${franjaInicio}`)
+  return s
+}
+
+describe('volcado sobre las sesiones existentes', () => {
   it('un día con dos clases se ocupa entero antes de pasar al siguiente', async () => {
     const udId = await unidadDe(8)
     const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
 
     expect(r.previa.colocadas).toBe(8)
+    expect(r.previa.pasos.every((p) => p.accion === 'rellenar')).toBe(true)
     expect(await programacion()).toEqual([
       '2026-09-07 09:00 S1',
       '2026-09-08 10:00 S2',
       '2026-09-08 12:30 S3',
       '2026-09-10 11:00 S4',
       '2026-09-14 09:00 S5',
-      // El martes 15 es festivo: se salta entero, con sus dos clases.
+      // El martes 15 es festivo: no tiene sesiones, así que no consume ninguna.
       '2026-09-17 11:00 S6',
       '2026-09-21 09:00 S7',
       '2026-09-22 10:00 S8',
     ])
-  })
-
-  it('el festivo no consume sesiones: la secuencia continúa después', async () => {
-    const udId = await unidadDe(8)
-    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
-    const fechas = (await db.sesiones.toArray()).map((s) => s.fecha)
-    expect(fechas).not.toContain('2026-09-15')
   })
 
   it('empieza en la FRANJA elegida, no en la primera del día', async () => {
@@ -133,62 +144,139 @@ describe('volcado sobre huecos reales', () => {
     ])
   })
 
-  it('un grupo de una sola clase al día se comporta igual que siempre', async () => {
-    await db.grupos.update(GRUPO_ID, {
-      horario: [{ diaSemana: 4, horaInicio: '11:00', horaFin: '11:45' }],
-    })
-    const udId = await unidadDe(3)
-    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
-    expect(await programacion()).toEqual([
-      '2026-09-10 11:00 S1',
-      '2026-09-17 11:00 S2',
-      '2026-09-24 11:00 S3',
-    ])
-  })
-})
-
-describe('el curso ya generado no bloquea el volcado', () => {
-  it('rellena el esqueleto vacío en vez de saltarlo — el bug de «una por semana»', async () => {
-    await generarCursoCompleto(GRUPO_ID)
+  it('reutiliza las sesiones: ni una fila nueva, ni una clase duplicada', async () => {
+    const antes = await db.sesiones.count()
     const udId = await unidadDe(8)
+    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
 
-    const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
-
-    expect(r.previa.colocadas).toBe(8)
-    expect(r.previa.saltadas).toBe(0)
-    expect(r.previa.pasos.filter((p) => p.plan).every((p) => p.accion === 'rellenar')).toBe(true)
-    // Se REUTILIZAN las sesiones del esqueleto: ni una clase duplicada.
+    expect(await db.sesiones.count()).toBe(antes)
     const delMartes8 = (await db.sesiones.toArray()).filter((s) => s.fecha === '2026-09-08')
     expect(delMartes8).toHaveLength(2)
-    expect((await programacion()).slice(0, 4)).toEqual([
-      '2026-09-07 09:00 S1',
-      '2026-09-08 10:00 S2',
-      '2026-09-08 12:30 S3',
-      '2026-09-10 11:00 S4',
-    ])
   })
 
-  it('con sesiones antiguas sin franja, la segunda clase del día también se llena', async () => {
-    // Estado real tras la v24: una sesión por día, atada a la primera franja.
-    await crearSesion(GRUPO_ID, '2026-09-08', { franjaInicio: '10:00' })
+  it('conserva la hora ajustada de ese día al rellenar la sesión', async () => {
+    const lunes = await sesionEn('2026-09-07', '09:00')
+    await db.sesiones.update(lunes.id, { horaInicio: '09:15', horaFin: '10:00' })
+    const udId = await unidadDe(1)
+    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
+
+    expect(await db.sesiones.get(lunes.id)).toMatchObject({
+      titulo: 'S1',
+      horaInicio: '09:15',
+      horaFin: '10:00',
+      franjaInicio: '09:00',
+    })
+  })
+
+  it('una sesión antigua sin franja cuenta como la primera clase de su día', async () => {
+    await db.sesiones.clear()
+    const sinFranja = await crearSesion(GRUPO_ID, '2026-09-08')
+    const segunda = await crearSesion(GRUPO_ID, '2026-09-08', { franjaInicio: '12:30' })
     const udId = await unidadDe(2)
 
     const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-08', modo: 'saltar' })
     expect(r.previa.colocadas).toBe(2)
+    expect((await db.sesiones.get(sinFranja))?.titulo).toBe('S1')
+    expect((await db.sesiones.get(segunda))?.titulo).toBe('S2')
+  })
+})
+
+describe('el volcado nunca crea ni resucita sesiones', () => {
+  it('una sesión eliminada NO reaparece tras volcar', async () => {
+    const martes = await sesionEn('2026-09-08', '10:00')
+    await db.sesiones.delete(martes.id)
+    const antes = await db.sesiones.count()
+
+    const udId = await unidadDe(3)
+    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
+
+    expect(await db.sesiones.count()).toBe(antes)
+    expect(await programacion()).toEqual([
+      '2026-09-07 09:00 S1',
+      // La de las 10:00 del martes se eliminó: la unidad sigue en la siguiente.
+      '2026-09-08 12:30 S2',
+      '2026-09-10 11:00 S3',
+    ])
+    const delMartes = (await db.sesiones.toArray()).filter((s) => s.fecha === '2026-09-08')
+    expect(delMartes.map((s) => s.franjaInicio)).toEqual(['12:30'])
+  })
+
+  it('una clase eliminada con su cancelación sigue eliminada y cancelada', async () => {
+    const lunes = await sesionEn('2026-09-07', '09:00')
+    await db.sesiones.delete(lunes.id)
+    await db.clasesCanceladas.add({
+      id: 'c1',
+      grupoId: GRUPO_ID,
+      fecha: '2026-09-07',
+      horaInicio: '09:00',
+      creado: '2026-09-01T10:00:00.000Z',
+    })
+
+    const udId = await unidadDe(2)
+    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'sobrescribir' })
+
+    expect(await db.clasesCanceladas.count()).toBe(1)
+    expect((await db.sesiones.toArray()).some((s) => s.fecha === '2026-09-07')).toBe(false)
     expect(await programacion()).toEqual(['2026-09-08 10:00 S1', '2026-09-08 12:30 S2'])
+  })
+
+  it('el horario del grupo no se modifica', async () => {
+    const antes = await db.grupos.get(GRUPO_ID)
+    const udId = await unidadDe(10)
+    await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'sobrescribir' })
+    expect(await db.grupos.get(GRUPO_ID)).toEqual(antes)
+  })
+
+  it('una unidad más larga que las sesiones disponibles avisa y no crea nada', async () => {
+    const antes = await db.sesiones.count()
+    const udId = await unidadDe(6)
+    const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2027-06-14', modo: 'saltar' })
+
+    // Del 14 al 18 de junio: lunes, martes (x2) y jueves = 4 sesiones.
+    expect(r.previa.huecosDisponibles).toBe(4)
+    expect(r.previa.colocadas).toBe(4)
+    expect(r.previa.sinHueco).toBe(2)
+    expect(r.previa.ultimaFecha).toBe('2027-06-17')
+    expect(await db.sesiones.count()).toBe(antes)
+  })
+
+  it('sin curso generado no coloca nada', async () => {
+    await db.sesiones.clear()
+    const udId = await unidadDe(3)
+    const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
+
+    expect(r.previa.huecosDisponibles).toBe(0)
+    expect(r.previa.colocadas).toBe(0)
+    expect(r.previa.sinHueco).toBe(3)
+    expect(await db.sesiones.count()).toBe(0)
+  })
+
+  it('regenerar el curso no resucita una clase eliminada con su cancelación', async () => {
+    const lunes = await sesionEn('2026-09-07', '09:00')
+    await db.sesiones.delete(lunes.id)
+    await db.clasesCanceladas.add({
+      id: 'c1',
+      grupoId: GRUPO_ID,
+      fecha: '2026-09-07',
+      horaInicio: '09:00',
+      creado: '2026-09-01T10:00:00.000Z',
+    })
+
+    const { resultado } = await generarCursoCompleto(GRUPO_ID)
+    expect(resultado.creadas).toBe(0)
+    expect(resultado.eliminadas).toBe(1)
+    expect((await db.sesiones.toArray()).some((s) => s.fecha === '2026-09-07')).toBe(false)
   })
 })
 
 describe('modos', () => {
   /** Una clase con trabajo hecho el jueves 10. */
   async function conTrabajoHecho() {
-    await crearSesion(GRUPO_ID, '2026-09-10', {
-      titulo: 'Evaluación inicial',
-      franjaInicio: '11:00',
-    })
+    const jueves = await sesionEn('2026-09-10', '11:00')
+    await db.sesiones.update(jueves.id, { titulo: 'Evaluación inicial' })
   }
 
-  it('«saltar» respeta la clase con trabajo y sigue en la siguiente libre', async () => {
+  it('«saltar» respeta la clase con trabajo y sigue en la siguiente sesión', async () => {
     await conTrabajoHecho()
     const udId = await unidadDe(4)
     const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
@@ -204,7 +292,7 @@ describe('modos', () => {
     ])
   })
 
-  it('«sobrescribir» ocupa los huecos seguidos y dice qué se pierde', async () => {
+  it('«sobrescribir» ocupa las sesiones seguidas y dice qué se pierde', async () => {
     await conTrabajoHecho()
     const udId = await unidadDe(4)
     const r = await aplicarVolcado({
@@ -227,6 +315,7 @@ describe('modos', () => {
 
   it('deshacer un volcado con sobrescritura restaura lo que había', async () => {
     await conTrabajoHecho()
+    const antes = await db.sesiones.toArray()
     const udId = await unidadDe(4)
     const { deshacer } = await aplicarVolcado({
       udId,
@@ -237,29 +326,12 @@ describe('modos', () => {
     await deshacer()
 
     expect(await programacion()).toEqual(['2026-09-10 11:00 Evaluación inicial'])
-    const restaurada = (await db.sesiones.toArray())[0]
-    expect(restaurada.udId).toBeUndefined()
-    expect(restaurada.loteVolcado).toBeUndefined()
-  })
-
-  it('deshacer devuelve el esqueleto vacío que se había rellenado', async () => {
-    await generarCursoCompleto(GRUPO_ID)
-    const antes = await db.sesiones.count()
-    const udId = await unidadDe(5)
-    const { deshacer } = await aplicarVolcado({
-      udId,
-      grupoId: GRUPO_ID,
-      desde: '2026-09-07',
-      modo: 'saltar',
-    })
-    await deshacer()
-
-    expect(await db.sesiones.count()).toBe(antes)
-    expect((await db.sesiones.toArray()).every((s) => !s.udId && s.titulo === '')).toBe(true)
+    expect(await db.sesiones.toArray()).toEqual(antes)
   })
 
   it('la previa no escribe nada y cambiar de modo solo cambia el reparto', async () => {
     await conTrabajoHecho()
+    const antes = await db.sesiones.toArray()
     const udId = await unidadDe(4)
     const saltar = await previsualizarVolcado({
       udId,
@@ -277,24 +349,11 @@ describe('modos', () => {
     expect(saltar.saltadas).toBe(1)
     expect(pisar.saltadas).toBe(0)
     expect(pisar.sustituidas).toHaveLength(1)
-    expect(await db.sesiones.count()).toBe(1) // solo la clase con trabajo hecho
+    expect(await db.sesiones.toArray()).toEqual(antes)
   })
 })
 
 describe('avisos', () => {
-  it('avisa de cuántas sesiones se quedan fuera del curso y coloca las que caben', async () => {
-    const udId = await unidadDe(6)
-    const previa = await previsualizarVolcado({
-      udId,
-      grupoId: GRUPO_ID,
-      desde: '2027-06-14',
-      modo: 'saltar',
-    })
-    // Del 14 al 18 de junio: lunes, martes (x2) y jueves = 4 clases.
-    expect(previa.colocadas).toBe(4)
-    expect(previa.sinHueco).toBe(2)
-  })
-
   it('señala el periodo vacacional que atraviesa y los trimestres que cruza', async () => {
     const udId = await unidadDe(30)
     const previa = await previsualizarVolcado({
@@ -307,9 +366,10 @@ describe('avisos', () => {
     expect(previa.trimestresCruzados).toEqual([1, 2])
   })
 
-  it('detecta que la unidad ya estaba volcada y sabe reemplazar el volcado anterior', async () => {
+  it('detecta que la unidad ya estaba volcada y reemplaza vaciando, sin borrar filas', async () => {
     const udId = await unidadDe(3)
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
+    const total = await db.sesiones.count()
 
     const previa = await previsualizarVolcado({
       udId,
@@ -332,12 +392,13 @@ describe('avisos', () => {
       '2026-09-22 10:00 S2',
       '2026-09-22 12:30 S3',
     ])
+    expect(await db.sesiones.count()).toBe(total)
   })
 
   it('deshacer un reemplazo repone el volcado anterior tal cual estaba', async () => {
     const udId = await unidadDe(3)
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
-    const original = await programacion()
+    const original = await db.sesiones.toArray()
 
     const { deshacer } = await aplicarVolcado({
       udId,
@@ -348,7 +409,7 @@ describe('avisos', () => {
     })
     await deshacer()
 
-    expect(await programacion()).toEqual(original)
+    expect(await db.sesiones.toArray()).toEqual(original)
   })
 })
 
@@ -359,12 +420,11 @@ describe('vínculo con la unidad', () => {
 
     const ud = await db.unidades.get(udId)
     const plan = ud!.sesiones!
-    const colocadas = (await db.sesiones.toArray()).sort(
+    const colocadas = (await db.sesiones.where('udId').equals(udId).toArray()).sort(
       (a, b) =>
         a.fecha.localeCompare(b.fecha) ||
         (a.franjaInicio ?? '').localeCompare(b.franjaInicio ?? ''),
     )
-    expect(colocadas.every((s) => s.udId === udId)).toBe(true)
     expect(colocadas.map((s) => s.sesionPlanId)).toEqual(plan.map((p) => p.id))
     expect(new Set(colocadas.map((s) => s.loteVolcado)).size).toBe(1)
   })
@@ -384,86 +444,17 @@ describe('vínculo con la unidad', () => {
   })
 })
 
-/**
- * Regresión del «object store was not found».
- *
- * `aplicarVolcado` llama a `quitarCancelaciones` por cada sesión colocada, y esa
- * función LEE `db.grupos` para estrechar una cancelación de día completo. Con la
- * tabla fuera del scope de la transacción, IndexedDB abortaba con NotFoundError
- * — pero solo si el grupo tenía alguna clase cancelada, porque sin ninguna la
- * función sale antes de llegar a esa lectura. Por eso el resto de las pruebas
- * pasaban y la app fallaba con datos de verdad.
- */
-describe('volcado con clases canceladas de por medio', () => {
-  async function cancelar(fecha: string, horaInicio?: string) {
-    await db.clasesCanceladas.add({
-      id: `c-${fecha}-${horaInicio ?? 'dia'}`,
-      grupoId: GRUPO_ID,
-      fecha,
-      ...(horaInicio ? { horaInicio } : {}),
-      creado: '2026-09-01T10:00:00.000Z',
-    })
-  }
-
-  it('coloca las 13 sesiones de la unidad con cancelaciones en medio', async () => {
-    // Una cancelación de día completo y otra de una franja suelta, que son los
-    // dos casos que `quitarCancelaciones` trata distinto.
-    await cancelar('2026-09-08')
-    await cancelar('2026-09-14', '09:00')
-    await cancelar('2026-09-17', '11:00')
-
-    const udId = await unidadDe(13)
-    const r = await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
-
-    expect(r.previa.colocadas).toBe(13)
-    expect(await db.sesiones.count()).toBe(13)
-    // Planificar una clase la restaura: las cancelaciones que tapaban un hueco
-    // ocupado por la unidad ya no tienen sentido.
-    expect(await db.clasesCanceladas.count()).toBe(0)
-  })
-
-  it('una cancelación de día completo se estrecha a las franjas que no se ocupan', async () => {
-    await cancelar('2026-09-08') // martes: dos clases, 10:00 y 12:30
-    const udId = await unidadDe(2)
-
-    // Arranca en la SEGUNDA clase del martes: la primera se queda sin ocupar.
-    await aplicarVolcado({
-      udId,
-      grupoId: GRUPO_ID,
-      desde: '2026-09-08',
-      franjaInicio: '12:30',
-      modo: 'saltar',
-    })
-
-    const quedan = await db.clasesCanceladas.toArray()
-    expect(quedan.map((c) => c.horaInicio)).toEqual(['10:00'])
-  })
-
-  it('deshacer devuelve las sesiones pero no resucita las cancelaciones', async () => {
-    await cancelar('2026-09-07')
-    const udId = await unidadDe(3)
-    const { deshacer } = await aplicarVolcado({
-      udId,
-      grupoId: GRUPO_ID,
-      desde: '2026-09-07',
-      modo: 'saltar',
-    })
-    await deshacer()
-    expect(await db.sesiones.count()).toBe(0)
-  })
-})
-
 describe('la transacción es atómica', () => {
   it('si falla a mitad, no queda ni una sesión colocada', async () => {
     const udId = await unidadDe(13)
     let escrituras = 0
-    const original = db.sesiones.add.bind(db.sesiones)
+    const original = db.sesiones.put.bind(db.sesiones)
     const espia = vi
-      .spyOn(db.sesiones, 'add')
+      .spyOn(db.sesiones, 'put')
       .mockImplementation(((...args: Parameters<typeof original>) => {
         if (++escrituras === 6) throw new Error('fallo simulado a mitad del volcado')
         return original(...args)
-      }) as typeof db.sesiones.add)
+      }) as typeof db.sesiones.put)
 
     await expect(
       aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' }),
@@ -471,7 +462,7 @@ describe('la transacción es atómica', () => {
 
     espia.mockRestore()
     // Ni las cinco que sí llegaron a escribirse: la transacción entera revierte.
-    expect(await db.sesiones.count()).toBe(0)
+    expect(await programacion()).toEqual([])
   })
 
   it('si falla al reemplazar un volcado previo, el anterior sigue intacto', async () => {
@@ -479,9 +470,9 @@ describe('la transacción es atómica', () => {
     await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-07', modo: 'saltar' })
     const antes = await programacion()
 
-    const espia = vi.spyOn(db.sesiones, 'add').mockImplementation((() => {
+    const espia = vi.spyOn(db.sesiones, 'put').mockImplementation((() => {
       throw new Error('fallo simulado al reemplazar')
-    }) as typeof db.sesiones.add)
+    }) as typeof db.sesiones.put)
 
     await expect(
       aplicarVolcado({
@@ -509,6 +500,7 @@ describe('las cancelaciones viajan en la copia cifrada', () => {
     })
     const udId = await unidadDe(3)
     await aplicarVolcado({ udId, grupoId: GRUPO_ID, desde: '2026-09-10', modo: 'saltar' })
+    const total = await db.sesiones.count()
 
     const { fichero, cabecera } = await exportarBackup('pista-mojada-2026')
     expect(cabecera.registros.clasesCanceladas).toBe(1)
@@ -523,6 +515,6 @@ describe('las cancelaciones viajan en la copia cifrada', () => {
       fecha: '2026-09-08',
       horaInicio: '10:00',
     })
-    expect(await db.sesiones.count()).toBe(3)
+    expect(await db.sesiones.count()).toBe(total)
   })
 })

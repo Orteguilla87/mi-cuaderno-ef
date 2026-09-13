@@ -702,9 +702,9 @@ function HojaLlevarAGrupo({
     <Hoja abierta={!!unidad} titulo={`Llevar «${unidad.titulo}» a un grupo`} onCerrar={onCerrar}>
       <div className="space-y-4">
         <p className="text-sm texto-suave">
-          Las sesiones de {vocabulario.unidadEnFrase} se colocan en las clases seguidas del grupo a
-          partir del día y la clase que elijas. Un día con dos clases se ocupa entero antes de pasar
-          al siguiente.
+          Las sesiones de {vocabulario.unidadEnFrase} se colocan en las sesiones ya programadas del
+          grupo, seguidas, a partir del día y la clase que elijas. No se crea ninguna sesión nueva ni
+          vuelve ninguna que hayas eliminado.
         </p>
 
         <div>
@@ -840,9 +840,11 @@ function HojaLlevarAGrupo({
  */
 function PreviaDelVolcado({ previa }: { previa: PreviaVolcado }) {
   const avisos: string[] = []
-  if (previa.sinHueco > 0)
+  // El volcado no crea sesiones: si no caben, se dice cuántas quedan fuera y
+  // hasta dónde llega, y ya está. Aviso, no bloqueo.
+  if (previa.sinHueco > 0 && previa.colocadas > 0 && previa.ultimaFecha)
     avisos.push(
-      `${previa.sinHueco} ${previa.sinHueco === 1 ? 'sesión se queda' : 'sesiones se quedan'} fuera: no hay más clases antes de fin de curso.`,
+      `${previa.sinHueco} ${previa.sinHueco === 1 ? 'sesión se queda' : 'sesiones se quedan'} fuera: solo hay ${previa.huecosDisponibles} ${previa.huecosDisponibles === 1 ? 'sesión programada' : 'sesiones programadas'} desde esa fecha. El volcado llega hasta el ${formatoDiaCorto(previa.ultimaFecha)}.`,
     )
   if (previa.periodosCruzados.length > 0)
     avisos.push(`La unidad atraviesa ${previa.periodosCruzados.join(' y ')}.`)
@@ -884,11 +886,12 @@ function PreviaDelVolcado({ previa }: { previa: PreviaVolcado }) {
         </div>
       )}
 
-      {previa.pasos.length === 0 ? (
-        <p className="text-sm texto-suave">
-          No hay ninguna clase de este grupo a partir de esa fecha.
+      {previa.huecosDisponibles === 0 ? (
+        <p className="panel-agua text-sm">
+          Este grupo no tiene sesiones programadas a partir de esa fecha. La unidad solo se
+          coloca en sesiones que ya existen: genera antes el curso en Planificador › Por grupo.
         </p>
-      ) : (
+      ) : previa.pasos.length === 0 ? null : (
         <ol className="max-h-72 space-y-1 overflow-y-auto pr-1">
           {previa.pasos.map((p) => (
             <li
@@ -906,12 +909,10 @@ function PreviaDelVolcado({ previa }: { previa: PreviaVolcado }) {
                 {formatoDiaCorto(p.fecha)} · {p.franjaInicio}
               </span>
               <span className="min-w-0 flex-1 truncate">
-                {p.plan ? p.plan.titulo || 'Sesión sin título' : p.previa?.titulo}
+                {p.plan ? p.plan.titulo || 'Sesión sin título' : p.previa.titulo}
               </span>
               <span className="shrink-0 text-xs font-semibold uppercase tracking-wide">
-                {p.accion === 'crear'
-                  ? 'Nueva'
-                  : p.accion === 'rellenar'
+                {p.accion === 'rellenar'
                     ? 'Rellena'
                     : p.accion === 'sustituir'
                       ? 'Sustituye'

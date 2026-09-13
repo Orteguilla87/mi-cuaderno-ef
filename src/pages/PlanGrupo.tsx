@@ -494,7 +494,7 @@ function HojaCopiarPlan({
       desde,
     })
     setResultados(res)
-    const total = res.reduce((n, r) => n + r.creadas, 0)
+    const total = res.reduce((n, r) => n + r.colocadas, 0)
     mostrarAviso(`${total} sesiones copiadas`, async () => {
       await deshacer()
       setResultados(null)
@@ -507,8 +507,8 @@ function HojaCopiarPlan({
         <p className="text-sm texto-suave">
           Se copian {sesiones.length}{' '}
           {sesiones.length === 1 ? 'sesión' : 'sesiones'} con su título, juegos, notas y recursos.
-          Se colocan <strong>en orden</strong> sobre las clases del grupo de destino, saltando
-          festivos y las clases que ya tengan sesión.
+          Se colocan <strong>en orden</strong> sobre las sesiones vacías ya programadas en el grupo
+          de destino, respetando las que tienen contenido. No se crea ninguna sesión nueva.
         </p>
 
         {candidatos.length === 0 ? (
@@ -581,9 +581,9 @@ function HojaCopiarPlan({
               <div className="panel-agua space-y-1 text-sm">
                 {resultados.map((r) => (
                   <p key={r.grupoId}>
-                    <strong>{r.nombreGrupo}:</strong> {r.creadas} copiadas
-                    {r.omitidas > 0 && ` · ${r.omitidas} clases ya ocupadas`}
-                    {r.sinHueco > 0 && ` · ${r.sinHueco} sin hueco en el curso`}
+                    <strong>{r.nombreGrupo}:</strong> {r.colocadas} copiadas
+                    {r.omitidas > 0 && ` · ${r.omitidas} sesiones con contenido respetadas`}
+                    {r.sinHueco > 0 && ` · ${r.sinHueco} sin sesión vacía donde ir`}
                   </p>
                 ))}
               </div>

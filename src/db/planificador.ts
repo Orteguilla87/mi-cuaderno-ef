@@ -1429,6 +1429,8 @@ export interface ResultadoGeneracion {
   creadas: number
   /** Clases que ya tenían sesión y se han respetado. */
   existentes: number
+  /** Clases que el docente eliminó: no se vuelven a crear. */
+  eliminadas: number
   total: number
 }
 
@@ -1436,8 +1438,10 @@ export interface ResultadoGeneracion {
  * Genera el esqueleto del curso: una sesión vacía por cada clase real del grupo
  * entre el inicio y el fin del curso, saltando festivos y vacaciones.
  *
- * Nunca pisa una sesión existente: si ya hay algo ese día, se deja como está.
- * Así se puede volver a ejecutar tras añadir vacaciones o cambiar el horario.
+ * Es el ÚNICO sitio que crea sesiones a partir del horario. Nunca pisa una
+ * sesión existente, y nunca resucita una clase que el docente eliminó (su
+ * `ClaseCancelada`): regenerar tras añadir vacaciones o cambiar el horario no
+ * devuelve lo que se quitó a propósito.
  */
 export async function generarCursoCompleto(
   grupoId: string,
@@ -1448,9 +1452,17 @@ export async function generarCursoCompleto(
 
   const huecos = huecosDeClase(grupo, curso)
   const ocupadas = clavesOcupadas(await db.sesiones.where('grupoId').equals(grupoId).toArray(), grupo)
+  const canceladas = await db.clasesCanceladas.where('grupoId').equals(grupoId).toArray()
+  // Misma regla que `tapa` en `db/sesiones.ts`: sin franja, cancela el día entero.
+  const eliminada = (h: HuecoDeClase) =>
+    canceladas.some(
+      (c) => c.fecha === h.fecha && (c.horaInicio === undefined || c.horaInicio === h.franjaInicio),
+    )
+  const libres = huecos.filter((h) => !ocupadas.has(claveHueco(h)))
+  const eliminadas = libres.filter(eliminada).length
 
-  const nuevas: Sesion[] = huecos
-    .filter((h) => !ocupadas.has(claveHueco(h)))
+  const nuevas: Sesion[] = libres
+    .filter((h) => !eliminada(h))
     .map((h) => ({
       id: nuevoId(),
       grupoId,
@@ -1468,7 +1480,8 @@ export async function generarCursoCompleto(
   return {
     resultado: {
       creadas: nuevas.length,
-      existentes: huecos.length - nuevas.length,
+      existentes: huecos.length - libres.length,
+      eliminadas,
       total: huecos.length,
     },
     deshacer: async () => void (await db.sesiones.bulkDelete(ids)),
@@ -1490,10 +1503,10 @@ export async function eliminarSesionesDeGrupo(
 export interface ResultadoCopia {
   grupoId: string
   nombreGrupo: string
-  creadas: number
-  /** Clases del destino que ya tenían sesión y no se han tocado. */
+  colocadas: number
+  /** Sesiones del destino que ya tenían contenido y no se han tocado. */
   omitidas: number
-  /** Faltaron fechas de clase para colocar todas las sesiones. */
+  /** Faltaron sesiones vacías en el destino para colocarlas todas. */
   sinHueco: number
 }
 
@@ -1501,9 +1514,12 @@ export interface ResultadoCopia {
  * Copia una planificación a uno o varios grupos de destino.
  *
  * Reglas, pensadas para que copiar nunca destruya trabajo hecho:
- *  · Las sesiones se colocan EN ORDEN sobre las clases del destino desde `desde`.
- *  · Una clase del destino que ya tenga sesión se salta, y la siguiente sesión
- *    del origen busca el siguiente hueco libre.
+ *  · Solo RELLENA sesiones que ya existen en el destino: no crea ninguna (eso
+ *    es cosa de «Generar curso completo»), así que no resucita una clase que el
+ *    docente eliminó.
+ *  · Las sesiones se colocan EN ORDEN sobre las sesiones del destino desde
+ *    `desde`. Una con contenido se salta, y la siguiente del origen busca la
+ *    siguiente vacía.
  *  · No se copia la valoración: es un juicio sobre cómo salió aquella clase.
  */
 export async function copiarPlanificacion(opciones: {
@@ -1512,41 +1528,44 @@ export async function copiarPlanificacion(opciones: {
   desde: string
 }): Promise<{ resultados: ResultadoCopia[]; deshacer: () => Promise<void> }> {
   const { sesiones, destinos, desde } = opciones
-  const ordenadas = [...sesiones].sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const ordenadas = [...sesiones].sort(
+    (a, b) =>
+      a.fecha.localeCompare(b.fecha) || (a.franjaInicio ?? '').localeCompare(b.franjaInicio ?? ''),
+  )
+  const curso = await db.cursos.filter((c) => c.activo).first()
+  if (!curso) throw new Error('No hay ningún curso escolar activo')
 
   const resultados: ResultadoCopia[] = []
-  const creadas: Sesion[] = []
+  const antes: Sesion[] = []
+  const despues: Sesion[] = []
 
   for (const grupoId of destinos) {
     const grupo = await db.grupos.get(grupoId)
     if (!grupo) continue
 
-    // Se piden más clases que sesiones para tener margen ante huecos ocupados.
-    // Clases, no fechas: un destino con dos franjas el mismo día tiene dos
-    // huecos que llenar, y contando por días se perdía uno de cada dos.
-    const candidatas = await proximosHuecos(grupo, desde, ordenadas.length * 3 + 10)
-    const ocupadas = clavesOcupadas(
+    const destino = sesionesEnOrden(
       await db.sesiones.where('grupoId').equals(grupoId).toArray(),
       grupo,
+      curso,
+      desde,
     )
 
     let omitidas = 0
-    let indiceFecha = 0
+    let j = 0
     let colocadas = 0
 
     for (const origen of ordenadas) {
-      // Avanza hasta la primera clase libre del destino.
-      while (indiceFecha < candidatas.length && ocupadas.has(claveHueco(candidatas[indiceFecha]))) {
-        indiceFecha++
+      // Avanza hasta la primera sesión vacía del destino.
+      while (j < destino.length && !sesionVacia(destino[j].sesion)) {
+        j++
         omitidas++
       }
-      if (indiceFecha >= candidatas.length) break
+      if (j >= destino.length) break
 
-      const hueco = candidatas[indiceFecha++]
-      creadas.push({
-        id: nuevoId(),
-        grupoId,
-        fecha: hueco.fecha,
+      const hueco = destino[j++].sesion
+      antes.push(hueco)
+      despues.push({
+        ...sinContenido(hueco),
         titulo: origen.titulo,
         udId: origen.udId,
         juegos: origen.juegos,
@@ -1554,26 +1573,23 @@ export async function copiarPlanificacion(opciones: {
         recursos: origen.recursos,
         recursosNecesarios: origen.recursosNecesarios,
         comentarios: origen.comentarios,
-        franjaInicio: hueco.franjaInicio,
       })
-      ocupadas.add(claveHueco(hueco))
       colocadas++
     }
 
     resultados.push({
       grupoId,
       nombreGrupo: grupo.nombre,
-      creadas: colocadas,
+      colocadas,
       omitidas,
       sinHueco: ordenadas.length - colocadas,
     })
   }
 
-  await db.sesiones.bulkAdd(creadas)
-  const ids = creadas.map((s) => s.id)
+  await db.transaction('rw', db.sesiones, () => db.sesiones.bulkPut(despues))
   return {
     resultados,
-    deshacer: async () => void (await db.sesiones.bulkDelete(ids)),
+    deshacer: async () => void (await db.transaction('rw', db.sesiones, () => db.sesiones.bulkPut(antes))),
   }
 }
 
@@ -1647,9 +1663,14 @@ export async function importarUnidad(
 /* ————————————————— Volcado de una unidad a un grupo —————————————————
  *
  * Volcar es el momento en que la programación escrita deja de ser texto y ocupa
- * clases del calendario. Todo pasa por aquí y por un único punto de resolución
- * de huecos —`huecosDeClase`, el mismo que usan Hoy, el Planificador y generar
- * el curso—: no hay una segunda aritmética de horario en el proyecto.
+ * clases del calendario.
+ *
+ * REGLA DURA: el volcado solo RELLENA sesiones que ya existen en la
+ * planificación del grupo. Nunca crea sesiones, nunca resucita una eliminada y
+ * nunca toca el horario ni las clases canceladas. Crear sesiones es cosa de
+ * «Generar curso completo», y de nadie más. El fallo que motivó la regla:
+ * recorrer los huecos del HORARIO en vez de las sesiones hacía reaparecer, al
+ * volcar, las clases que el docente había eliminado.
  *
  * POR QUÉ HAY PREVIA: colocar sesiones puede pisar trabajo ya programado. La
  * previa dice, hueco a hueco, qué va a pasar antes de escribir nada, y el
@@ -1682,15 +1703,80 @@ export function sesionVacia(s: Sesion): boolean {
   )
 }
 
-/** Qué le ocurre a un hueco concreto en este volcado. */
+/**
+ * La misma sesión sin nada de contenido: conserva solo lo que la hace ser ESA
+ * clase —grupo, fecha, franja y la hora ajustada de ese día—. Rellenar,
+ * sustituir o mover contenido parte siempre de aquí, para que la clase siga
+ * siendo la misma fila y en el mismo sitio.
+ */
+export function sinContenido(s: Sesion): Sesion {
+  return {
+    id: s.id,
+    grupoId: s.grupoId,
+    fecha: s.fecha,
+    titulo: '',
+    juegos: [],
+    notas: '',
+    recursos: [],
+    ...(s.franjaInicio !== undefined ? { franjaInicio: s.franjaInicio } : {}),
+    ...(s.horaInicio !== undefined ? { horaInicio: s.horaInicio } : {}),
+    ...(s.horaFin !== undefined ? { horaFin: s.horaFin } : {}),
+  }
+}
+
+/** Una sesión existente con la franja que ocupa, ya resuelta. */
+export interface SesionEnOrden {
+  sesion: Sesion
+  /** `franjaInicio`, o la primera clase de su día si no la tiene (antes de v24). */
+  franja: string
+}
+
+/**
+ * Las sesiones EXISTENTES de un grupo, en orden cronológico real (fecha y, dentro
+ * del día, franja), desde el día y la franja elegidos. Solo días lectivos: una
+ * sesión que se quedó en un festivo nuevo no es una clase que rellenar.
+ *
+ * Es la secuencia de destinos del volcado y de copiar planificaciones. Parte de
+ * las sesiones y no del horario, así que respeta por construcción toda sesión
+ * eliminada: lo que no existe no está en la lista.
+ */
+export function sesionesEnOrden(
+  sesiones: Sesion[],
+  grupo: Grupo,
+  curso: CursoFechas,
+  desde: string,
+  franjaDesde?: string,
+): SesionEnOrden[] {
+  // Una sesión sin franja ocupa la primera clase de su día: las MISMAS claves
+  // que `clavesOcupadas`.
+  const primeraDelDia = new Map<number, string>()
+  for (const f of grupo.horario) {
+    const previa = primeraDelDia.get(f.diaSemana)
+    if (previa === undefined || f.horaInicio < previa) primeraDelDia.set(f.diaSemana, f.horaInicio)
+  }
+  return sesiones
+    .map((sesion) => {
+      const dow = diaLectivo(sesion.fecha)
+      const franja = sesion.franjaInicio ?? (dow === null ? undefined : primeraDelDia.get(dow)) ?? ''
+      return { sesion, franja }
+    })
+    .filter(
+      ({ sesion, franja }) =>
+        sesion.fecha > desde || (sesion.fecha === desde && (!franjaDesde || franja >= franjaDesde)),
+    )
+    .filter(({ sesion }) => estadoDia(sesion.fecha, curso).tipo === 'lectivo')
+    .sort((a, b) => a.sesion.fecha.localeCompare(b.sesion.fecha) || a.franja.localeCompare(b.franja))
+}
+
+/** Qué le ocurre a una sesión existente en este volcado. */
 export interface PasoVolcado {
   fecha: string
   franjaInicio: string
-  /** Sesión del plan que se coloca aquí; `null` si el hueco se salta. */
+  /** Sesión del plan que se coloca aquí; `null` si la sesión se salta. */
   plan: { id: string; orden: number; titulo: string } | null
-  /** Lo que ya había en el hueco, si había algo. */
-  previa: { id: string; titulo: string; vacia: boolean; deLaUnidad: boolean } | null
-  accion: 'crear' | 'rellenar' | 'sustituir' | 'saltar'
+  /** La sesión que ya ocupa esa clase. Siempre existe: el volcado no crea. */
+  previa: { id: string; titulo: string; vacia: boolean; deLaUnidad: boolean }
+  accion: 'rellenar' | 'sustituir' | 'saltar'
 }
 
 export interface PreviaVolcado {
@@ -1703,8 +1789,13 @@ export interface PreviaVolcado {
   saltadas: number
   /** Sesiones que se pierden en modo «sobrescribir». Nunca en silencio. */
   sustituidas: { fecha: string; franjaInicio: string; titulo: string }[]
-  /** Sesiones del plan que no caben antes de fin de curso. */
+  /**
+   * Sesiones del plan que se quedan fuera: no hay más sesiones existentes en el
+   * grupo donde ponerlas. Aviso, no bloqueo: no se crean huecos para que quepan.
+   */
   sinHueco: number
+  /** Sesiones existentes del grupo desde el punto de inicio: el techo del volcado. */
+  huecosDisponibles: number
   /** Periodos no lectivos que el volcado atraviesa, por nombre. */
   periodosCruzados: string[]
   /** Trimestres que abarca el volcado. Más de uno = la unidad los cruza. */
@@ -1776,65 +1867,43 @@ function calcularPrevia(
   sesiones: Sesion[],
 ): PreviaVolcado {
   const volcadoPrevio = sesiones.filter((s) => s.udId === op.udId).length
-  // Reemplazar el volcado anterior es, a efectos de reparto, como si esas
-  // sesiones no estuvieran: sus huecos vuelven a estar libres.
-  const vigentes = op.reemplazarPrevio ? sesiones.filter((s) => s.udId !== op.udId) : sesiones
+  // Reemplazar el volcado anterior VACÍA esas sesiones —no las borra—: a efectos
+  // de reparto son clases libres.
+  const seVacia = (s: Sesion) => !!op.reemplazarPrevio && s.udId === op.udId
 
-  // Índice hueco → sesión que lo ocupa, con las MISMAS claves que
-  // `clavesOcupadas`: una sesión sin franja ocupa la primera clase de su día.
-  const primeraDelDia = new Map<number, string>()
-  for (const f of grupo.horario) {
-    const previa = primeraDelDia.get(f.diaSemana)
-    if (previa === undefined || f.horaInicio < previa) primeraDelDia.set(f.diaSemana, f.horaInicio)
-  }
-  const porClave = new Map<string, Sesion>()
-  for (const s of vigentes) {
-    const dow = diaLectivo(s.fecha)
-    const franja = s.franjaInicio ?? (dow === null ? undefined : primeraDelDia.get(dow))
-    porClave.set(`${s.fecha}|${franja ?? ''}`, s)
-  }
-
-  // Punto único de resolución de huecos, desde el día elegido y, dentro de él,
-  // desde la franja elegida.
-  const franjaDesde = op.franjaInicio
-  let huecos = huecosDeClase(grupo, curso, op.desde)
-  if (franjaDesde) huecos = huecos.filter((h) => h.fecha > op.desde || h.franjaInicio >= franjaDesde)
+  // La secuencia de destinos son las sesiones que YA existen, desde el día y la
+  // franja elegidos. Nunca el horario: una clase eliminada no está aquí.
+  const destinos = sesionesEnOrden(sesiones, grupo, curso, op.desde, op.franjaInicio)
 
   const pasos: PasoVolcado[] = []
   const sustituidas: PreviaVolcado['sustituidas'] = []
   let saltadas = 0
   let i = 0
 
-  for (const h of huecos) {
+  for (const { sesion, franja } of destinos) {
     if (i >= plan.length) break
-    const ocupa = porClave.get(claveHueco(h)) ?? null
-    const anterior = ocupa
-      ? {
-          id: ocupa.id,
-          titulo: ocupa.titulo.trim() || 'Sesión sin título',
-          vacia: sesionVacia(ocupa),
-          deLaUnidad: ocupa.udId === op.udId,
-        }
-      : null
+    const clase = { fecha: sesion.fecha, franjaInicio: franja }
+    const anterior = {
+      id: sesion.id,
+      titulo: sesion.titulo.trim() || 'Sesión sin título',
+      vacia: seVacia(sesion) || sesionVacia(sesion),
+      deLaUnidad: sesion.udId === op.udId,
+    }
 
-    // Un hueco vacío no es trabajo: se rellena siempre. Uno con contenido solo
+    // Una sesión vacía no es trabajo: se rellena siempre. Una con contenido solo
     // se pisa en modo «sobrescribir».
-    if (anterior && !anterior.vacia && op.modo === 'saltar') {
-      pasos.push({ ...h, plan: null, previa: anterior, accion: 'saltar' })
+    if (!anterior.vacia && op.modo === 'saltar') {
+      pasos.push({ ...clase, plan: null, previa: anterior, accion: 'saltar' })
       saltadas++
       continue
     }
 
     const paso = plan[i++]
-    const accion: PasoVolcado['accion'] = !anterior
-      ? 'crear'
-      : anterior.vacia
-        ? 'rellenar'
-        : 'sustituir'
+    const accion: PasoVolcado['accion'] = anterior.vacia ? 'rellenar' : 'sustituir'
     if (accion === 'sustituir')
-      sustituidas.push({ fecha: h.fecha, franjaInicio: h.franjaInicio, titulo: anterior!.titulo })
+      sustituidas.push({ ...clase, titulo: anterior.titulo })
     pasos.push({
-      ...h,
+      ...clase,
       plan: { id: paso.id, orden: paso.orden, titulo: paso.titulo },
       previa: anterior,
       accion,
@@ -1864,6 +1933,7 @@ function calcularPrevia(
     saltadas,
     sustituidas,
     sinHueco: plan.length - colocados.length,
+    huecosDisponibles: destinos.length,
     periodosCruzados,
     trimestresCruzados,
     volcadoPrevio,
@@ -1877,10 +1947,13 @@ function calcularPrevia(
  * Aplica el volcado que describe la previa, en una sola transacción y bajo una
  * marca de lote (`Sesion.loteVolcado`).
  *
- * `deshacer` revierte el lote ENTERO: borra lo creado, devuelve a su estado
- * anterior lo que se rellenó o se sustituyó y repone lo retirado al reemplazar
- * un volcado previo. Sin esto, sobrescribir sería pérdida irreversible de
- * trabajo programado.
+ * Solo escribe en `db.sesiones`, y solo sobre filas que ya existían: rellena,
+ * sustituye o —al reemplazar un volcado previo— vacía. Ni crea ni borra filas,
+ * ni toca el horario ni las clases canceladas.
+ *
+ * `deshacer` revierte el lote ENTERO devolviendo cada fila tocada a su estado
+ * anterior exacto. Sin esto, sobrescribir sería pérdida irreversible de trabajo
+ * programado.
  */
 export async function aplicarVolcado(
   op: OpcionesVolcado,
@@ -1888,62 +1961,37 @@ export async function aplicarVolcado(
   const { grupo, plan, curso, sesiones } = await contextoVolcado(op)
   const previa = calcularPrevia(op, grupo, plan, curso, sesiones)
   const loteId = nuevoId()
+  const porId = new Map(sesiones.map((s) => [s.id, s]))
 
-  const retiradas = op.reemplazarPrevio ? sesiones.filter((s) => s.udId === op.udId) : []
-  const retiradasIds = new Set(retiradas.map((s) => s.id))
+  // Estado nuevo de cada fila tocada. Primero se vacía el volcado anterior, si
+  // se reemplaza; después, cada paso con sesión del plan escribe encima.
+  const nuevas = new Map<string, Sesion>()
+  if (op.reemplazarPrevio)
+    for (const s of sesiones) if (s.udId === op.udId) nuevas.set(s.id, sinContenido(s))
 
-  // Estado anterior EXACTO de todo lo que el lote toca: es lo que repone deshacer.
-  const antes = new Map<string, Sesion>()
-  for (const s of retiradas) antes.set(s.id, s)
-  for (const p of previa.pasos) {
-    if (!p.previa || antes.has(p.previa.id)) continue
-    const original = sesiones.find((s) => s.id === p.previa!.id)
-    if (original) antes.set(original.id, original)
+  for (const paso of previa.pasos) {
+    if (!paso.plan) continue
+    const original = porId.get(paso.previa.id)!
+    const delPlan = plan.find((s) => s.id === paso.plan!.id)!
+    nuevas.set(original.id, {
+      ...sinContenido(original),
+      titulo: delPlan.titulo,
+      udId: op.udId,
+      sesionPlanId: delPlan.id,
+      loteVolcado: loteId,
+      notas: delPlan.notas,
+      recursos: delPlan.recursos,
+      ...(delPlan.recursosNecesarios !== undefined
+        ? { recursosNecesarios: delPlan.recursosNecesarios }
+        : {}),
+    })
   }
 
-  const creadas: string[] = []
-  const reescritas: string[] = []
+  // Estado anterior EXACTO de todo lo que el lote toca: es lo que repone deshacer.
+  const antes = [...nuevas.keys()].map((id) => porId.get(id)!)
 
-  // `db.grupos` va en el scope aunque aquí no se escriba en ella: dentro se
-  // llama a `quitarCancelaciones`, que LEE el horario del grupo para estrechar
-  // una cancelación de día completo. Dexie exige declarar por adelantado toda
-  // tabla que se vaya a tocar —también las que toca una función auxiliar y
-  // también en lectura—, y sin declararla el volcado reventaba con un
-  // «object store was not found» de IndexedDB en cuanto el grupo tenía alguna
-  // clase cancelada. Sin cancelaciones esa lectura no llega a ocurrir, que es
-  // por lo que solo fallaba en bases con datos de verdad.
-  await db.transaction('rw', db.sesiones, db.clasesCanceladas, db.grupos, async () => {
-    if (retiradas.length > 0) await db.sesiones.bulkDelete([...retiradasIds])
-
-    for (const paso of previa.pasos) {
-      if (!paso.plan) continue
-      const delPlan = plan.find((s) => s.id === paso.plan!.id)!
-      const contenido = {
-        grupoId: op.grupoId,
-        fecha: paso.fecha,
-        titulo: delPlan.titulo,
-        udId: op.udId,
-        sesionPlanId: delPlan.id,
-        loteVolcado: loteId,
-        juegos: [] as JuegoEnSesion[],
-        notas: delPlan.notas,
-        recursos: delPlan.recursos,
-        recursosNecesarios: delPlan.recursosNecesarios,
-        franjaInicio: paso.franjaInicio,
-      }
-      // Rellenar o sustituir REUTILIZA la sesión que ya estaba en el hueco: dos
-      // sesiones en la misma clase serían dos clases donde solo hay una.
-      if (paso.previa && !retiradasIds.has(paso.previa.id)) {
-        await db.sesiones.put({ id: paso.previa.id, ...contenido })
-        reescritas.push(paso.previa.id)
-      } else {
-        const id = nuevoId()
-        await db.sesiones.add({ id, ...contenido })
-        creadas.push(id)
-      }
-      // Planificar una clase es, por sí solo, restaurarla si estaba cancelada.
-      await quitarCancelaciones(op.grupoId, paso.fecha, paso.franjaInicio)
-    }
+  await db.transaction('rw', db.sesiones, async () => {
+    for (const s of nuevas.values()) await db.sesiones.put(s)
   })
 
   return {
@@ -1951,9 +1999,7 @@ export async function aplicarVolcado(
     loteId,
     deshacer: async () => {
       await db.transaction('rw', db.sesiones, async () => {
-        await db.sesiones.bulkDelete([...creadas, ...reescritas])
-        const reponer = [...antes.values()]
-        if (reponer.length > 0) await db.sesiones.bulkAdd(reponer)
+        if (antes.length > 0) await db.sesiones.bulkPut(antes)
       })
     },
   }
@@ -1970,14 +2016,14 @@ export async function aplicarUnidadAGrupo(opciones: {
   desde: string
   franjaInicio?: string
 }): Promise<{
-  creadas: number
+  colocadas: number
   omitidas: number
   sinHueco: number
   deshacer: () => Promise<void>
 }> {
   const { previa, deshacer } = await aplicarVolcado({ ...opciones, modo: 'saltar' })
   return {
-    creadas: previa.colocadas,
+    colocadas: previa.colocadas,
     omitidas: previa.saltadas,
     sinHueco: previa.sinHueco,
     deshacer,

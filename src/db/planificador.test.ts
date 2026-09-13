@@ -125,65 +125,73 @@ describe('importarUnidad', () => {
   })
 })
 
+/** Fechas de las sesiones con contenido: el esqueleto vacío no cuenta. */
+async function fechasProgramadas() {
+  return (await db.sesiones.toArray())
+    .filter((s) => s.titulo)
+    .map((s) => s.fecha)
+    .sort()
+}
+
 describe('aplicarUnidadAGrupo', () => {
-  it('coloca el plan en las clases reales seguidas desde la fecha', async () => {
+  beforeEach(async () => {
+    // Solo «Generar curso completo» crea sesiones: el volcado las rellena.
+    await generarCursoCompleto(GRUPO_ID)
+  })
+
+  it('coloca el plan en las sesiones seguidas desde la fecha', async () => {
     const udId = await unidadDeTres()
     const r = await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
 
-    expect(r.creadas).toBe(3)
+    expect(r.colocadas).toBe(3)
     expect(r.sinHueco).toBe(0)
-    const fechas = (await db.sesiones.toArray()).map((s) => s.fecha).sort()
     // Martes seguidos: 8, 15 y 22 de septiembre.
-    expect(fechas).toEqual(['2026-09-08', '2026-09-15', '2026-09-22'])
+    expect(await fechasProgramadas()).toEqual(['2026-09-08', '2026-09-15', '2026-09-22'])
   })
 
   it('salta los festivos: no son clase del grupo', async () => {
     const udId = await unidadDeTres()
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-10-06' })
 
-    const fechas = (await db.sesiones.toArray()).map((s) => s.fecha).sort()
-    expect(fechas).not.toContain('2026-10-13')
-    expect(fechas).toEqual(['2026-10-06', '2026-10-20', '2026-10-27'])
+    expect(await fechasProgramadas()).toEqual(['2026-10-06', '2026-10-20', '2026-10-27'])
   })
 
-  it('nunca pisa una clase que ya tenía sesión', async () => {
+  it('nunca pisa una clase que ya tenía trabajo', async () => {
     const udId = await unidadDeTres()
-    await db.sesiones.put({
-      id: 'ya-existe',
-      grupoId: GRUPO_ID,
-      fecha: '2026-09-15',
-      titulo: 'Trabajo previo',
-      juegos: [],
-      notas: '',
-      recursos: [],
-    })
+    const ya = (await db.sesiones.where('fecha').equals('2026-09-15').first())!
+    await db.sesiones.update(ya.id, { titulo: 'Trabajo previo' })
 
     const r = await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
 
-    expect(r.creadas).toBe(3)
+    expect(r.colocadas).toBe(3)
     expect(r.omitidas).toBe(1)
-    expect((await db.sesiones.get('ya-existe'))?.titulo).toBe('Trabajo previo')
-    const fechas = (await db.sesiones.toArray()).map((s) => s.fecha).sort()
-    expect(fechas).toEqual(['2026-09-08', '2026-09-15', '2026-09-22', '2026-09-29'])
+    expect((await db.sesiones.get(ya.id))?.titulo).toBe('Trabajo previo')
+    expect(await fechasProgramadas()).toEqual([
+      '2026-09-08',
+      '2026-09-15',
+      '2026-09-22',
+      '2026-09-29',
+    ])
   })
 
-  it('las sesiones creadas quedan atadas a la unidad', async () => {
+  it('las sesiones colocadas quedan atadas a la unidad', async () => {
     const udId = await unidadDeTres()
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
-    const creadas = await db.sesiones.toArray()
-    expect(creadas.every((s) => s.udId === udId)).toBe(true)
-    expect(creadas.find((s) => s.fecha === '2026-09-08')?.recursosNecesarios).toBe('10 balones')
+    const colocadas = await db.sesiones.where('udId').equals(udId).toArray()
+    expect(colocadas).toHaveLength(3)
+    expect(colocadas.find((s) => s.fecha === '2026-09-08')?.recursosNecesarios).toBe('10 balones')
   })
 
-  it('avisa si el curso se queda sin clases para todo el plan', async () => {
+  it('avisa si no quedan sesiones para todo el plan', async () => {
     const udId = await unidadDeTres()
     const r = await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2027-06-15' })
     // Solo queda un martes antes del fin de curso.
-    expect(r.creadas).toBe(1)
+    expect(r.colocadas).toBe(1)
     expect(r.sinHueco).toBe(2)
   })
 
-  it('deshacer retira solo las sesiones creadas', async () => {
+  it('deshacer devuelve las sesiones rellenadas a su estado anterior', async () => {
+    const antes = await db.sesiones.toArray()
     const udId = await unidadDeTres()
     const { deshacer } = await aplicarUnidadAGrupo({
       udId,
@@ -191,7 +199,7 @@ describe('aplicarUnidadAGrupo', () => {
       desde: '2026-09-07',
     })
     await deshacer()
-    expect(await db.sesiones.count()).toBe(0)
+    expect(await db.sesiones.toArray()).toEqual(antes)
   })
 
   it('se niega a llevar una unidad a un grupo de otra etapa', async () => {
@@ -565,6 +573,7 @@ describe('duplicarSesionPlan', () => {
 describe('eliminarSesionPlan', () => {
   it('quita la sesión, renumera el resto y no toca las sesiones ya colocadas', async () => {
     const udId = await unidadDeTres()
+    await generarCursoCompleto(GRUPO_ID)
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
     const realesAntes = await db.sesiones.count()
     const dos = (await db.unidades.get(udId))!.sesiones!.find((s) => s.titulo === 'Dos')!
@@ -751,13 +760,14 @@ describe('copiarUnidad', () => {
   it('no crea alumnado, notas, observaciones ni asistencia, ni toca las sesiones colocadas', async () => {
     await sembrarCriterios()
     const udId = await unidadDeTres()
+    await generarCursoCompleto(GRUPO_ID)
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
     const colocadasAntes = await db.sesiones.count()
 
     await copiarUnidad(udId, 5)
 
     expect(await db.sesiones.count()).toBe(colocadasAntes)
-    expect((await db.sesiones.toArray()).every((s) => s.udId === udId)).toBe(true)
+    expect(await db.sesiones.where('udId').equals(udId).count()).toBe(3)
     expect(await db.alumnos.count()).toBe(0)
     expect(await db.valores.count()).toBe(0)
     expect(await db.observaciones.count()).toBe(0)
@@ -835,6 +845,7 @@ describe('moverUnidad', () => {
   it('deja las clases ya colocadas sin unidad, pero sin borrarlas', async () => {
     await sembrarCriterios()
     const udId = await unidadDeTres()
+    await generarCursoCompleto(GRUPO_ID)
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
     const antes = await db.sesiones.count()
 
@@ -857,6 +868,7 @@ describe('moverUnidad', () => {
     })
     const fila = (await db.filas.where('columnaId').equals(colId).toArray())[0]
     await db.filas.update(fila.id, { criterioId: 'EF.2C.4.5' })
+    await generarCursoCompleto(GRUPO_ID)
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
 
     const deshacer = await moverUnidad(udId, 5)
@@ -866,7 +878,7 @@ describe('moverUnidad', () => {
     expect(ud?.niveles).toEqual([3])
     expect(ud?.criterios).toEqual(['EF.2C.4.5'])
     expect((await db.filas.get(fila.id))?.criterioId).toBe('EF.2C.4.5')
-    expect((await db.sesiones.toArray()).every((s) => s.udId === udId)).toBe(true)
+    expect(await db.sesiones.where('udId').equals(udId).count()).toBe(3)
   })
 
   it('se niega en Infantil', async () => {
@@ -880,6 +892,7 @@ describe('resumenCopia', () => {
     await sembrarCriterios()
     const udId = await unidadDeTres()
     await db.unidades.update(udId, { criterios: ['EF.2C.1.1', 'EF.2C.4.5'], trimestre: 1 })
+    await generarCursoCompleto(GRUPO_ID)
     await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
 
     const r = await resumenCopia(udId, 5)
@@ -961,8 +974,9 @@ describe('unidad de un solo curso (no regresión)', () => {
 
   it('llevar a un grupo coloca su plan igual que antes', async () => {
     const udId = await unidadDeTres()
+    await generarCursoCompleto(GRUPO_ID)
     const r = await aplicarUnidadAGrupo({ udId, grupoId: GRUPO_ID, desde: '2026-09-07' })
-    expect(r.creadas).toBe(3)
+    expect(r.colocadas).toBe(3)
   })
 })
 
@@ -1046,10 +1060,11 @@ describe('aplicarUnidadAGrupo con varios cursos', () => {
     // 4º tiene una sesión propia distinta.
     await anadirSesionPlan(udId, 4, { titulo: 'Solo de cuarto' })
     await grupoPrimaria('g4', '4ºA', 4)
+    await generarCursoCompleto('g4')
 
     const r = await aplicarUnidadAGrupo({ udId, grupoId: 'g4', desde: '2026-09-07' })
 
-    expect(r.creadas).toBe(1)
+    expect(r.colocadas).toBe(1)
     const colocadas = await db.sesiones.where('udId').equals(udId).toArray()
     expect(colocadas.map((s) => s.titulo)).toEqual(['Solo de cuarto'])
   })
