@@ -16,7 +16,7 @@ import type { ClaseCancelada, Sesion } from './types'
  * viajar en la copia cifrada ni en la sincronización.
  */
 
-export type TipoLote = 'volcado' | 'eliminar-mover' | 'eliminar'
+export type TipoLote = 'volcado' | 'vaciar-mover' | 'eliminar-mover' | 'eliminar'
 
 export interface EstadoLote {
   sesiones: Sesion[]

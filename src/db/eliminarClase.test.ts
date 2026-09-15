@@ -10,16 +10,20 @@ import {
   importarUnidad,
   previsualizarEliminarClase,
   sesionesDeGrupo,
+  sesionVacia,
 } from './planificador'
 import { resumenSesion } from './sesiones'
 import type { Sesion } from './types'
 
 /**
- * Eliminar una sesión de la planificación: exactamente dos opciones.
+ * Qué hacer con una sesión de la planificación: exactamente tres opciones.
+ *  - «vaciar»: la sesión se queda, vacía, y su contenido y el de las
+ *    siguientes avanza una sesión.
  *  - «mover»: el contenido de la eliminada y de las siguientes avanza una
- *    sesión, y el desplazamiento se detiene en la primera sesión vacía.
+ *    sesión.
  *  - «eliminar»: desaparece con su contenido y no se mueve nada más.
- * Ninguna crea sesiones ni toca el horario, y las dos se deshacen enteras.
+ * El desplazamiento se detiene en la primera sesión vacía. Ninguna crea
+ * sesiones ni toca el horario, y las tres se deshacen enteras.
  */
 
 const CURSO_ID = 'curso1'
@@ -79,7 +83,77 @@ async function foto() {
   }
 }
 
-describe('opción A — eliminar y mover a la derecha', () => {
+describe('opción (a) — mover sesión a la derecha', () => {
+  it('deja la sesión vacía, desplaza el resto y se detiene en la primera vacía', async () => {
+    const s = await lista()
+    await poner(s[0], { titulo: 'T0' })
+    await poner(s[1], { titulo: 'T1', comentarios: 'Llevar petos', valoracion: 4, horaInicio: '09:10' })
+    await poner(s[2], { titulo: 'T2' })
+    // s[3] vacía: aquí se detiene.
+    await poner(s[4], { titulo: 'T4' })
+    const total = await db.sesiones.count()
+
+    const { previa, lote } = await eliminarClase(s[1].id, 'vaciar')
+
+    // La sesión sigue: misma fila, misma clase, sin contenido.
+    const vaciada = await db.sesiones.get(s[1].id)
+    expect(vaciada).toBeDefined()
+    expect(sesionVacia(vaciada!)).toBe(true)
+    expect(vaciada).toMatchObject({ fecha: s[1].fecha, franjaInicio: s[1].franjaInicio, horaInicio: '09:10' })
+
+    expect((await db.sesiones.get(s[0].id))?.titulo).toBe('T0')
+    expect(await db.sesiones.get(s[2].id)).toMatchObject({
+      titulo: 'T1',
+      comentarios: 'Llevar petos',
+      valoracion: 4,
+      fecha: s[2].fecha,
+    })
+    expect((await db.sesiones.get(s[3].id))?.titulo).toBe('T2')
+    expect(await db.sesiones.get(s[4].id)).toEqual({ ...s[4], titulo: 'T4' })
+
+    expect(previa.seElimina).toBe(false)
+    expect(previa.movimientos.map((m) => [m.titulo, m.a.fecha])).toEqual([
+      ['T1', s[2].fecha],
+      ['T2', s[3].fecha],
+    ])
+    expect(previa.seDetieneEn).toEqual({ fecha: s[3].fecha, franja: s[3].franjaInicio })
+    expect(previa.sinUbicacion).toBeNull()
+    // Ni se crean ni se eliminan sesiones, y la clase no se cancela.
+    expect(await db.sesiones.count()).toBe(total)
+    expect(await db.clasesCanceladas.count()).toBe(0)
+    expect(lote.tipo).toBe('vaciar-mover')
+  })
+
+  it('sin ninguna vacía por delante, avisa de qué contenido se queda sin ubicación', async () => {
+    const udId = await crearUnidad({ etapa: 'primaria', titulo: 'UD final', nivel: 3, trimestre: null })
+    const s = await lista()
+    const n = s.length
+    await poner(s[n - 2], { titulo: 'B', udId })
+    await poner(s[n - 1], { titulo: 'C', udId })
+    const total = await db.sesiones.count()
+
+    const previa = await previsualizarEliminarClase(s[n - 2].id, 'vaciar')
+    expect(previa.sinUbicacion).toEqual({ titulo: 'C', unidad: 'UD final' })
+    expect(previa.seDetieneEn).toBeNull()
+
+    await eliminarClase(s[n - 2].id, 'vaciar')
+    expect(sesionVacia((await db.sesiones.get(s[n - 2].id))!)).toBe(true)
+    expect((await db.sesiones.get(s[n - 1].id))?.titulo).toBe('B')
+    expect(await db.sesiones.count()).toBe(total)
+  })
+
+  it('una sesión ya vacía no cambia nada', async () => {
+    const s = await lista()
+    await poner(s[1], { titulo: 'T1' })
+    const antes = await foto()
+
+    const { previa } = await eliminarClase(s[0].id, 'vaciar')
+    expect(previa.movimientos).toEqual([])
+    expect(await foto()).toEqual(antes)
+  })
+})
+
+describe('opción (b) — eliminar y mover a la derecha', () => {
   it('desplaza el contenido y se detiene en la primera sesión vacía', async () => {
     const s = await lista()
     await poner(s[0], { titulo: 'T0' })
@@ -155,7 +229,7 @@ describe('opción A — eliminar y mover a la derecha', () => {
   })
 })
 
-describe('opción B — eliminar la sesión', () => {
+describe('opción (c) — eliminar la sesión', () => {
   it('no mueve absolutamente nada', async () => {
     const s = await lista()
     for (let i = 0; i < 5; i++) await poner(s[i], { titulo: `T${i}` })
@@ -173,7 +247,7 @@ describe('opción B — eliminar la sesión', () => {
 })
 
 describe('ninguna opción crea sesiones ni toca el horario', () => {
-  it.each(['mover', 'eliminar'] as const)('«%s»', async (modo) => {
+  it.each(['vaciar', 'mover', 'eliminar'] as const)('«%s»', async (modo) => {
     const s = await lista()
     for (let i = 0; i < 4; i++) await poner(s[i], { titulo: `T${i}` })
     const antes = await foto()
@@ -181,7 +255,7 @@ describe('ninguna opción crea sesiones ni toca el horario', () => {
     await eliminarClase(s[1].id, modo)
 
     const despues = await foto()
-    expect(despues.sesiones).toHaveLength(antes.sesiones.length - 1)
+    expect(despues.sesiones).toHaveLength(antes.sesiones.length - (modo === 'vaciar' ? 0 : 1))
     const idsAntes = new Set(antes.sesiones.map((x) => x.id))
     expect(despues.sesiones.every((x) => idsAntes.has(x.id))).toBe(true)
     expect(despues.grupo).toEqual(antes.grupo)
@@ -204,7 +278,7 @@ describe('ninguna opción crea sesiones ni toca el horario', () => {
 })
 
 describe('deshacer restaura el estado exacto', () => {
-  it.each(['mover', 'eliminar'] as const)('tras «%s»', async (modo) => {
+  it.each(['vaciar', 'mover', 'eliminar'] as const)('tras «%s»', async (modo) => {
     const s = await lista()
     for (let i = 0; i < 6; i++) await poner(s[i], { titulo: `T${i}`, notas: `n${i}` })
     const antes = await foto()

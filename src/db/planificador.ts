@@ -188,25 +188,30 @@ export async function editarSesion(
 
 /* ————————————————— Eliminar una sesión de la planificación —————————————————
  *
- * Exactamente dos opciones, y ninguna crea sesiones, cambia el horario ni toca
+ * Exactamente tres opciones, y ninguna crea sesiones, cambia el horario ni toca
  * el calendario:
+ *  - «vaciar» (mover sesión a la derecha): la sesión NO se elimina, queda vacía,
+ *    y su contenido y el de las posteriores avanza una sesión. Sirve para
+ *    intercalar algo —repaso, prueba, imprevisto—.
  *  - «mover»: la sesión desaparece y su contenido, y el de las posteriores del
  *    grupo, avanza una sesión (a la siguiente que existe, en orden real). Nada
- *    se pierde, se pospone. El desplazamiento se detiene en la primera sesión
- *    VACÍA: a partir de ahí no hay nada que mover. Si no hay ninguna vacía por
- *    delante, el último contenido se queda sin ubicación y se avisa.
+ *    se pierde, se pospone.
  *  - «eliminar»: la sesión desaparece con su contenido. Nada más se mueve.
  *
- * En los dos casos la clase de ese día queda marcada en `clasesCanceladas`: el
+ * En «vaciar» y «mover» el desplazamiento se detiene en la primera sesión VACÍA:
+ * a partir de ahí no hay nada que mover. Si no hay ninguna vacía por delante,
+ * el último contenido se queda sin ubicación y se avisa.
+ *
+ * Al eliminar, la clase de ese día queda marcada en `clasesCanceladas`: el
  * hueco sale del horario, y sin la marca Hoy y el Calendario volverían a
- * enseñarla vacía como si no se hubiera eliminado.
+ * enseñarla vacía como si no se hubiera eliminado. Al vaciar no: la clase sigue.
  *
  * Se mueve CONTENIDO, no sesiones: cada fila conserva su fecha, su franja y su
  * hora ajustada. Se mueve todo el contenido, comentarios y valoración
  * incluidos: son sesiones futuras.
  */
 
-export type ModoEliminarClase = 'mover' | 'eliminar'
+export type ModoEliminarClase = 'vaciar' | 'mover' | 'eliminar'
 
 /** Una clase concreta, para enseñarla: fecha y franja. */
 export interface ClaseEnPrevia {
@@ -223,8 +228,10 @@ export interface MovimientoContenido {
 
 export interface PreviaEliminarClase {
   modo: ModoEliminarClase
+  /** `false` solo en «vaciar»: la sesión se queda, vacía. */
+  seElimina: boolean
   eliminada: ClaseEnPrevia & { id: string; titulo: string; unidad: string | null; vacia: boolean }
-  /** Solo en «mover»: qué contenido pasa a qué clase. */
+  /** Solo en «vaciar» y «mover»: qué contenido pasa a qué clase. */
   movimientos: MovimientoContenido[]
   /** Sesión vacía que recibe el último contenido y detiene el desplazamiento. */
   seDetieneEn: ClaseEnPrevia | null
@@ -268,7 +275,8 @@ async function calcularEliminacion(sesionId: string, modo: ModoEliminarClase) {
   let seDetieneEn: ClaseEnPrevia | null = null
   let sinUbicacion: PreviaEliminarClase['sinUbicacion'] = null
 
-  if (modo === 'mover' && !sesionVacia(sesion)) {
+  const seElimina = modo !== 'vaciar'
+  if (modo !== 'eliminar' && !sesionVacia(sesion)) {
     if (!curso) throw new Error('No hay ningún curso escolar activo')
     const posteriores = sesionesEnOrden(
       await db.sesiones.where('grupoId').equals(sesion.grupoId).toArray(),
@@ -305,7 +313,7 @@ async function calcularEliminacion(sesionId: string, modo: ModoEliminarClase) {
   const enHorario = grupo.horario.some(
     (f) => f.diaSemana === diaLectivo(sesion.fecha) && f.horaInicio === franja,
   )
-  if (enHorario) {
+  if (seElimina && enHorario) {
     const previas = await db.clasesCanceladas
       .where('[grupoId+fecha]')
       .equals([sesion.grupoId, sesion.fecha])
@@ -322,6 +330,7 @@ async function calcularEliminacion(sesionId: string, modo: ModoEliminarClase) {
 
   const previa: PreviaEliminarClase = {
     modo,
+    seElimina,
     eliminada: {
       id: sesion.id,
       fecha: sesion.fecha,
@@ -358,8 +367,13 @@ export async function eliminarClase(
     modo,
   )
 
+  // Vaciar parte de la misma fila sin contenido: sigue siendo esa clase. Solo
+  // si tenía contenido; una vacía se queda exactamente igual.
+  const vaciada = previa.seElimina || previa.eliminada.vacia ? null : sinContenido(sesion)
+
   await db.transaction('rw', db.sesiones, db.clasesCanceladas, async () => {
-    await db.sesiones.delete(sesion.id)
+    if (previa.seElimina) await db.sesiones.delete(sesion.id)
+    else if (vaciada) await db.sesiones.put(vaciada)
     if (despues.length) await db.sesiones.bulkPut(despues)
     if (cancelacion) await db.clasesCanceladas.add(cancelacion)
   })
@@ -367,13 +381,18 @@ export async function eliminarClase(
   const cuando = `${formatoDiaCorto(sesion.fecha)}${previa.eliminada.franja ? ` · ${previa.eliminada.franja}` : ''}`
   const lote = crearLote({
     grupoId: grupo.id,
-    tipo: modo === 'mover' ? 'eliminar-mover' : 'eliminar',
+    tipo: modo === 'vaciar' ? 'vaciar-mover' : modo === 'mover' ? 'eliminar-mover' : 'eliminar',
     descripcion:
-      modo === 'mover'
-        ? `Eliminar y mover a la derecha: ${cuando} en ${grupo.nombre}`
-        : `Eliminar la sesión del ${cuando} en ${grupo.nombre}`,
-    antes: { sesiones: [sesion, ...tocadas], cancelaciones: [] },
-    despues: { sesiones: despues, cancelaciones: cancelacion ? [cancelacion] : [] },
+      modo === 'vaciar'
+        ? `Mover sesión a la derecha: ${cuando} en ${grupo.nombre}`
+        : modo === 'mover'
+          ? `Eliminar y mover a la derecha: ${cuando} en ${grupo.nombre}`
+          : `Eliminar la sesión del ${cuando} en ${grupo.nombre}`,
+    antes: { sesiones: previa.seElimina || vaciada ? [sesion, ...tocadas] : tocadas, cancelaciones: [] },
+    despues: {
+      sesiones: vaciada ? [vaciada, ...despues] : despues,
+      cancelaciones: cancelacion ? [cancelacion] : [],
+    },
   })
   return { previa, lote }
 }

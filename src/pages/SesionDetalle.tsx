@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Clipboard, Copy, Save, Shuffle, Trash2 } from 'lucide-react'
+import { ArrowRight, Clipboard, Copy, Save, Shuffle, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
@@ -381,8 +381,10 @@ function HojaDuplicar({
 }
 
 /**
- * Eliminar una sesión: EXACTAMENTE dos opciones (`eliminarClase`).
+ * Qué hacer con una sesión: EXACTAMENTE tres opciones (`eliminarClase`).
  *
+ * «Mover sesión a la derecha» no elimina nada: la sesión queda vacía para
+ * intercalar algo —repaso, prueba, imprevisto— y todo lo demás se corre una.
  * «Eliminar y mover a la derecha» es la clase que no se da —excursión, salida—:
  * todo lo programado se retrasa una sesión. «Eliminar la sesión» la quita con su
  * contenido y no mueve nada más. Antes de confirmar se enseña la previa: qué
@@ -427,9 +429,14 @@ function HojaEliminarSesion({
       const { lote } = await eliminarClase(sesion.id, modo)
       registrarLote(lote)
       cerrar()
-      navegar('/planificador')
+      // Al vaciar la sesión sigue existiendo: no hay por qué salir de ella.
+      if (modo !== 'vaciar') navegar('/planificador')
       mostrarAviso(
-        modo === 'mover' ? 'Sesión eliminada; lo programado se ha retrasado' : 'Sesión eliminada',
+        modo === 'vaciar'
+          ? 'Sesión vaciada; lo programado se ha retrasado'
+          : modo === 'mover'
+            ? 'Sesión eliminada; lo programado se ha retrasado'
+            : 'Sesión eliminada',
         async () => {
           await deshacerLote(lote)
           quitarLote(lote.id)
@@ -441,27 +448,42 @@ function HojaEliminarSesion({
   }
 
   return (
-    <Hoja abierta={abierta} titulo="Eliminar sesión" onCerrar={cerrar}>
+    <Hoja abierta={abierta} titulo="¿Qué quieres hacer con esta sesión?" onCerrar={cerrar}>
       <div className="space-y-3">
-        {resumen && <AvisoRegistros resumen={resumen} />}
+        {resumen && <AvisoRegistros resumen={resumen} modo={modo} />}
 
         {!modo ? (
           <>
-            <button className="btn-primario w-full" onClick={() => setModo('mover')}>
-              Eliminar y mover a la derecha
+            <button className="btn-primario w-full" onClick={() => setModo('vaciar')}>
+              <ArrowRight size={18} aria-hidden />
+              Mover sesión a la derecha
             </button>
             <p className="text-xs texto-suave">
-              La clase no se da (excursión, salida…): su contenido y el de las sesiones siguientes
-              pasan una sesión adelante. No se pierde nada, se pospone.
+              No elimina nada. Para intercalar algo (repaso, prueba, imprevisto): esta sesión queda
+              vacía y su contenido y el de las siguientes pasan una sesión adelante.
             </p>
 
-            <button className="btn-suave w-full" onClick={() => setModo('eliminar')}>
-              Eliminar la sesión
-            </button>
-            <p className="text-xs texto-suave">
-              La sesión desaparece con su contenido. El resto de la programación se queda
-              exactamente donde está.
-            </p>
+            <div className="space-y-3 border-l-4 border-acento pl-3">
+              <p className="text-xs font-semibold text-acento">Estas dos eliminan la sesión</p>
+
+              <button className="btn-suave w-full" onClick={() => setModo('mover')}>
+                <Trash2 size={18} aria-hidden />
+                Eliminar y mover a la derecha
+              </button>
+              <p className="text-xs texto-suave">
+                La clase no se da (excursión, salida…): la sesión desaparece y su contenido y el de
+                las siguientes pasan una sesión adelante. No se pierde nada, se pospone.
+              </p>
+
+              <button className="btn-suave w-full" onClick={() => setModo('eliminar')}>
+                <Trash2 size={18} aria-hidden />
+                Eliminar la sesión
+              </button>
+              <p className="text-xs texto-suave">
+                La sesión desaparece con su contenido. El resto de la programación se queda
+                exactamente donde está.
+              </p>
+            </div>
 
             <button className="btn w-full" onClick={cerrar}>
               Cancelar
@@ -477,14 +499,25 @@ function HojaEliminarSesion({
 
             {error && <p className="text-sm font-semibold text-acento">{error}</p>}
 
-            <button
-              className="btn-peligro w-full"
-              onClick={() => void confirmar()}
-              disabled={!previa}
-            >
-              <Trash2 size={18} aria-hidden />
-              {modo === 'mover' ? 'Eliminar y mover' : 'Eliminar la sesión'}
-            </button>
+            {modo === 'vaciar' ? (
+              <button
+                className="btn-primario w-full"
+                onClick={() => void confirmar()}
+                disabled={!previa}
+              >
+                <ArrowRight size={18} aria-hidden />
+                Mover a la derecha
+              </button>
+            ) : (
+              <button
+                className="btn-peligro w-full"
+                onClick={() => void confirmar()}
+                disabled={!previa}
+              >
+                <Trash2 size={18} aria-hidden />
+                {modo === 'mover' ? 'Eliminar y mover' : 'Eliminar la sesión'}
+              </button>
+            )}
             <button className="btn w-full" onClick={() => setModo(null)}>
               Volver
             </button>
@@ -537,11 +570,20 @@ function PreviaEliminar({
   return (
     <div className="space-y-2">
       <div className="tarjeta space-y-2 text-sm">
-        <p>
-          Desaparece la sesión del <strong className="cifra">{rotuloClase(eliminada)}</strong>.
-        </p>
+        {previa.seElimina ? (
+          <p>
+            Desaparece la sesión del <strong className="cifra">{rotuloClase(eliminada)}</strong>.
+          </p>
+        ) : (
+          <p>
+            La sesión del <strong className="cifra">{rotuloClase(eliminada)}</strong> se queda en
+            la planificación, vacía.
+          </p>
+        )}
         {eliminada.vacia ? (
-          <p className="texto-suave">Estaba vacía: no hay contenido que mover.</p>
+          <p className="texto-suave">
+            {previa.seElimina ? 'Estaba vacía' : 'Ya está vacía'}: no hay contenido que mover.
+          </p>
         ) : (
           <>
             <p className="texto-suave">Lo programado pasa una sesión adelante:</p>
@@ -590,7 +632,13 @@ function PreviaEliminar({
  * silencio). Van por fecha y grupo, no por sesión, así que NO se borran: se
  * cuentan antes de confirmar para que no haya sorpresa ni susto.
  */
-function AvisoRegistros({ resumen }: { resumen: ResumenSesion }) {
+function AvisoRegistros({
+  resumen,
+  modo,
+}: {
+  resumen: ResumenSesion
+  modo: ModoEliminarClase | null
+}) {
   const registros = [
     resumen.asistencias > 0 &&
       `${resumen.asistencias} ${resumen.asistencias === 1 ? 'registro' : 'registros'} de asistencia`,
@@ -606,7 +654,14 @@ function AvisoRegistros({ resumen }: { resumen: ResumenSesion }) {
       <p>
         Esta clase tiene datos registrados: <strong>{enumerar(registros)}</strong>.
       </p>
-      <p className="texto-suave">No se borran: siguen guardados con su fecha.</p>
+      {modo === 'vaciar' ? (
+        <p className="texto-suave">
+          No se desplazan con el contenido: la asistencia y las observaciones pertenecen al día en
+          que ocurrieron, no a la programación. Se quedan en esta fecha.
+        </p>
+      ) : (
+        <p className="texto-suave">No se borran: siguen guardados con su fecha.</p>
+      )}
     </div>
   )
 }
