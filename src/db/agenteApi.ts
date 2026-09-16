@@ -107,6 +107,13 @@ interface RespuestaClaude {
 /**
  * Envía el dictado pseudonimizado y devuelve la acción tal cual la clasificó
  * el modelo, con los tokens todavía sin resolver (eso lo hace la UI, en local).
+ *
+ * `alumnos` son SOLO los del grupo ya resuelto en local, y `texto` el dictado sin
+ * la mención del grupo (`lib/grupoEnTexto.ts`). El acotado es lo que impide que
+ * el modelo devuelva el token de un alumno de otra clase: sencillamente no
+ * existe en el mapa, así que `resolverTokens` no lo encontraría. De paso viaja
+ * menos —una veintena de tokens en vez de doscientos—, que es justo la dirección
+ * correcta para §1.2.
  */
 export async function interpretarConApi(
   texto: string,

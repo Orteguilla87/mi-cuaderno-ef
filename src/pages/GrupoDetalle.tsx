@@ -562,17 +562,30 @@ function HojaEditarGrupo({
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const grupo = useLiveQuery(() => db.grupos.get(grupoId), [grupoId])
   const [nombre, setNombre] = useState<string | null>(null)
+  const [alias, setAlias] = useState<string | null>(null)
   const [horario, setHorario] = useState<FranjaHorario[] | null>(null)
 
   if (!grupo) return null
 
   const nombreActual = nombre ?? grupo.nombre
+  const aliasActual = alias ?? (grupo.alias ?? []).join(', ')
   const horarioActual = horario ?? grupo.horario
-  const anterior = { nombre: grupo.nombre, horario: grupo.horario }
+  const anterior = { nombre: grupo.nombre, alias: grupo.alias, horario: grupo.horario }
 
   async function guardar() {
-    await db.grupos.update(grupoId, { nombre: nombreActual.trim(), horario: horarioActual })
+    await db.grupos.update(grupoId, {
+      nombre: nombreActual.trim(),
+      // Se guardan tal cual los escribe el maestro; la normalización (minúsculas,
+      // tildes, «4º» vs «4o») la hace `lib/grupoEnTexto.ts` al comparar, para que
+      // lo que se lee aquí sea lo que él puso.
+      alias: aliasActual
+        .split(',')
+        .map((a) => a.trim())
+        .filter(Boolean),
+      horario: horarioActual,
+    })
     setNombre(null)
+    setAlias(null)
     setHorario(null)
     onCerrar()
     mostrarAviso('Grupo actualizado', async () => {
@@ -593,6 +606,23 @@ function HojaEditarGrupo({
             valor={nombreActual}
             onValor={setNombre}
           />
+        </div>
+
+        <div>
+          <label className="etiqueta" htmlFor="editar-alias">
+            Cómo lo llamas al dictar
+          </label>
+          <Campo
+            id="editar-alias"
+            className="campo"
+            valor={aliasActual}
+            onValor={setAlias}
+            placeholder="4A, cuarto de lengua"
+          />
+          <p className="mt-1 text-xs texto-suave">
+            Separados por comas. El agente de voz busca al alumno solo dentro del grupo que
+            nombras, y el nombre de arriba rara vez coincide con lo que se dice en voz alta.
+          </p>
         </div>
 
         <EditorHorario horario={horarioActual} onCambio={setHorario} />

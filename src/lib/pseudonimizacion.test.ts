@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Alumno, Grupo } from '../db/types'
-import { construirMapaTokens, pseudonimizarTexto } from './pseudonimizacion'
+import { buscarAlumnoEnTexto, construirMapaTokens, pseudonimizarTexto } from './pseudonimizacion'
+import { detectarGrupoEnTexto } from './grupoEnTexto'
 
 /**
  * §1.2 y §6: a la API de Anthropic solo viaja texto pseudonimizado. Los nombres
@@ -77,5 +78,65 @@ describe('lo que se manda a la API', () => {
     expect(texto).not.toContain('TDAH')
     expect(texto).not.toContain('nivelMotriz')
     expect(texto).not.toContain('apoyos')
+  })
+})
+
+/**
+ * El fallo que arregla esto: el agente resolvía a veces un alumno de otra clase.
+ * La búsqueda recorría los ~200 alumnos de los nueve grupos, y encima con el
+ * texto entero, así que «cuarto» y «tercero» puntuaban contra los apellidos.
+ */
+describe('acotado al grupo dictado', () => {
+  const pabloDeCuarto: Alumno = {
+    id: 'a-4a',
+    grupoId: 'g4a',
+    nombre: 'Pablo',
+    apellidos: 'Mena',
+    alias: 'Pablo',
+    activo: true,
+  }
+  // Mismo nombre y un apellido que el fuzzy adora: «Cuartero» casa con «cuarto».
+  const pabloDeTercero: Alumno = {
+    id: 'a-3b',
+    grupoId: 'g3b',
+    nombre: 'Pablo',
+    apellidos: 'Cuartero',
+    alias: 'Pablo',
+    activo: true,
+  }
+
+  const cuartoA: Grupo = { ...grupos[0], id: 'g4a', nombre: '4ºA', nivel: 4, alias: ['4A'] }
+  const terceroB: Grupo = { ...grupos[0], id: 'g3b', nombre: '3ºB', nivel: 3 }
+
+  const dictado = 'cuarto A, Pablo sin chándal'
+
+  it('nunca devuelve un alumno de otro grupo, por parecido que sea el nombre', () => {
+    const { candidatos, textoSinGrupo } = detectarGrupoEnTexto(dictado, [cuartoA, terceroB])
+    expect(candidatos).toEqual([cuartoA])
+
+    // La regla dura: se busca SOLO entre los del grupo resuelto.
+    const delGrupo = [pabloDeCuarto, pabloDeTercero].filter((a) => a.grupoId === candidatos[0].id)
+    const encontrados = buscarAlumnoEnTexto(textoSinGrupo, delGrupo)
+
+    expect(encontrados.map((c) => c.alumno.id)).toEqual(['a-4a'])
+    expect(encontrados.map((c) => c.alumno.id)).not.toContain('a-3b')
+  })
+
+  it('la palabra del ordinal no participa en el emparejamiento del nombre', () => {
+    const todos = [pabloDeCuarto, pabloDeTercero]
+    // Con el texto entero, «cuarto» arrastra a «Pablo Cuartero» al resultado…
+    const conMencion = buscarAlumnoEnTexto(dictado, todos).map((c) => c.alumno.id)
+    expect(conMencion).toContain('a-3b')
+
+    // …y retirada la mención, ya no hay nada que lo traiga.
+    const { textoSinGrupo } = detectarGrupoEnTexto(dictado, [cuartoA, terceroB])
+    expect(textoSinGrupo).toBe('Pablo sin chándal')
+  })
+
+  it('a la API solo viaja el alumnado del grupo resuelto', () => {
+    const mapaAcotado = construirMapaTokens([pabloDeCuarto], [cuartoA])
+    expect([...mapaAcotado.alumnoPorToken.values()].map((a) => a.id)).toEqual(['a-4a'])
+    // Sin token para el de tercero, el modelo no puede devolverlo aunque quiera.
+    expect(mapaAcotado.tokenPorAlumno.has('a-3b')).toBe(false)
   })
 })

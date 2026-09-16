@@ -1,7 +1,9 @@
 import { db, nuevoId } from './db'
 import { crearObservacion } from './observaciones'
-import type { Alumno, AccionAgente, EstadoAsistencia, SignoObservacion } from './types'
-import { resolverFechaRelativa } from '../lib/pseudonimizacion'
+import type { Alumno, AccionAgente, EstadoAsistencia, Grupo, SignoObservacion } from './types'
+import { grupoPorFranja, resolverFechaRelativa } from '../lib/pseudonimizacion'
+import { detectarGrupoEnTexto } from '../lib/grupoEnTexto'
+import { horaActual } from '../lib/fechas'
 
 /** Catálogo cerrado de acciones (§6). */
 export type AccionId =
@@ -25,18 +27,60 @@ export interface AccionResuelta {
 }
 
 export type ResultadoInterpretar =
-  | { tipo: 'accion'; accion: AccionResuelta }
-  | { tipo: 'ambiguo'; candidatos: Alumno[]; textoOriginal: string }
+  | { tipo: 'accion'; accion: AccionResuelta; grupo: Grupo }
+  | { tipo: 'ambiguo'; candidatos: Alumno[]; textoOriginal: string; grupo: Grupo }
+  /** Se dijo un grupo, pero encaja con más de uno (dos áreas del mismo curso). */
+  | { tipo: 'grupo_ambiguo'; candidatos: Grupo[]; textoOriginal: string }
+  /** No se dijo grupo y tampoco hay contexto. NO se adivina: lo elige el maestro. */
+  | { tipo: 'sin_grupo'; textoOriginal: string }
   | { tipo: 'no_reconocido' }
 
 /**
+ * A qué grupo se refiere el dictado, y el texto ya sin esa mención.
+ *
+ * Tres salidas y ninguna adivinanza:
+ *  - Un solo grupo compatible → ese.
+ *  - Varios («cuarto A» de EF y de Lengua) → se desempata por contexto, y solo
+ *    si el contexto deja UNO: el grupo abierto en la app si está entre ellos, o
+ *    el que esté en clase a esta hora según el horario. Si no, se pregunta.
+ *  - Ninguno → el grupo del contexto activo; y si tampoco lo hay, se pregunta.
+ *
+ * `grupoActivo` es el de `store/grupoActivo` (Cuaderno y Planificador comparten
+ * el que el maestro tenga abierto), no una suposición del sistema.
+ */
+export function resolverGrupo(
+  texto: string,
+  grupos: Grupo[],
+  grupoActivo?: Grupo,
+  ahora = { fecha: resolverFechaRelativa(texto), hora: horaActual() },
+): { grupo?: Grupo; ambiguos?: Grupo[]; textoSinGrupo: string } {
+  const { candidatos, textoSinGrupo } = detectarGrupoEnTexto(texto, grupos)
+
+  if (candidatos.length === 1) return { grupo: candidatos[0], textoSinGrupo }
+
+  if (candidatos.length > 1) {
+    const porActivo = grupoActivo && candidatos.find((g) => g.id === grupoActivo.id)
+    if (porActivo) return { grupo: porActivo, textoSinGrupo }
+    const porHorario = grupoPorFranja(candidatos, ahora.fecha, ahora.hora)
+    if (porHorario) return { grupo: porHorario, textoSinGrupo }
+    return { ambiguos: candidatos, textoSinGrupo }
+  }
+
+  return { grupo: grupoActivo, textoSinGrupo }
+}
+
+/**
  * Fallback offline (§6): cubre las acciones 1–3 y la 8 (deshacer) por palabras
- * clave, sin llamar a ningún sitio. `alumnoForzado` se usa tras desambiguar con
- * chips.
+ * clave, sin llamar a ningún sitio.
+ *
+ * `alumnosDelGrupo` son los activos de UN grupo, nunca la base entera: es la
+ * regla dura de acotado (ver `buscarAlumnoEnTexto`). `alumnoForzado` se usa tras
+ * desambiguar con chips.
  */
 export function interpretarLocal(
   texto: string,
-  alumnosActivos: Alumno[],
+  grupo: Grupo,
+  alumnosDelGrupo: Alumno[],
   buscarAlumno: (t: string, as: Alumno[]) => { alumno: Alumno; puntuacion: number }[],
   alumnoForzado?: Alumno,
 ): ResultadoInterpretar {
@@ -46,18 +90,19 @@ export function interpretarLocal(
   if (/\bdeshac/.test(t)) {
     return {
       tipo: 'accion',
+      grupo,
       accion: { accion: 'deshacer_ultima', resumen: 'Deshacer la última acción del agente', fecha, payload: {} },
     }
   }
 
   let alumno = alumnoForzado
   if (!alumno) {
-    const candidatos = buscarAlumno(texto, alumnosActivos)
+    const candidatos = buscarAlumno(texto, alumnosDelGrupo)
     if (candidatos.length === 0) return { tipo: 'no_reconocido' }
     const [mejor, segundo] = candidatos
     // Ambiguo si el segundo mejor va casi empatado con el primero.
     if (segundo && segundo.puntuacion > mejor.puntuacion - 0.12) {
-      return { tipo: 'ambiguo', candidatos: candidatos.map((c) => c.alumno), textoOriginal: texto }
+      return { tipo: 'ambiguo', grupo, candidatos: candidatos.map((c) => c.alumno), textoOriginal: texto }
     }
     alumno = mejor.alumno
   }
@@ -68,10 +113,12 @@ export function interpretarLocal(
     const sinChandal = /\b(sin|no trae|no lleva|olvidad)/.test(t)
     return {
       tipo: 'accion',
+      grupo,
       accion: {
         accion: 'marcar_chandal',
         resumen: `${nombre}: ${sinChandal ? 'sin' : 'con'} chándal (${fecha})`,
         alumnoId: alumno.id,
+        grupoId: grupo.id,
         fecha,
         payload: { chandal: !sinChandal },
       },
@@ -82,10 +129,12 @@ export function interpretarLocal(
   if (estado) {
     return {
       tipo: 'accion',
+      grupo,
       accion: {
         accion: 'marcar_asistencia',
         resumen: `${nombre}: ${estado} (${fecha})`,
         alumnoId: alumno.id,
+        grupoId: grupo.id,
         fecha,
         payload: { estado },
       },
@@ -100,10 +149,12 @@ export function interpretarLocal(
       : 'neutro'
   return {
     tipo: 'accion',
+    grupo,
     accion: {
       accion: 'registrar_observacion',
       resumen: `Observación (${signo}) para ${nombre}: «${texto}»`,
       alumnoId: alumno.id,
+      grupoId: grupo.id,
       fecha,
       payload: { texto, signo, tipo: 'conducta' },
     },

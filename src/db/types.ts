@@ -59,6 +59,17 @@ export interface Grupo {
   id: Id
   cursoEscolarId: Id
   nombre: string // "3ºB", "Infantil 4A"
+  /**
+   * Cómo NOMBRA el maestro a este grupo al dictarle al agente de voz: «4A»,
+   * «cuarto de lengua», «cuarto de EF». No es decoración: el nombre interno rara
+   * vez coincide con lo que se dice en voz alta, y sin estas formas
+   * `lib/grupoEnTexto.ts` solo puede deducir el grupo del ordinal, que no
+   * distingue dos áreas del mismo curso.
+   *
+   * Opcional y no indexado: las fichas que no lo tengan se comportan como antes
+   * de que existiera, y no hace falta migración.
+   */
+  alias?: string[]
   etapa: Etapa
   nivel: number // primaria 1..6 · infantil 3..5 (edad)
   /**

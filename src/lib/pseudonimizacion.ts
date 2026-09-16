@@ -105,9 +105,23 @@ export interface CandidatoAlumno {
 }
 
 /**
- * Fuzzy local de nombres (§6): busca al alumno mencionado en el texto entre
- * los activos. Si hay varios candidatos con puntuación parecida, la UI debe
- * desambiguar con chips en vez de adivinar.
+ * Fuzzy local de nombres (§6): busca al alumno mencionado en el texto.
+ *
+ * ——— INVARIANTE: `alumnos` YA VIENE ACOTADO AL GRUPO ———
+ *
+ * Quien llama pasa SOLO los alumnos activos del grupo que se dictó (o del grupo
+ * del contexto). Nunca la base entera. Esta función no puede devolver un alumno
+ * de otra clase porque no lo ve, y esa es exactamente la garantía que se quiere:
+ * con los ~200 alumnos de los nueve grupos delante, un «Pablo» de 3ºB ganaba al
+ * «Pablo» de 4ºA por tener el nombre mejor escrito, y nadie lo notaba porque no
+ * había empate que disparara los chips.
+ *
+ * `texto` es el dictado SIN la mención del grupo (`lib/grupoEnTexto.ts`): el
+ * filtro de abajo es `p.length > 2`, así que «cuarto» y «tercero» entrarían aquí
+ * como palabras de búsqueda y casarían con apellidos tipo «Cuartero».
+ *
+ * Si hay varios candidatos con puntuación parecida, la UI desambigua con chips
+ * en vez de adivinar.
  */
 export function buscarAlumnoEnTexto(texto: string, alumnos: Alumno[]): CandidatoAlumno[] {
   const fuse = new Fuse(alumnos, {
@@ -137,9 +151,20 @@ export function buscarAlumnoEnTexto(texto: string, alumnos: Alumno[]): Candidato
     .slice(0, 4)
 }
 
-/** El día de la fecha, para elegir el grupo que toca en ese momento (contexto del agente). */
-export function grupoQueTocaEn(grupos: Grupo[], fecha: string): Grupo | undefined {
+/**
+ * El grupo que está en clase en esa fecha y hora, según el horario.
+ *
+ * Es el desempate de «cuarto A» cuando hay dos grupos que se llaman así —4ºA de
+ * EF y 4ºA de Lengua, mismo alumnado, áreas distintas—: a las 10:15 de un martes
+ * solo uno de los dos está en la pista. Devuelve `undefined` si no hay
+ * exactamente uno, porque con cero o con dos no hay nada que deducir y hay que
+ * preguntar: el sistema no elige por el maestro.
+ */
+export function grupoPorFranja(grupos: Grupo[], fecha: string, hora: string): Grupo | undefined {
   const dia = diaLectivo(fecha)
   if (dia === null) return undefined
-  return grupos.find((g) => g.horario.some((f) => f.diaSemana === dia))
+  const enClase = grupos.filter((g) =>
+    g.horario.some((f) => f.diaSemana === dia && f.horaInicio <= hora && hora < f.horaFin),
+  )
+  return enClase.length === 1 ? enClase[0] : undefined
 }
