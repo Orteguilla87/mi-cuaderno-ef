@@ -37,6 +37,12 @@ export interface ImportacionParseada {
   sesiones: SesionParseada[]
   /** `true` si los cortes salieron de un patrón débil y podrían ser apartados. */
   ambiguo: boolean
+  /**
+   * Números de sesión que el texto numeraba pero de los que no salió ningún
+   * corte. Se avisa en el preview en vez de fusionarlas en silencio: dos
+   * sesiones numeradas pegadas en una sola pasan desapercibidas al revisar.
+   */
+  sesionesFaltantes: number[]
   /** El texto normalizado sobre el que están medidos los `inicioEnTexto`. */
   texto: string
 }
@@ -61,10 +67,25 @@ export function normalizarPegado(texto: string): string {
 
 const MARKDOWN = /^\s{0,3}#{1,3}\s+\S/
 const SESION_N = /^\s*sesi[óo]n\s*(?:n[ºo°]?\s*)?\d+/i
-const S_N = /^\s*S\s*\d+\s*[:.\-]/i
 const NUMERADA = /^\s*\d+\s*[.\-)]\s+\S/
 const ETIQUETA_TITULO = /^\s*t[íi]tulo\s*[:\-–]\s*(.*)$/i
 const ETIQUETA_ENLACES = /^\s*(?:enlaces?|links?|notas)\s*[:\-–]\s*(.*)$/i
+
+/**
+ * «Consejo: …» es una nota para el maestro, no contenido de la sesión: se lleva
+ * a «Enlaces y notas», que es el campo de eso. Se mueve el texto sin la
+ * etiqueta, porque el campo ya dice que son notas.
+ */
+const ETIQUETA_CONSEJO = /^\s*consejos?\s*[:\-–]\s*(.*)$/i
+
+/**
+ * Etiquetas que SÍ son contenido de la sesión. Se quedan en la descripción,
+ * pero con el rótulo en negrita: además de leerse mejor, la negrita protege la
+ * línea de `comoActividad`, que si no convertiría «Contenidos: vocabulario —
+ * campo léxico» en una actividad inventada por culpa del guion largo.
+ */
+const ETIQUETA_DESCRIPCION =
+  /^\s*(contenidos?|lectura|dictado\s*\d*(?:\s*\([^)]*\))?)\s*:\s*(.*)$/i
 
 /** Si una línea de «Enlaces y notas» es un enlace o una nota suelta. */
 export function esEnlace(valor: string): boolean {
@@ -82,12 +103,74 @@ function esMayusculas(linea: string): boolean {
   return t === t.toLocaleUpperCase('es')
 }
 
+// ————————————— cabecera «S<n>», en el orden que venga —————————————
+//
+// El formato de la cabecera ya ha cambiado una vez —«UD2 – S1 – …» pasó a
+// «S1 – UD2 – …»— y volverá a cambiar. Por eso el token de sesión se busca
+// SUELTO en la línea y no anclado al principio: lo que identifica una cabecera
+// es que lleve un «S<n>» aislado, no en qué puesto lo lleva.
+//
+// El fallo que motivó esto: el patrón anterior, `/^\s*S\s*\d+\s*[:.\-]/`, pedía
+// el separador en ASCII, y el texto real usa guion largo (–). No casaba, el
+// troceo caía en la heurística de MAYÚSCULAS y las seis cabeceras que llevan
+// minúsculas («Libro B, bloque 2», «Material propio») se perdían: 10 de 16.
+
+/** Separadores que pueden rodear un token en una cabecera. */
+const SEPARADOR = '[\\s–—\\-·:.|]'
+
+/** `S 12`, aislado por separadores o por los bordes de la línea. Nunca `\d` a secas. */
+const TOKEN_SESION = new RegExp(`(?:^|${SEPARADOR})S\\s*(\\d{1,3})(?=$|${SEPARADOR})`, 'i')
+
+/** `UD2`, `U.D. 2`, `ud 2`: la unidad, vaya delante o detrás de la sesión. */
+const TOKEN_UNIDAD = new RegExp(`(?:^|${SEPARADOR})U\\.?D\\.?\\s*(\\d{1,3})(?=$|${SEPARADOR})`, 'i')
+
+/** Más larga que esto ya es prosa, no un rótulo. */
+const LARGO_CABECERA = 120
+
+/**
+ * Líneas que empiezan por una etiqueta de campo conocida. Nunca son cabecera,
+ * aunque mencionen una sesión: «Consejo: … prepara la alfabetización mediática
+ * de la S11» habla de la sesión 11, no la abre.
+ */
+const ETIQUETA_DE_CAMPO =
+  /^\s*(?:contenidos?|consejos?|lectura|dictado\s*\d*(?:\s*\([^)]*\))?|recursos?|materiales?)\s*:/i
+
+/** El número de sesión de una cabecera `S<n>`, o `null` si la línea no lo es. */
+function numeroDeCabecera(linea: string): number | null {
+  const t = linea.trim()
+  if (!t || t.length >= LARGO_CABECERA) return null
+  if (ETIQUETA_DE_CAMPO.test(t)) return null
+  const m = TOKEN_SESION.exec(t)
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * El título de una cabecera `S<n>`: la línea sin los dos tokens y sin los
+ * separadores que quedan sueltos en los extremos.
+ *
+ * « S5 – UD2 – SESIÓN DE LECTURA · Libro B, bloque 2 (p. 24) » →
+ * «SESIÓN DE LECTURA · Libro B, bloque 2 (p. 24)». Si no queda nada, cadena
+ * vacía: la regla de no inventar títulos manda, y la UI lo pedirá.
+ */
+function tituloDeCabecera(linea: string): string {
+  return linea
+    .trim()
+    .replace(TOKEN_SESION, ' ')
+    .replace(TOKEN_UNIDAD, ' ')
+    .replace(new RegExp(`^${SEPARADOR}+`), '')
+    .replace(new RegExp(`${SEPARADOR}+$`), '')
+    .replace(/ {2,}/g, ' ')
+    .trim()
+}
+
 /** Longitud a partir de la cual un bloque es «texto de verdad» y no un ítem de lista. */
 const BLOQUE_SIGNIFICATIVO = 120
 
 interface Corte {
   linea: number
   patron: PatronCorte
+  /** Solo en el patrón `s-n`: el número que traía la cabecera. */
+  numero?: number
 }
 
 /**
@@ -105,7 +188,10 @@ function detectarCortes(lineas: string[]): Corte[] {
   const sesionN = porPatron('sesion-n', (l) => SESION_N.test(l))
   if (sesionN.length) return sesionN
 
-  const sN = porPatron('s-n', (l) => S_N.test(l))
+  const sN = lineas.flatMap((l, i) => {
+    const numero = numeroDeCabecera(l)
+    return numero === null ? [] : [{ linea: i, patron: 's-n' as const, numero }]
+  })
   if (sN.length) return sN
 
   const mayusculas = porPatron('mayusculas', esMayusculas)
@@ -221,6 +307,11 @@ function parsearBloque(
   patron: PatronCorte | undefined,
   esEncabezado: boolean,
 ): SesionParseada {
+  // El patrón `s-n` tiene su propia limpieza: hay que quitar DOS tokens (la
+  // sesión y la unidad) y da igual en qué orden vengan. `limpiarEncabezado` no
+  // sirve — conserva la línea entera cuando el separador no es el que espera—,
+  // y se deja intacta para no mover los demás patrones.
+  const limpiar = patron === 's-n' ? tituloDeCabecera : limpiarEncabezado
   const lineas = bloque.split('\n')
 
   // — título —
@@ -241,7 +332,7 @@ function parsearBloque(
   if (titulo === undefined) {
     const iPrimera = lineas.findIndex((l) => l.trim())
     if (iPrimera >= 0 && (esEncabezado || pareceEncabezado(lineas[iPrimera]))) {
-      const candidato = limpiarEncabezado(lineas[iPrimera])
+      const candidato = limpiar(lineas[iPrimera])
       // Un encabezado que solo decía «Sesión 3» se queda sin texto al limpiarlo:
       // «Sesión 3» no es un título, es una posición. Mejor sin título y que el
       // preview lo pida, que colar un rótulo que no dice qué se hace en clase.
@@ -270,6 +361,15 @@ function parsearBloque(
     enlaces.push(limpio)
   }
 
+  // Una nota es una frase: conserva su punto final. Recortarlo como se hace con
+  // las URLs la dejaría coja.
+  const anadirNota = (valor: string) => {
+    const limpio = valor.trim()
+    if (!limpio || vistos.has(limpio)) return
+    vistos.add(limpio)
+    enlaces.push(limpio)
+  }
+
   // Las URLs que iban DENTRO del apartado de material entran primero: sus
   // líneas ya están consumidas, así que el bucle de abajo no las verá, y sin
   // esto el enlace se perdería por el camino.
@@ -278,6 +378,15 @@ function parsearBloque(
   for (let i = 0; i < lineas.length; i++) {
     if (lineasTitulo.has(i) || lineasRecursos.has(i)) continue
     const linea = lineas[i]
+
+    const consejo = ETIQUETA_CONSEJO.exec(linea)
+    if (consejo) {
+      const valor = consejo[1].trim()
+      if (valor) anadirNota(valor)
+      lineasEnlace.add(i)
+      continue
+    }
+
     const etiqueta = ETIQUETA_ENLACES.exec(linea)
     const encontradas = linea.match(URL) ?? []
 
@@ -308,6 +417,12 @@ function parsearBloque(
   const descripcion = aMarkdown(
     lineas
       .filter((_, i) => !lineasTitulo.has(i) && !lineasRecursos.has(i) && !lineasEnlace.has(i))
+      .map((l) => {
+        const etiqueta = ETIQUETA_DESCRIPCION.exec(l)
+        if (!etiqueta) return l
+        const [, rotulo, resto] = etiqueta
+        return resto.trim() ? `**${rotulo.trim()}:** ${resto.trim()}` : `**${rotulo.trim()}:**`
+      })
       .join('\n'),
   )
 
@@ -320,6 +435,28 @@ function parsearBloque(
     inicioEnTexto,
     patronDeteccion: patron,
   }
+}
+
+// ——————————————————————— control de numeración ———————————————————————
+
+/**
+ * Los números que el texto numeraba y de los que no salió ningún corte.
+ *
+ * Existe porque una sesión que no se detecta no desaparece: se queda pegada
+ * dentro de la anterior, y al revisar el preview no se ve el pegote. Con el
+ * número delante, el aviso puede decir exactamente cuál falta.
+ *
+ * Solo tiene sentido con el patrón `s-n`, que es el único que trae número.
+ */
+function faltantes(cortes: Corte[]): number[] {
+  const numeros = cortes.flatMap((c) => (c.numero === undefined ? [] : [c.numero]))
+  if (numeros.length === 0) return []
+
+  const vistos = new Set(numeros)
+  const tope = Math.max(...numeros)
+  const ausentes: number[] = []
+  for (let n = 1; n <= tope; n++) if (!vistos.has(n)) ausentes.push(n)
+  return ausentes
 }
 
 // ——————————————————————— 1.3 entrada ———————————————————————
@@ -343,11 +480,13 @@ export function analizarTexto(entrada: string): ImportacionParseada {
   const cortes = detectarCortes(lineas)
 
   if (cortes.length === 0) {
-    if (!texto.trim()) return { tituloUnidad: undefined, sesiones: [], ambiguo: false, texto }
+    if (!texto.trim())
+      return { tituloUnidad: undefined, sesiones: [], ambiguo: false, sesionesFaltantes: [], texto }
     return {
       tituloUnidad: undefined,
       sesiones: [parsearBloque(texto, 0, undefined, false)],
       ambiguo: false,
+      sesionesFaltantes: [],
       texto,
     }
   }
@@ -363,7 +502,7 @@ export function analizarTexto(entrada: string): ImportacionParseada {
   const patron = cortes[0].patron
   const ambiguo = cortes.length >= 2 && (patron === 'mayusculas' || patron === 'numerada')
 
-  return { tituloUnidad, sesiones, ambiguo, texto }
+  return { tituloUnidad, sesiones, ambiguo, sesionesFaltantes: faltantes(cortes), texto }
 }
 
 /**

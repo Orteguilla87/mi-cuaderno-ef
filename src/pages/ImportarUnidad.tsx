@@ -301,6 +301,23 @@ export function ImportarUnidad() {
                 </p>
               )}
 
+              {/*
+                Un número de sesión que el texto traía y del que no salió corte
+                significa que esa sesión se quedó pegada dentro de la anterior.
+                No se fusiona en silencio: el pegote no se ve al revisar, y el
+                aviso dice exactamente cuál hay que buscar.
+              */}
+              {(analisis?.sesionesFaltantes.length ?? 0) > 0 && (
+                <p className="mb-2 flex items-start gap-2 text-sm font-semibold text-acento">
+                  <AlertTriangle size={18} className="mt-0.5 shrink-0" aria-hidden />
+                  {analisis!.sesionesFaltantes.length === 1
+                    ? `Falta la sesión ${analisis!.sesionesFaltantes[0]}: `
+                    : `Faltan las sesiones ${analisis!.sesionesFaltantes.join(', ')}: `}
+                  el texto las numera pero no he sabido separarlas. Revisa su cabecera antes de
+                  importar.
+                </p>
+              )}
+
               <ul className="space-y-3">
                 {sesiones.map((s, i) => (
                   <li key={i} className="tarjeta space-y-3">
