@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, Mic, Pencil, Users, X } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   apilarDeshacer,
   ejecutarAccion,
@@ -19,15 +19,22 @@ import { buscarAlumnoEnTexto, construirMapaTokens } from '../lib/pseudonimizacio
 import { etiquetaDia } from '../lib/fechas'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { useUI } from '../store/ui'
+import { BotonDictado } from './BotonDictado'
 import { CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 import { SelectorGrupo } from './SelectorGrupo'
 import type { Alumno, Grupo } from '../db/types'
 
 /**
- * FAB global de voz (§5, §6). Dicta con el teclado nativo (nada de Web Speech
- * API): se abre la hoja, el campo se enfoca solo y el propio teclado de
- * Android trae el icono de micrófono.
+ * FAB global de voz (§5, §6). La captura es propia, con la Web Speech API del
+ * navegador (`lib/dictado.ts`): un toque en el FAB abre la hoja y otro en
+ * «Dictar» empieza a escuchar.
+ *
+ * Antes se dictaba con el teclado de Android, que pedía tres toques para una
+ * orden. El dictado de Gboard ya mandaba el audio a Google, así que transcribir
+ * con el navegador no añade exposición real y ahorra dos toques. Donde no haya
+ * `SpeechRecognition` —Safari, Firefox— el campo de texto sigue siendo la vía,
+ * y el teclado trae su micrófono como siempre.
  */
 export function AgenteVoz() {
   const [abierta, setAbierta] = useState(false)
@@ -99,11 +106,18 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
   // el botón sigue pulsable durante el `await` y un segundo toque duplica la
   // acción (doble observación, doble asistencia…).
   const [procesando, setProcesando] = useState(false)
+  /**
+   * Lo que había escrito antes de la pulsación de micrófono en curso. Los
+   * parciales del motor se reescriben enteros en cada evento, así que sin esta
+   * base cada corrección del motor borraría lo ya dictado o lo duplicaría.
+   */
+  const baseDictado = useRef('')
 
   const alumnos = useLiveQuery(async () => (await db.alumnos.toArray()).filter((a) => a.activo), []) ?? []
   const grupos = useLiveQuery(() => gruposVisibles(), []) ?? []
 
   function cerrar() {
+    baseDictado.current = ''
     setFase({ paso: 'dictado', texto: '' })
     onCerrar()
   }
@@ -251,11 +265,25 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     <Hoja abierta={abierta} titulo="Agente de voz" onCerrar={cerrar}>
       {fase.paso === 'dictado' && (
         <div className="space-y-3">
+          <BotonDictado
+            yaExplicado={!!config.dictadoExplicado}
+            deshabilitado={procesando}
+            onParcial={(t) => setFase({ paso: 'dictado', texto: unirDictado(baseDictado.current, t) })}
+            onFinal={(t) => {
+              baseDictado.current = unirDictado(baseDictado.current, t)
+              setFase({ paso: 'dictado', texto: baseDictado.current })
+            }}
+          />
           <CampoArea
             className="campo h-28 resize-none py-2"
             valor={fase.texto}
-            onValor={(v) => setFase({ paso: 'dictado', texto: v })}
-            placeholder="Cuarto A, Ana ha ayudado a un compañero…"
+            onValor={(v) => {
+              // Corregir a mano manda: lo escrito pasa a ser la base de lo que
+              // se dicte después, o el siguiente parcial lo borraría.
+              baseDictado.current = v
+              setFase({ paso: 'dictado', texto: v })
+            }}
+            placeholder="Cuarto A, Ana ha ayudado a un compañero… (o toca «Dictar»)"
             aria-label="Dictado para el agente de voz"
             aria-invalid={!!fase.error}
             aria-describedby={fase.error ? 'agente-error' : undefined}
@@ -397,6 +425,21 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
       )}
     </Hoja>
   )
+}
+
+/**
+ * Pega lo que va transcribiendo el motor a lo que ya había en el campo.
+ *
+ * El motor reescribe el tramo entero en cada parcial, así que se concatena
+ * contra una base fija, no contra el último valor del campo: si no, una
+ * corrección del motor duplicaría media frase.
+ */
+function unirDictado(base: string, tramo: string): string {
+  const b = base.trimEnd()
+  const t = tramo.trim()
+  if (!b) return t
+  if (!t) return b
+  return `${b} ${t}`
 }
 
 /** Los otros nombres del grupo que se parecen a lo dictado, para el «no es este alumno». */

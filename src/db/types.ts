@@ -916,6 +916,12 @@ export interface Config {
   pin?: PinGuardado
   apiKey?: string
   modeloAgente: string
+  /**
+   * Si ya se explicó para qué se pide el micrófono. Se guarda para no repetir
+   * la explicación cada vez, no para recordar el permiso: quien lo concede o lo
+   * deniega es el navegador, y esto no lo sustituye.
+   */
+  dictadoExplicado?: boolean
   modoPista: boolean
   tema: 'claro' | 'oscuro' | 'sistema'
   /** ISO 8601 del último backup exportado. Alimenta el aviso semanal (M9). */
