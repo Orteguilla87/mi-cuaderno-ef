@@ -119,16 +119,23 @@ describe('importar unidad — cabeceras «S1 – UD2 – …»', () => {
     expect(analizarTexto(UD2_REAL).tituloUnidad).toBe('UD2 · ¡TE LO REGALO! (pp. 24-39)')
   })
 
-  it('deja los títulos de sesión sin los tokens S ni UD', () => {
+  it('el título es la línea de la cabecera entera, sin quitarle nada', () => {
+    // Quitar «S1» y «UD2» dejaba títulos como «P.24-29»: ni dicen qué se hace
+    // en clase ni conservan el número, que es lo primero que se busca.
     const titulos = analizarTexto(UD2_REAL).sesiones.map((s) => s.titulo)
-    expect(titulos[0]).toBe('P.24-29')
-    expect(titulos[4]).toBe('SESIÓN DE LECTURA · Libro B, bloque 2 (p. 24)')
-    expect(titulos[9]).toBe('P.32-35 · REFUERZO')
-    expect(titulos[13]).toBe('PRUEBA ESCRITA I · Material propio')
-    for (const t of titulos) {
-      expect(t).not.toMatch(/^S\d/)
-      expect(t).not.toMatch(/UD\s*\d/)
-    }
+    expect(titulos[0]).toBe('S1 – UD2 – P.24-29')
+    expect(titulos[4]).toBe('S5 – UD2 – SESIÓN DE LECTURA · Libro B, bloque 2 (p. 24)')
+    expect(titulos[9]).toBe('S10 – UD2 – P.32-35 · REFUERZO')
+    expect(titulos[13]).toBe('S14 – UD2 – PRUEBA ESCRITA I · Material propio')
+    expect(titulos[15]).toBe('S16 – UD2 – PRUEBAS ORALES · Material propio')
+  })
+
+  it('una cabecera que solo trae la posición sigue sin título', () => {
+    // «S3» a secas no es un título: no hay nada que respetar en esa línea.
+    const r = analizarTexto('S3\nJuegos de persecución.\nS4\nRelevos.')
+    expect(r.sesiones).toHaveLength(2)
+    expect(r.sesiones[0].titulo).toBeUndefined()
+    expect(r.sesiones[0].descripcion).toBe('Juegos de persecución.')
   })
 
   it('avisa de los números que faltan en vez de fusionar en silencio', () => {

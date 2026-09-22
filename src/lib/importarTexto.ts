@@ -105,10 +105,14 @@ function esMayusculas(linea: string): boolean {
 
 // ————————————— cabecera «S<n>», en el orden que venga —————————————
 //
-// El formato de la cabecera ya ha cambiado una vez —«UD2 – S1 – …» pasó a
-// «S1 – UD2 – …»— y volverá a cambiar. Por eso el token de sesión se busca
-// SUELTO en la línea y no anclado al principio: lo que identifica una cabecera
-// es que lleve un «S<n>» aislado, no en qué puesto lo lleva.
+// Lo normal es que la cabecera EMPIECE por «S<n>», sola en su línea, y ese es
+// el primer intento: es el caso que hay que acertar siempre y el que menos se
+// puede confundir con otra cosa.
+//
+// El segundo intento busca el token SUELTO en la línea, y existe porque el
+// formato ya cambió una vez —«UD2 – S1 – …» pasó a «S1 – UD2 – …»— y volverá a
+// cambiar. Solo entra si el primero no encontró nada, así que no puede robarle
+// cortes al caso normal.
 //
 // El fallo que motivó esto: el patrón anterior, `/^\s*S\s*\d+\s*[:.\-]/`, pedía
 // el separador en ASCII, y el texto real usa guion largo (–). No casaba, el
@@ -121,8 +125,8 @@ const SEPARADOR = '[\\s–—\\-·:.|]'
 /** `S 12`, aislado por separadores o por los bordes de la línea. Nunca `\d` a secas. */
 const TOKEN_SESION = new RegExp(`(?:^|${SEPARADOR})S\\s*(\\d{1,3})(?=$|${SEPARADOR})`, 'i')
 
-/** `UD2`, `U.D. 2`, `ud 2`: la unidad, vaya delante o detrás de la sesión. */
-const TOKEN_UNIDAD = new RegExp(`(?:^|${SEPARADOR})U\\.?D\\.?\\s*(\\d{1,3})(?=$|${SEPARADOR})`, 'i')
+/** `S 12` al principio de la línea: el caso normal, y el que menos se confunde. */
+const TOKEN_SESION_AL_INICIO = new RegExp(`^S\\s*(\\d{1,3})(?=$|${SEPARADOR})`, 'i')
 
 /** Más larga que esto ya es prosa, no un rótulo. */
 const LARGO_CABECERA = 120
@@ -135,32 +139,40 @@ const LARGO_CABECERA = 120
 const ETIQUETA_DE_CAMPO =
   /^\s*(?:contenidos?|consejos?|lectura|dictado\s*\d*(?:\s*\([^)]*\))?|recursos?|materiales?)\s*:/i
 
-/** El número de sesión de una cabecera `S<n>`, o `null` si la línea no lo es. */
-function numeroDeCabecera(linea: string): number | null {
+/**
+ * El número de sesión de una cabecera `S<n>`, o `null` si la línea no lo es.
+ *
+ * `alInicio` distingue los dos intentos: el primero exige que la línea empiece
+ * por el token, el segundo lo acepta en cualquier punto.
+ */
+function numeroDeCabecera(linea: string, alInicio: boolean): number | null {
   const t = linea.trim()
   if (!t || t.length >= LARGO_CABECERA) return null
   if (ETIQUETA_DE_CAMPO.test(t)) return null
-  const m = TOKEN_SESION.exec(t)
+  const m = (alInicio ? TOKEN_SESION_AL_INICIO : TOKEN_SESION).exec(t)
   return m ? Number(m[1]) : null
 }
 
+/** Una línea que solo trae la posición: «Sesión 3», «S3 –». No es un título. */
+const SOLO_POSICION = new RegExp(
+  `^(?:sesi[óo]n\\s*(?:n[ºo°]?\\s*)?|S\\s*)\\d{1,3}\\s*${SEPARADOR}*$`,
+  'i',
+)
+
 /**
- * El título de una cabecera `S<n>`: la línea sin los dos tokens y sin los
- * separadores que quedan sueltos en los extremos.
+ * El título de una cabecera `S<n>`: la línea ENTERA, solo recortada.
  *
- * « S5 – UD2 – SESIÓN DE LECTURA · Libro B, bloque 2 (p. 24) » →
- * «SESIÓN DE LECTURA · Libro B, bloque 2 (p. 24)». Si no queda nada, cadena
- * vacía: la regla de no inventar títulos manda, y la UI lo pedirá.
+ * No se quita el «S1» ni el «UD2». Quitarlos dejaba títulos como «P.24-29», que
+ * no dicen qué se hace en clase y encima pierden el número, que es lo primero
+ * que se busca al repasar la programación. El usuario escribe la cabecera
+ * pensando en cómo quiere verla; la app no tiene mejor criterio que él.
+ *
+ * La única excepción es una línea que no trae más que la posición: ahí no hay
+ * título que respetar, así que devuelve cadena vacía y la UI lo pide.
  */
 function tituloDeCabecera(linea: string): string {
-  return linea
-    .trim()
-    .replace(TOKEN_SESION, ' ')
-    .replace(TOKEN_UNIDAD, ' ')
-    .replace(new RegExp(`^${SEPARADOR}+`), '')
-    .replace(new RegExp(`${SEPARADOR}+$`), '')
-    .replace(/ {2,}/g, ' ')
-    .trim()
+  const t = linea.trim()
+  return SOLO_POSICION.test(t) ? '' : t
 }
 
 /** Longitud a partir de la cual un bloque es «texto de verdad» y no un ítem de lista. */
@@ -188,11 +200,17 @@ function detectarCortes(lineas: string[]): Corte[] {
   const sesionN = porPatron('sesion-n', (l) => SESION_N.test(l))
   if (sesionN.length) return sesionN
 
-  const sN = lineas.flatMap((l, i) => {
-    const numero = numeroDeCabecera(l)
-    return numero === null ? [] : [{ linea: i, patron: 's-n' as const, numero }]
-  })
-  if (sN.length) return sN
+  const cabecerasSN = (alInicio: boolean): Corte[] =>
+    lineas.flatMap((l, i) => {
+      const numero = numeroDeCabecera(l, alInicio)
+      return numero === null ? [] : [{ linea: i, patron: 's-n' as const, numero }]
+    })
+
+  const sNAlInicio = cabecerasSN(true)
+  if (sNAlInicio.length) return sNAlInicio
+
+  const sNSuelto = cabecerasSN(false)
+  if (sNSuelto.length) return sNSuelto
 
   const mayusculas = porPatron('mayusculas', esMayusculas)
   if (mayusculas.length) return mayusculas
