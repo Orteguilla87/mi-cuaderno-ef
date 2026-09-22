@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Hoja } from '../components/Hoja'
-import { Marcador } from '../components/Marcador'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import { gruposVisibles } from '../db/grupos'
 import { navegar } from '../lib/router'
 import { variablesColor } from '../components/SelectorColor'
+import { useMarcador } from '../store/marcador'
 
 type Id = 'equipos' | 'marcador' | 'aleatorio'
 
@@ -49,7 +49,8 @@ export function Herramientas() {
   // mismo, sin salir de Herramientas. El marcador no necesita grupo: abre directo.
   const [pidiendoGrupo, setPidiendoGrupo] = useState<Id | null>(null)
   const [sorteando, setSorteando] = useState<string | null>(null)
-  const [mostrandoMarcador, setMostrandoMarcador] = useState(false)
+  // El marcador lo pinta App: sus puntos son del partido, no de esta pantalla.
+  const abrirMarcador = useMarcador((s) => s.abrir)
 
   return (
     <>
@@ -61,7 +62,7 @@ export function Herramientas() {
             key={id}
             onClick={() => {
               if (!disponible) return
-              if (id === 'marcador') setMostrandoMarcador(true)
+              if (id === 'marcador') abrirMarcador()
               else setPidiendoGrupo(id)
             }}
             disabled={!disponible}
@@ -98,7 +99,6 @@ export function Herramientas() {
 
       {sorteando && <SorteoAlumno grupoId={sorteando} onCerrar={() => setSorteando(null)} />}
 
-      {mostrandoMarcador && <Marcador onCerrar={() => setMostrandoMarcador(false)} />}
     </>
   )
 }

@@ -4,6 +4,7 @@ import { AgenteVoz } from './components/AgenteVoz'
 import { BloqueoPin } from './components/BloqueoPin'
 import { BottomNav } from './components/BottomNav'
 import { LimiteError } from './components/LimiteError'
+import { Marcador } from './components/Marcador'
 import { NavLateral } from './components/NavLateral'
 import { Snackbar } from './components/Snackbar'
 import { useConfig } from './db/config'
@@ -16,6 +17,7 @@ import { MS_INACTIVIDAD } from './lib/pin'
 import { INFANTIL_HABILITADO } from './lib/etapas'
 import { segmentos, useRuta } from './lib/router'
 import { useBloqueo } from './store/bloqueo'
+import { useMarcador } from './store/marcador'
 import { useUI } from './store/ui'
 import { useVistaPlanificador, type VistaPlanificador } from './store/vistaPlanificador'
 import { Ajustes } from './pages/Ajustes'
@@ -273,9 +275,18 @@ export default function App() {
         </LimiteError>
       </main>
       <AgenteVoz />
+      {/* El marcador se pinta aquí y no en Herramientas: el agente de voz lo
+          abre y lo puntúa desde cualquier pantalla, y sus puntos duran lo que
+          dura el partido, no lo que dura una vista. */}
+      <MarcadorSiVisible />
       <BottomNav ruta={ruta} />
       <Snackbar />
       {hayPin && bloqueado && <BloqueoPin onDesbloqueo={desbloquear} />}
     </div>
   )
+}
+
+function MarcadorSiVisible() {
+  const visible = useMarcador((s) => s.visible)
+  return visible ? <Marcador /> : null
 }

@@ -173,10 +173,34 @@ function estadoAsistenciaDeTexto(t: string): EstadoAsistencia | null {
  * Pila de deshacer del agente, en memoria: dura mientras la app está abierta,
  * que es justo el alcance de «deshacer la última acción del agente» (§6).
  */
-const pilaDeshacer: { logId: string; deshacer: () => Promise<void> }[] = []
+const pilaDeshacer: { logId: string; resumen: string; deshacer: () => Promise<void> }[] = []
 
-export function apilarDeshacer(logId: string, deshacer: () => Promise<void>): void {
-  pilaDeshacer.push({ logId, deshacer })
+export function apilarDeshacer(
+  logId: string,
+  resumen: string,
+  deshacer: () => Promise<void>,
+): void {
+  pilaDeshacer.push({ logId, resumen, deshacer })
+}
+
+/**
+ * Lo que todavía se puede deshacer, de lo más reciente a lo más antiguo.
+ *
+ * El snackbar dura cuatro segundos, y en la pista cuatro segundos es nada: se
+ * dicta una orden, se levanta la vista y ya se fue. Esto es la misma pila, pero
+ * a la vista mientras la app siga abierta.
+ */
+export function pendientesDeDeshacer(): { logId: string; resumen: string }[] {
+  return [...pilaDeshacer].reverse().map(({ logId, resumen }) => ({ logId, resumen }))
+}
+
+/** Deshace una entrada concreta de la pila, no necesariamente la última. */
+export async function deshacerDelLog(logId: string): Promise<void> {
+  const i = pilaDeshacer.findIndex((e) => e.logId === logId)
+  if (i < 0) return
+  const [entrada] = pilaDeshacer.splice(i, 1)
+  await entrada.deshacer()
+  await marcarDeshecha(entrada.logId)
 }
 
 export async function deshacerUltimaDelAgente(): Promise<string | null> {

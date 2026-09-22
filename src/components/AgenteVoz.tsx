@@ -1,9 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, Mic, Pencil, Users, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { Check, Mic, Pencil, Undo2, Users, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import {
   apilarDeshacer,
+  deshacerDelLog,
   ejecutarAccion,
+  pendientesDeDeshacer,
   interpretarLocal,
   registrarEnLog,
   resolverGrupo,
@@ -15,7 +17,20 @@ import { useConfig } from '../db/config'
 import { db } from '../db/db'
 import { gruposVisibles } from '../db/grupos'
 import { resumirAsistencia } from '../db/asistencia'
+import { responder } from '../db/consultas'
+import { ejecutarIntencion, registrarIntencion } from '../db/acciones'
+import { columnasDe, TIPOS_COLUMNA, tiposDisponibles } from '../db/cuaderno'
+import { obtenerCursoActivo } from '../db/curso'
+import { trimestreDe } from '../lib/calendarioEscolar'
+import { aISO } from '../lib/fechas'
+import {
+  interpretarIntenciones,
+  ordenProhibida,
+  type ColumnaConocida,
+  type Intencion,
+} from '../lib/intenciones'
 import { buscarAlumnoEnTexto, construirMapaTokens } from '../lib/pseudonimizacion'
+import { navegar } from '../lib/router'
 import { etiquetaDia } from '../lib/fechas'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { useUI } from '../store/ui'
@@ -23,7 +38,7 @@ import { BotonDictado } from './BotonDictado'
 import { CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 import { SelectorGrupo } from './SelectorGrupo'
-import type { Alumno, Grupo } from '../db/types'
+import type { Alumno, Etapa, Grupo, TipoColumna } from '../db/types'
 
 /**
  * FAB global de voz (§5, §6). La captura es propia, con la Web Speech API del
@@ -90,12 +105,20 @@ type Fase =
       /** Los grupos del selector: los candidatos ambiguos, o todos si no se dijo ninguno. */
       gruposOfrecidos: Grupo[]
       accion?: AccionResuelta
+      /** Lo que resolvió el parser local. Puede traer varias (órdenes encadenadas). */
+      intenciones?: Intencion[]
+      /** Índices que el maestro ha descartado de la lista de arriba. */
+      descartadas?: number[]
+      /** Quién lo resolvió: se enseña para saber si hubo llamada o no. */
+      origen?: 'local' | 'ia'
       /** Candidatos de alumno DENTRO del grupo, para los chips. */
       candidatosAlumno: Alumno[]
       eligiendoAlumno: boolean
       aviso?: string
     }
-  | { paso: 'respuesta'; texto: string }
+  | { paso: 'respuesta'; texto: string; enlace?: { ruta: string; etiqueta: string } }
+  /** Se entendió y por eso no se hace: hay cosas que no van por voz (2.3). */
+  | { paso: 'rechazada'; motivo: string }
 
 function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => void }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -116,7 +139,26 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
   const alumnos = useLiveQuery(async () => (await db.alumnos.toArray()).filter((a) => a.activo), []) ?? []
   const grupos = useLiveQuery(() => gruposVisibles(), []) ?? []
 
+  /** Se relee al abrir la hoja y tras cada escritura: la pila vive en memoria. */
+  const [deshacibles, setDeshacibles] = useState(() => pendientesDeDeshacer())
+
+  useEffect(() => {
+    if (abierta) setDeshacibles(pendientesDeDeshacer())
+  }, [abierta])
+
+  async function deshacerUna(logId: string, resumen: string) {
+    setProcesando(true)
+    try {
+      await deshacerDelLog(logId)
+      setDeshacibles(pendientesDeDeshacer())
+      mostrarAviso(`Deshecho: ${resumen}`)
+    } finally {
+      setProcesando(false)
+    }
+  }
+
   function cerrar() {
+    setDeshacibles(pendientesDeDeshacer())
     baseDictado.current = ''
     setFase({ paso: 'dictado', texto: '' })
     onCerrar()
@@ -143,6 +185,33 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     const base = { paso: 'confirmar' as const, texto, textoSinGrupo, grupo, gruposOfrecidos, eligiendoAlumno: false }
     let degradadoALocal = false
 
+    // ——— 2.1 EL PARSER LOCAL VA PRIMERO ———
+    // Las órdenes de clase son regulares, y resolverlas aquí no cuesta ni
+    // latencia, ni dinero, ni conexión. La API solo entra cuando esto no sabe.
+    if (!alumnoForzado) {
+      const resuelto = interpretarIntenciones(textoSinGrupo, {
+        alumnos: delGrupo,
+        columnas: await columnasDelGrupo(grupo.id),
+        etapa: grupo.etapa,
+        buscarAlumno: buscarAlumnoEnTexto,
+      })
+      if (resuelto.tipo === 'rechazada') return { paso: 'rechazada', motivo: resuelto.motivo }
+      if (resuelto.tipo === 'consulta') {
+        // La respuesta se arma en local contra Dexie: ni la genera el modelo ni
+        // pasa por ninguna API (2.5).
+        const r = await responder(resuelto.consulta, grupo.id)
+        return { paso: 'respuesta', texto: r.texto, enlace: r.enlace }
+      }
+      if (resuelto.tipo === 'acciones')
+        return {
+          ...base,
+          intenciones: resuelto.acciones,
+          descartadas: [],
+          origen: 'local',
+          candidatosAlumno: candidatosDe(textoSinGrupo, delGrupo),
+        }
+    }
+
     if (config.apiKey && !alumnoForzado) {
       try {
         // Solo viaja el grupo resuelto y su alumnado: el modelo no puede
@@ -159,7 +228,12 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
           }
           const resuelta = construirAccionDesdeApi(r.accion, r.input, grupo, alumno)
           if (resuelta) {
-            return { ...base, accion: resuelta, candidatosAlumno: candidatosDe(textoSinGrupo, delGrupo) }
+            return {
+              ...base,
+              accion: resuelta,
+              origen: 'ia',
+              candidatosAlumno: candidatosDe(textoSinGrupo, delGrupo),
+            }
           }
         }
       } catch {
@@ -198,6 +272,14 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     if (!texto.trim() || procesando) return
     setProcesando(true)
     try {
+      // Lo prohibido se corta antes de resolver el grupo: «borra el grupo
+      // cuarto A» no puede acabar en un selector preguntando cuál.
+      const prohibida = ordenProhibida(texto)
+      if (prohibida) {
+        setFase({ paso: 'rechazada', motivo: prohibida })
+        return
+      }
+
       const grupoActivo = grupos.find((g) => g.id === grupoActivoId)
       const { grupo, ambiguos, textoSinGrupo } = resolverGrupo(texto, grupos, grupoActivo)
 
@@ -244,14 +326,49 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     }
   }
 
+  /** Las que quedan tras descartar a mano en la tarjeta (2.9). */
+  function intencionesVivas(f: Fase): Intencion[] {
+    if (f.paso !== 'confirmar' || !f.intenciones) return []
+    const fuera = new Set(f.descartadas ?? [])
+    return f.intenciones.filter((_, i) => !fuera.has(i))
+  }
+
   async function confirmar() {
-    if (fase.paso !== 'confirmar' || !fase.accion || procesando) return
-    const { accion, texto } = fase
+    if (fase.paso !== 'confirmar' || procesando || !fase.grupo) return
+    const { texto, grupo } = fase
     setProcesando(true)
     try {
+      const vivas = intencionesVivas(fase)
+      if (vivas.length > 0) {
+        // Cada intención escribe por su cuenta y apila su propio deshacer: una
+        // frase con dos órdenes son dos acciones, no una transacción.
+        const hechas: string[] = []
+        const deshaceres: (() => Promise<void>)[] = []
+        for (const intencion of vivas) {
+          const r = await ejecutarIntencion(intencion, grupo)
+          hechas.push(r.respuesta)
+          if (!r.deshacer) continue
+          deshaceres.push(r.deshacer)
+          apilarDeshacer(await registrarIntencion(texto, intencion), intencion.resumen, r.deshacer)
+        }
+        if (deshaceres.length > 0) {
+          cerrar()
+          mostrarAviso(hechas.join(' · '), async () => {
+            for (const d of [...deshaceres].reverse()) await d()
+          })
+        } else {
+          // Sin escritura no hay nada que deshacer, pero sí algo que enseñar
+          // —el alumno sorteado, los equipos, el tanteo—: la hoja se queda.
+          setFase({ paso: 'respuesta', texto: hechas.join('\n') })
+        }
+        return
+      }
+
+      if (!fase.accion) return
+      const { accion } = fase
       const deshacer = await ejecutarAccion(accion)
       const logId = await registrarEnLog(texto, accion)
-      apilarDeshacer(logId, deshacer)
+      apilarDeshacer(logId, accion.resumen, deshacer)
       cerrar()
       mostrarAviso(accion.resumen, deshacer)
     } catch (e) {
@@ -310,6 +427,33 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
           >
             {procesando ? 'Interpretando…' : 'Interpretar'}
           </button>
+
+          {/* 2.8: deshacer un rato después, no solo en el aviso de 4 segundos.
+              Dura lo que dura la app abierta, porque la función de deshacer vive
+              en memoria; se dice en vez de aparentar que es para siempre. */}
+          {deshacibles.length > 0 && (
+            <div className="border-t border-agua pt-3 dark:border-noche-elevada">
+              <p className="etiqueta">Últimas acciones del agente</p>
+              <ul className="mt-1 space-y-1">
+                {deshacibles.map((d) => (
+                  <li key={d.logId} className="flex items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate texto-suave">{d.resumen}</span>
+                    <button
+                      className="pildora min-h-[40px] shrink-0 bg-agua-claro px-3 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+                      onClick={() => void deshacerUna(d.logId, d.resumen)}
+                      disabled={procesando}
+                    >
+                      <Undo2 size={14} aria-hidden />
+                      Deshacer
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs texto-suave">
+                Mientras la app siga abierta. Al cerrarla, lo hecho se queda hecho.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -353,7 +497,66 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
               )}
             </div>
 
-            {fase.accion && !fase.eligiendoAlumno && (
+            {fase.intenciones && !fase.eligiendoAlumno && (
+              <div className="space-y-2 border-t border-agua pt-3 dark:border-noche-elevada">
+                {fase.intenciones.map((intencion, i) => {
+                  const fuera = (fase.descartadas ?? []).includes(i)
+                  return (
+                    <div key={i} className="flex items-start gap-2">
+                      <div className={'min-w-0 flex-1 ' + (fuera ? 'line-through opacity-50' : '')}>
+                        <p className="text-sm font-bold">{intencion.resumen}</p>
+                        {intencion.accion === 'crear_columna' && (
+                          <TipoDeColumna
+                            intencion={intencion}
+                            etapa={fase.grupo?.etapa ?? 'primaria'}
+                            onTipo={(tipo) =>
+                              setFase({
+                                ...fase,
+                                intenciones: fase.intenciones!.map((x, j) =>
+                                  j === i && x.accion === 'crear_columna'
+                                    ? { ...x, tipo, tipoPropuesto: false }
+                                    : x,
+                                ),
+                              })
+                            }
+                          />
+                        )}
+                      </div>
+                      {/* Descartar una de varias: una orden encadenada mal
+                          entendida no puede obligar a repetir las otras. */}
+                      {fase.intenciones!.length > 1 && (
+                        <button
+                          className="shrink-0 rounded-xl p-2 text-primario dark:text-agua"
+                          aria-label={fuera ? `Recuperar: ${intencion.resumen}` : `Descartar: ${intencion.resumen}`}
+                          onClick={() =>
+                            setFase({
+                              ...fase,
+                              descartadas: fuera
+                                ? (fase.descartadas ?? []).filter((d) => d !== i)
+                                : [...(fase.descartadas ?? []), i],
+                            })
+                          }
+                          disabled={procesando}
+                        >
+                          {fuera ? <Undo2 size={16} aria-hidden /> : <X size={16} aria-hidden />}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+                {fase.candidatosAlumno.length > 1 && (
+                  <button
+                    className="text-xs font-semibold text-primario underline dark:text-agua"
+                    onClick={() => setFase({ ...fase, eligiendoAlumno: true })}
+                    disabled={procesando}
+                  >
+                    No es este alumno
+                  </button>
+                )}
+              </div>
+            )}
+
+            {fase.accion && !fase.intenciones && !fase.eligiendoAlumno && (
               <div className="border-t border-agua pt-3 dark:border-noche-elevada">
                 <p className="text-sm font-bold">{fase.accion.resumen}</p>
                 <p className="mt-1 text-xs texto-suave">{etiquetaDia(fase.accion.fecha)}</p>
@@ -389,6 +592,13 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
           </div>
 
           {fase.aviso && <p className="text-xs texto-suave">{fase.aviso}</p>}
+          {/* Quién lo ha resuelto. Discreto, pero visible: saber si ha habido
+              llamada o no es lo que explica la latencia y el gasto. */}
+          {fase.origen && (
+            <p className="text-xs texto-suave">
+              Interpretado {fase.origen === 'local' ? 'aquí, sin conexión' : 'con la IA'}.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -402,7 +612,12 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
             <button
               className="btn-primario"
               onClick={() => void confirmar()}
-              disabled={procesando || !fase.accion || fase.eligiendoAlumno}
+              disabled={
+                procesando ||
+                !fase.grupo ||
+                fase.eligiendoAlumno ||
+                (!fase.accion && intencionesVivas(fase).length === 0)
+              }
             >
               <Check size={18} aria-hidden />
               {procesando ? 'Aplicando…' : 'Confirmar'}
@@ -417,14 +632,52 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
 
       {fase.paso === 'respuesta' && (
         <div className="space-y-4">
-          <div className="panel-agua text-sm">{fase.texto}</div>
+          <div className="panel-agua whitespace-pre-line text-sm">{fase.texto}</div>
+          {/* Un toque para el detalle: la respuesta es breve a propósito, y
+              quien quiera más va a la vista de verdad (2.6). */}
+          {fase.enlace && (
+            <button
+              className="btn-suave w-full"
+              onClick={() => {
+                navegar(fase.enlace!.ruta)
+                cerrar()
+              }}
+            >
+              {fase.enlace.etiqueta}
+            </button>
+          )}
           <button className="btn-primario w-full" onClick={cerrar}>
             Cerrar
           </button>
         </div>
       )}
+
+      {fase.paso === 'rechazada' && (
+        <div className="space-y-4">
+          <p role="alert" className="text-sm font-semibold text-acento">
+            {fase.motivo}
+          </p>
+          <button className="btn-primario w-full" onClick={cerrar}>
+            Entendido
+          </button>
+        </div>
+      )}
     </Hoja>
   )
+}
+
+/**
+ * Las columnas del trimestre en curso, reducidas a lo que el parser mira.
+ *
+ * Hacen falta para decidir si «un punto en participación» va a la celda del
+ * Cuaderno o al contador de observaciones: lo que lo decide es si se nombra una
+ * columna que existe de verdad.
+ */
+async function columnasDelGrupo(grupoId: string): Promise<ColumnaConocida[]> {
+  const curso = await obtenerCursoActivo()
+  const trimestre = trimestreDe(aISO(), curso) ?? 1
+  const columnas = await columnasDe(grupoId, trimestre)
+  return columnas.map((c) => ({ id: c.id, titulo: c.titulo, tipo: c.tipo }))
 }
 
 /**
@@ -533,4 +786,48 @@ async function responderConsulta(
   }
 
   return `Todavía no puedo consultar «${input.sobre}» de ${nombre}.`
+}
+
+/**
+ * El tipo de una columna creada por voz (2.4).
+ *
+ * Si no se dijo, el parser propone uno y lo marca como propuesta: aquí se ve
+ * que es una suposición y se cambia con un toque. Elegirlo en silencio es lo
+ * que convierte un contador en una nota sin que nadie se entere hasta que el
+ * cuaderno ya está a medio rellenar.
+ */
+function TipoDeColumna({
+  intencion,
+  etapa,
+  onTipo,
+}: {
+  intencion: Extract<Intencion, { accion: 'crear_columna' }>
+  etapa: Etapa
+  onTipo: (tipo: TipoColumna) => void
+}) {
+  return (
+    <div className="mt-1">
+      <p className="text-xs texto-suave">
+        Tipo: <span className="font-semibold">{etiquetaTipo(intencion.tipo)}</span>
+        {intencion.tipoPropuesto && ' — no lo has dicho, lo propongo yo'}
+      </p>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {tiposDisponibles(etapa)
+          .filter((t) => t.tipo !== intencion.tipo && t.tipo !== 'calculo' && t.tipo !== 'rubrica')
+          .map((t) => (
+            <button
+              key={t.tipo}
+              className="pildora min-h-[40px] bg-agua-claro px-3 text-xs text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+              onClick={() => onTipo(t.tipo)}
+            >
+              {t.etiqueta}
+            </button>
+          ))}
+      </div>
+    </div>
+  )
+}
+
+function etiquetaTipo(tipo: TipoColumna): string {
+  return TIPOS_COLUMNA.find((t) => t.tipo === tipo)?.etiqueta ?? tipo
 }

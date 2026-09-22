@@ -1,20 +1,8 @@
 import { Minus, Plus, RotateCcw, X } from 'lucide-react'
-import { useState } from 'react'
 import { Campo } from './Campo'
 import { coloresPetos, useConfig } from '../db/config'
 import { useCapaAbierta } from '../lib/capas'
-
-const MIN_EQUIPOS = 2
-const MAX_EQUIPOS = 6
-
-interface EquipoMarcador {
-  nombre: string
-  puntos: number
-}
-
-function equiposIniciales(n: number): EquipoMarcador[] {
-  return Array.from({ length: n }, (_, i) => ({ nombre: `Equipo ${i + 1}`, puntos: 0 }))
-}
+import { MAX_EQUIPOS, MIN_EQUIPOS, useMarcador } from '../store/marcador'
 
 /**
  * Marcador de tanteo a pantalla completa (§5 M8), para proyectar y leer desde la
@@ -22,41 +10,20 @@ function equiposIniciales(n: number): EquipoMarcador[] {
  * puntos ya anotados. Las tarjetas y las cifras se agrandan o encogen según
  * cuántos equipos haya, para que los números sigan siendo grandes con 6.
  */
-export function Marcador({ onCerrar }: { onCerrar: () => void }) {
+export function Marcador() {
   const config = useConfig()
   // El marcador se proyecta a pantalla completa sobre fondo oscuro, así que
   // usa el valor oscuro de cada color de la paleta, no el claro.
   const colores = coloresPetos(config).map((c) => c.oscuro)
-  const [equipos, setEquipos] = useState<EquipoMarcador[]>(() => equiposIniciales(3))
+  const equipos = useMarcador((s) => s.equipos)
+  const cambiarCantidad = useMarcador((s) => s.cambiarCantidad)
+  const sumar = useMarcador((s) => s.sumar)
+  const renombrar = useMarcador((s) => s.renombrar)
+  const reiniciar = useMarcador((s) => s.reiniciar)
+  const onCerrar = useMarcador((s) => s.cerrar)
   useCapaAbierta(true)
 
   const n = equipos.length
-
-  /** Cambia el número de equipos conservando los puntos de los que ya existían. */
-  function cambiarCantidad(cantidad: number) {
-    setEquipos((prev) => {
-      if (cantidad <= prev.length) return prev.slice(0, cantidad)
-      const extra = Array.from({ length: cantidad - prev.length }, (_, i) => ({
-        nombre: `Equipo ${prev.length + i + 1}`,
-        puntos: 0,
-      }))
-      return [...prev, ...extra]
-    })
-  }
-
-  function sumar(i: number, delta: number) {
-    setEquipos((prev) =>
-      prev.map((e, j) => (j === i ? { ...e, puntos: Math.max(0, e.puntos + delta) } : e)),
-    )
-  }
-
-  function renombrar(i: number, nombre: string) {
-    setEquipos((prev) => prev.map((e, j) => (j === i ? { ...e, nombre } : e)))
-  }
-
-  function reiniciar() {
-    setEquipos((prev) => prev.map((e) => ({ ...e, puntos: 0 })))
-  }
 
   // Columnas y tamaño de cifra según cuántos equipos: con más equipos, más
   // columnas y una cifra algo menor, pero siempre grande respecto a la pantalla.
