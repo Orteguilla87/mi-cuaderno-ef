@@ -10,7 +10,7 @@ import type {
   Trimestre,
   ValorCelda,
 } from './types'
-import { TIPOS_NUMERICOS } from './types'
+import { TIPOS_CALIFICABLES, TIPOS_NUMERICOS } from './types'
 
 /** Metadatos de cada tipo de columna, para poblar el selector y la rejilla. */
 export const TIPOS_COLUMNA: {
@@ -684,4 +684,42 @@ export async function pegarColumnas(
       })
     },
   }
+}
+
+/**
+ * Cuánto suman los pesos de los instrumentos calificables de una unidad EN UN
+ * GRUPO Y TRIMESTRE, con el que se está editando ya contado.
+ *
+ * El peso vive en la columna, y la columna es de un grupo: 3ºA y 3ºB usan la
+ * misma unidad —y a menudo la misma rúbrica del banco— con instrumentos
+ * propios. Antes se sumaba por `udId` a secas y una rúbrica al 100 % en los dos
+ * grupos se enseñaba como 200 %. Es la misma lectura que hace el motor
+ * (`datosCalificacion`), así que la cifra de pantalla y la nota ya no pueden
+ * contar cosas distintas.
+ *
+ * `gruposConLaUnidad` sí cruza grupos, a propósito: solo sirve para saber si
+ * hay que avisar de que la cifra antigua pudo salir inflada.
+ */
+export async function sumaPesosDeLaUnidad(datos: {
+  grupoId: string
+  trimestre: Trimestre
+  udId: string
+  /** La columna en edición: su peso guardado se sustituye por `pesoEnEdicion`. */
+  excluirColumnaId: string | null
+  pesoEnEdicion: number
+  cuentaLaEditada: boolean
+}): Promise<{ suma: number; gruposConLaUnidad: number }> {
+  const hermanas = (
+    await db.columnas.where('[grupoId+trimestre]').equals([datos.grupoId, datos.trimestre]).toArray()
+  ).filter((c) => c.udId === datos.udId && c.id !== datos.excluirColumnaId)
+
+  const suma =
+    hermanas.filter((c) => TIPOS_CALIFICABLES.includes(c.tipo)).reduce((n, c) => n + c.pesoUd, 0) +
+    (datos.cuentaLaEditada ? datos.pesoEnEdicion : 0)
+
+  const grupos = new Set(
+    (await db.columnas.where('udId').equals(datos.udId).toArray()).map((c) => c.grupoId),
+  )
+  grupos.add(datos.grupoId)
+  return { suma, gruposConLaUnidad: grupos.size }
 }

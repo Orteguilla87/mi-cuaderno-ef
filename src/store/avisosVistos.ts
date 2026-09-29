@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware'
 /**
  * Avisos que se dan UNA vez y luego estorban.
  *
- * Hoy solo hay uno: la primera vez que se pone o se quita una etiqueta en una
+ * La primera vez que se pone o se quita una etiqueta en una
  * ficha vinculada, hay que decir que el cambio afecta a todas las fichas de esa
  * persona. Quien no lo sepa creerá estar tocando solo su área.
  *
@@ -16,7 +16,10 @@ import { persist } from 'zustand/middleware'
  *
  * No guarda ningún dato de alumnado: solo banderas.
  */
-export type Aviso = 'etiquetas-compartidas'
+export type Aviso =
+  | 'etiquetas-compartidas'
+  /** La suma de pesos de una unidad mezclaba grupos; puede haber pesos que revisar. */
+  | 'suma-pesos-por-grupo'
 
 interface EstadoAvisosVistos {
   vistos: Aviso[]

@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, ChevronLeft, ChevronRight, Copy, Plus, Trash2, Users } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy, Plus, Trash2, Users, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Campo } from './Campo'
 import { cicloDeCurso, criteriosDeGrupo } from '../db/criterios'
@@ -10,6 +10,7 @@ import {
   crearRubrica,
   eliminarColumna,
   moverColumna,
+  sumaPesosDeLaUnidad,
   TIPOS_APLICABLES_GRUPO,
   tiposDisponibles,
 } from '../db/cuaderno'
@@ -33,6 +34,7 @@ import type {
 } from '../db/types'
 import { TIPOS_CALIFICABLES } from '../db/types'
 import { aISO } from '../lib/fechas'
+import { useAvisosVistos } from '../store/avisosVistos'
 import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { useUI } from '../store/ui'
 import { Hoja } from './Hoja'
@@ -435,6 +437,8 @@ export function HojaColumna({
                 <span className="text-sm texto-suave">%</span>
               </div>
               <SumaDeLaUnidad
+                grupoId={grupo!.id}
+                trimestre={trimestre}
                 udId={udId}
                 columnaId={columna?.id ?? null}
                 pesoEnEdicion={pesoUd}
@@ -548,31 +552,68 @@ export function HojaColumna({
  * Repartir mal un trimestre es un estado de paso, no un error que impedir.
  */
 function SumaDeLaUnidad({
+  grupoId,
+  trimestre,
   udId,
   columnaId,
   pesoEnEdicion,
   cuenta,
 }: {
+  grupoId: string
+  trimestre: Trimestre
   udId: string
   columnaId: string | null
   pesoEnEdicion: number
   cuenta: boolean
 }) {
-  const hermanas = useLiveQuery(
-    async () => (await db.columnas.where('udId').equals(udId).toArray()).filter((c) => c.id !== columnaId),
-    [udId, columnaId],
+  const avisoPendiente = useAvisosVistos((s) => s.pendiente('suma-pesos-por-grupo'))
+  const marcarVisto = useAvisosVistos((s) => s.marcarVisto)
+  // Solo las de ESTE grupo y trimestre (`sumaPesosDeLaUnidad`): el peso es de
+  // la columna, y cada grupo tiene las suyas aunque compartan unidad y rúbrica.
+  const resultado = useLiveQuery(
+    () =>
+      sumaPesosDeLaUnidad({
+        grupoId,
+        trimestre,
+        udId,
+        excluirColumnaId: columnaId,
+        pesoEnEdicion,
+        cuentaLaEditada: cuenta,
+      }),
+    [grupoId, trimestre, udId, columnaId, pesoEnEdicion, cuenta],
   )
-  if (!hermanas) return null
+  if (!resultado) return null
 
-  const suma =
-    hermanas.filter((c) => TIPOS_CALIFICABLES.includes(c.tipo)).reduce((n, c) => n + c.pesoUd, 0) +
-    (cuenta ? pesoEnEdicion : 0)
+  const { suma, gruposConLaUnidad } = resultado
   const cuadra = suma === 100
 
   return (
-    <p className={'mt-1 text-xs ' + (cuadra ? 'font-semibold text-lima-oscuro' : 'text-aviso-oscuro')}>
-      Los instrumentos de esta unidad suman {suma} %{cuadra ? '.' : ', y deberían sumar 100 %.'}
-    </p>
+    <>
+      <p className={'mt-1 text-xs ' + (cuadra ? 'font-semibold text-lima-oscuro' : 'text-aviso-oscuro')}>
+        Los instrumentos de esta unidad en este grupo suman {suma} %
+        {cuadra ? '.' : ', y deberían sumar 100 %.'}
+      </p>
+      {/* Hasta ahora esta cifra sumaba los instrumentos de todos los grupos
+          de la unidad. Las notas se calcularon bien, pero quien ajustó pesos
+          para que la cifra diera 100 % puede tener otra proporción de la que
+          quería. Se dice una vez; ningún peso se toca por el sistema. */}
+      {gruposConLaUnidad > 1 && avisoPendiente && (
+        <div role="status" className="panel-agua mt-2 flex items-start gap-2 text-xs">
+          <p className="min-w-0 flex-1">
+            Antes esta suma mezclaba los instrumentos de todos los grupos que usan la unidad, y podía
+            salir por encima de 100 %. Las notas se calcularon bien, pero si ajustaste pesos para que
+            cuadrara, revisa la ponderación de esta unidad en cada grupo.
+          </p>
+          <button
+            className="shrink-0 rounded-xl p-1 text-primario dark:text-agua"
+            aria-label="Entendido, no volver a mostrar"
+            onClick={() => marcarVisto('suma-pesos-por-grupo')}
+          >
+            <X size={16} aria-hidden />
+          </button>
+        </div>
+      )}
+    </>
   )
 }
 
