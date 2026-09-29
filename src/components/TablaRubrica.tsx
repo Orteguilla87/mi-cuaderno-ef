@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { guardarValor, valorNormalizado } from '../db/cuaderno'
 import { useConfig } from '../db/config'
@@ -11,7 +11,17 @@ import type {
   Rubrica,
   ValorCelda,
 } from '../db/types'
+import {
+  anteriorEnRubrica,
+  progresoRubrica,
+  siguienteEnRubrica,
+  trasMarcarRubrica,
+  type ModoAvanceRubrica,
+  type PosicionRubrica,
+} from '../lib/avanceCalificacion'
 import { formatearNombre } from '../lib/nombres'
+import { useAvanceCalificacion } from '../store/avanceCalificacion'
+import { useUI } from '../store/ui'
 import { notaInstrumento } from '../lib/notas'
 import { Hoja } from './Hoja'
 import { LineaPlegable } from './LineaPlegable'
@@ -53,25 +63,56 @@ export function TablaRubrica({
   onCerrar: () => void
 }) {
   const config = useConfig()
-  const [editando, setEditando] = useState<{
-    alumnoId: string
-    criterioId: string
-    ancla: DOMRect
-  } | null>(null)
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const avance = useAvanceCalificacion()
+  const [editando, setEditando] = useState<(PosicionRubrica & { ancla: DOMRect }) | null>(null)
   const disparadorRef = useRef<HTMLButtonElement | null>(null)
+  const tablaRef = useRef<HTMLTableElement>(null)
 
   if (!rubrica) return null
+  const dims = { filas: alumnos.length, criterios: rubrica.criterios.length }
 
   const anchoColumnaAlumno = ANCHO_COLUMNA_ALUMNO_PX[config.anchoColumnaAlumno]
 
-  function elegirNivel(alumnoId: string, criterioId: string, nivelId: string | undefined) {
+  /**
+   * Abre el selector sobre otra celda. El ancla se mide en el DOM porque el
+   * salto no viene de un toque: antes se trae la celda a la vista, que en
+   * modo «siguiente alumno» suele quedar por debajo del borde.
+   */
+  function abrirCelda(pos: PosicionRubrica) {
+    const boton = tablaRef.current?.querySelector<HTMLButtonElement>(
+      `[data-celda="${pos.fila}:${pos.criterio}"]`,
+    )
+    if (!boton) return cerrarPopover()
+    boton.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    disparadorRef.current = boton
+    setEditando({ ...pos, ancla: boton.getBoundingClientRect() })
+  }
+
+  function elegirNivel(pos: PosicionRubrica, nivelId: string | undefined) {
+    const alumnoId = alumnos[pos.fila].id
+    const criterioId = rubrica!.criterios[pos.criterio].id
     const valor = valores.get(`${columna.id}|${alumnoId}`)
     const actual = valor?.rubrica?.[criterioId]
     const nuevo = { ...(valor?.rubrica ?? {}) }
-    if (nivelId === undefined || actual === nivelId) delete nuevo[criterioId]
+    const quitando = nivelId === undefined || actual === nivelId
+    if (quitando) delete nuevo[criterioId]
     else nuevo[criterioId] = nivelId
+    // Se persiste en CADA marca, no al cerrar el recorrido: con el móvil en
+    // la mano la pantalla puede bloquearse a mitad de la clase.
     void onCambiar(columna, alumnoId, { rubrica: nuevo })
+
+    // Quitar una valoración es corregir, no calificar: no avanza.
+    if (quitando) return cerrarPopover()
+    const tras = trasMarcarRubrica(pos, dims, { activo: avance.activo, modo: avance.modoRubrica })
+    if (tras.tipo === 'ir') return abrirCelda(tras.a)
     cerrarPopover()
+    if (tras.tipo === 'fin')
+      mostrarAviso(
+        avance.modoRubrica === 'alumno'
+          ? `Último alumno de «${rubrica!.criterios[pos.criterio].titulo}»: fin del recorrido`
+          : `Último criterio de ${formatearNombre(alumnos[pos.fila], config.formatoNombre)}: fin del recorrido`,
+      )
   }
 
   function cerrarPopover() {
@@ -94,14 +135,25 @@ export function TablaRubrica({
     return puntuaciones.reduce((a, b) => a + b, 0) / puntuaciones.length
   }
 
-  const editandoCriterio = editando ? rubrica.criterios.find((c) => c.id === editando.criterioId) : undefined
-  const editandoAlumno = editando ? alumnos.find((a) => a.id === editando.alumnoId) : undefined
+  const editandoCriterio = editando ? rubrica.criterios[editando.criterio] : undefined
+  const editandoAlumno = editando ? alumnos[editando.fila] : undefined
+  // Atrás y «saltar» siguen el modo elegido; sin avance, recorren alumnos.
+  const modoNavegacion: ModoAvanceRubrica = avance.activo ? avance.modoRubrica : 'alumno'
 
   return (
     <>
       <Hoja abierta titulo={columna.titulo} onCerrar={onCerrar}>
+        <SelectorModoAvance
+          activo={avance.activo}
+          modo={avance.modoRubrica}
+          onCambio={(m) => {
+            if (m === 'no') return avance.fijarActivo(false)
+            avance.fijarActivo(true)
+            avance.fijarModoRubrica(m)
+          }}
+        />
         <div className="-mx-4 overflow-x-auto px-4 apaisado:max-h-[75dvh] apaisado:overflow-y-auto">
-          <table className="w-max border-separate border-spacing-0">
+          <table ref={tablaRef} className="w-max border-separate border-spacing-0">
             <caption className="sr-only">Rúbrica: alumnado por criterio, con la nota de cada uno</caption>
             <thead>
               <tr>
@@ -156,18 +208,19 @@ export function TablaRubrica({
                     >
                       <span className="block truncate">{nombre}</span>
                     </th>
-                    {rubrica.criterios.map((c) => {
+                    {rubrica.criterios.map((c, ci) => {
                       const nivelId = valor?.rubrica?.[c.id]
                       const nivel = rubrica.niveles.find((n) => n.id === nivelId)
                       return (
                         <td key={c.id} className="border-b border-r border-borde p-0 dark:border-noche-borde">
                           <button
                             className="flex h-14 w-full items-center justify-center active:scale-95"
+                            data-celda={`${fila}:${ci}`}
                             onClick={(e) => {
                               disparadorRef.current = e.currentTarget
                               setEditando({
-                                alumnoId: a.id,
-                                criterioId: c.id,
+                                fila,
+                                criterio: ci,
                                 ancla: e.currentTarget.getBoundingClientRect(),
                               })
                             }}
@@ -223,12 +276,23 @@ export function TablaRubrica({
 
       {editando && editandoCriterio && editandoAlumno && (
         <SelectorNivel
+          key={`${editando.fila}:${editando.criterio}`}
           niveles={rubrica.niveles}
           criterio={editandoCriterio}
-          nivelActualId={valores.get(`${columna.id}|${editando.alumnoId}`)?.rubrica?.[editando.criterioId]}
+          nivelActualId={valores.get(`${columna.id}|${editandoAlumno.id}`)?.rubrica?.[editandoCriterio.id]}
           ancla={editando.ancla}
           etiqueta={`${formatearNombre(editandoAlumno, config.formatoNombre)}, ${editandoCriterio.titulo}`}
-          onElegir={(nivelId) => elegirNivel(editando.alumnoId, editando.criterioId, nivelId)}
+          progreso={progresoRubrica(editando, dims, modoNavegacion)}
+          onElegir={(nivelId) => elegirNivel(editando, nivelId)}
+          onAnterior={(() => {
+            const p = anteriorEnRubrica(editando, modoNavegacion)
+            return p ? () => abrirCelda(p) : undefined
+          })()}
+          onSaltar={(() => {
+            // Saltar no escribe nada: la celda se queda SIN dato, que no es un 0.
+            const p = siguienteEnRubrica(editando, dims, modoNavegacion)
+            return p ? () => abrirCelda(p) : undefined
+          })()}
           onCerrar={cerrarPopover}
         />
       )}
@@ -248,7 +312,10 @@ function SelectorNivel({
   nivelActualId,
   ancla,
   etiqueta,
+  progreso,
   onElegir,
+  onAnterior,
+  onSaltar,
   onCerrar,
 }: {
   niveles: Rubrica['niveles']
@@ -256,7 +323,11 @@ function SelectorNivel({
   nivelActualId: string | undefined
   ancla: DOMRect
   etiqueta: string
+  progreso: { actual: number; total: number }
   onElegir: (nivelId: string | undefined) => void
+  /** Ausentes en el borde: no se da la vuelta. */
+  onAnterior?: () => void
+  onSaltar?: () => void
   onCerrar: () => void
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -298,6 +369,30 @@ function SelectorNivel({
         style={{ top: coord?.top ?? 0, left: coord?.left ?? 0, visibility: coord ? 'visible' : 'hidden' }}
         className="fixed z-modal w-[min(92vw,320px)] space-y-1.5 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
       >
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onAnterior}
+            disabled={!onAnterior}
+            aria-label="Anterior"
+            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl text-primario disabled:opacity-30 dark:text-agua"
+          >
+            <ChevronLeft size={20} aria-hidden />
+          </button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="truncate text-xs font-semibold">{etiqueta}</p>
+            <p className="cifra text-xs texto-suave">
+              {progreso.actual} / {progreso.total}
+            </p>
+          </div>
+          <button
+            onClick={onSaltar}
+            disabled={!onSaltar}
+            aria-label="Saltar sin valorar"
+            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl text-primario disabled:opacity-30 dark:text-agua"
+          >
+            <ChevronRight size={20} aria-hidden />
+          </button>
+        </div>
         {niveles.map((n) => {
           const activo = n.id === nivelActualId
           const descripcion = criterio.descripciones?.[n.id]
@@ -341,5 +436,49 @@ function SelectorNivel({
         )}
       </div>
     </>
+  )
+}
+
+/**
+ * Qué hacer tras marcar un nivel (2.1). Visible en la propia vista, porque se
+ * cambia según cómo se esté calificando ese día; y recordado entre sesiones.
+ */
+function SelectorModoAvance({
+  activo,
+  modo,
+  onCambio,
+}: {
+  activo: boolean
+  modo: ModoAvanceRubrica
+  onCambio: (m: ModoAvanceRubrica | 'no') => void
+}) {
+  const actual = activo ? modo : 'no'
+  const opciones: { valor: ModoAvanceRubrica | 'no'; etiqueta: string }[] = [
+    { valor: 'criterio', etiqueta: 'Siguiente criterio' },
+    { valor: 'alumno', etiqueta: 'Siguiente alumno' },
+    { valor: 'no', etiqueta: 'No avanzar' },
+  ]
+  return (
+    <div className="mb-3">
+      <span className="etiqueta">Tras marcar</span>
+      <div role="radiogroup" aria-label="Tras marcar un nivel" className="grid grid-cols-3 gap-1.5">
+        {opciones.map((o) => (
+          <button
+            key={o.valor}
+            role="radio"
+            aria-checked={actual === o.valor}
+            onClick={() => onCambio(o.valor)}
+            className={
+              'min-h-tap rounded-xl px-2 text-xs font-semibold transition ' +
+              (actual === o.valor
+                ? 'bg-primario text-white'
+                : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
+            }
+          >
+            {o.etiqueta}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

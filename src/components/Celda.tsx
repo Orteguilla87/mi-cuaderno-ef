@@ -3,6 +3,8 @@ import { useLayoutEffect, useEffect, useRef, useState } from 'react'
 import type { ResultadoCalculo } from '../db/cuaderno'
 import { aplicarAGrupo, contarDestinatarios, guardarValor } from '../db/cuaderno'
 import type { Alumno, Columna, ValorCelda } from '../db/types'
+import { trasMarcarColumna } from '../lib/avanceCalificacion'
+import { useAvanceCalificacion } from '../store/avanceCalificacion'
 import { useUI } from '../store/ui'
 import { Campo, CampoArea } from './Campo'
 import { Hoja } from './Hoja'
@@ -399,6 +401,7 @@ export function Celda({
 }) {
   const base = CLASE_CELDA
   const nombre = alumno.alias || alumno.nombre
+  const avanceActivo = useAvanceCalificacion((s) => s.activo)
 
   switch (columna.tipo) {
     case 'si_no': {
@@ -422,6 +425,27 @@ export function Celda({
     }
 
     case 'caritas':
+      // Con avance automático la carita se pone en el recorrido por alumno,
+      // que salta solo al siguiente; sin él, el selector suelto de siempre.
+      if (avanceActivo)
+        return (
+          <button
+            className={base}
+            onClick={onAbrirEditor}
+            aria-label={`${nombre}, ${columna.titulo}: ${
+              valor?.carita != null ? escalaCaritas(columna.caritas ?? 3)[valor.carita]?.etiqueta : 'sin valorar'
+            }`}
+          >
+            {valor?.carita != null ? (
+              <Carita
+                boca={escalaCaritas(columna.caritas ?? 3)[valor.carita].boca}
+                className={escalaCaritas(columna.caritas ?? 3)[valor.carita].color}
+              />
+            ) : (
+              <span className="h-7 w-7 rounded-full border-2 border-dashed border-borde dark:border-noche-borde" />
+            )}
+          </button>
+        )
       return (
         <SelectorCaritas
           escala={escalaCaritas(columna.caritas ?? 3)}
@@ -568,6 +592,8 @@ export function EditorColumna({
   onCerrar: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const avanceActivo = useAvanceCalificacion((s) => s.activo)
+  const fijarAvance = useAvanceCalificacion((s) => s.fijarActivo)
   const alumno = alumnos[indice]
   if (!alumno) return null
 
@@ -584,9 +610,27 @@ export function EditorColumna({
     })
   }
 
+  /**
+   * Tras escribir un valor: al siguiente alumno de la misma columna si el
+   * avance está activo; en el último se para, lo dice y cierra —sin dar la
+   * vuelta al primero—. Con el avance apagado se queda en la celda.
+   */
+  const trasMarcar = () => {
+    const tras = trasMarcarColumna(indice, alumnos.length, avanceActivo)
+    if (tras.tipo === 'ir') onIndice(tras.a)
+    else if (tras.tipo === 'fin') {
+      onCerrar()
+      mostrarAviso(`Último alumno de «${columna.titulo}»: fin del recorrido`)
+    }
+  }
+
+  // «Guardar y siguiente» del texto es una orden explícita: avanza siempre.
   const avanzar = () => {
     if (indice + 1 < alumnos.length) onIndice(indice + 1)
-    else onCerrar() // al terminar la clase se cierra solo
+    else {
+      onCerrar()
+      mostrarAviso(`Último alumno de «${columna.titulo}»: fin del recorrido`)
+    }
   }
 
   return (
@@ -606,26 +650,87 @@ export function EditorColumna({
               {alumno.apellidos ? `${alumno.apellidos}, ${alumno.nombre}` : alumno.nombre}
             </p>
             <p className="cifra text-xs texto-suave">
-              {indice + 1} de {alumnos.length}
+              {indice + 1} / {alumnos.length}
             </p>
           </div>
+          {/* Saltar sin escribir: la celda se queda SIN dato, que no es un 0. */}
           <button
             className="btn-suave px-3"
             onClick={() => onIndice(Math.min(alumnos.length - 1, indice + 1))}
             disabled={indice === alumnos.length - 1}
-            aria-label="Alumno siguiente"
+            aria-label="Saltar al alumno siguiente sin valorar"
           >
             <ChevronRight size={20} aria-hidden />
           </button>
         </div>
 
+        {columna.tipo !== 'texto' && (
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-semibold">Avanzar solo al siguiente alumno</span>
+            <button
+              role="switch"
+              aria-checked={avanceActivo}
+              onClick={() => fijarAvance(!avanceActivo)}
+              className={
+                'relative h-8 w-14 shrink-0 rounded-full transition ' +
+                (avanceActivo ? 'bg-primario' : 'bg-borde dark:bg-noche-borde')
+              }
+            >
+              <span
+                className={
+                  'absolute top-1 h-6 w-6 rounded-full bg-white transition-all ' +
+                  (avanceActivo ? 'left-7' : 'left-1')
+                }
+              />
+            </button>
+          </label>
+        )}
+
+        {columna.tipo === 'caritas' && (
+          <div className="flex flex-wrap justify-center gap-2">
+            {escalaCaritas(columna.caritas ?? 3).map((c, i) => {
+              const activa = valor?.carita === i
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    guardarConDeshacer({ carita: i }, `${nombre}: ${c.etiqueta}`)
+                    trasMarcar()
+                  }}
+                  aria-pressed={activa}
+                  className={
+                    'flex min-h-tap min-w-tap flex-col items-center gap-1 rounded-xl px-3 py-2 transition active:scale-95 ' +
+                    'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
+                    (activa
+                      ? 'bg-agua-claro ring-2 ring-primario dark:bg-noche-elevada'
+                      : 'hover:bg-agua-claro dark:hover:bg-noche-elevada')
+                  }
+                >
+                  <Carita boca={c.boca} className={c.color} />
+                  <span className="text-xs font-semibold texto-suave">{c.etiqueta}</span>
+                </button>
+              )
+            })}
+            {valor?.carita != null && (
+              <button
+                className="btn-suave w-full text-sm"
+                onClick={() => guardarConDeshacer({ carita: undefined }, `${nombre}: sin valorar`)}
+              >
+                <X size={16} aria-hidden />
+                Quitar valoración
+              </button>
+            )}
+          </div>
+        )}
+
         {columna.tipo === 'numero' && (
           <TecladoNumerico
+            key={alumno.id}
             escala={columna.escala ?? { min: 0, max: 10, decimales: 1 }}
             valor={valor?.numero}
             onValor={(numero) => {
               guardarConDeshacer({ numero }, `${nombre}: ${numero}`)
-              avanzar()
+              trasMarcar()
             }}
             onLimpiar={() => guardarConDeshacer({ numero: undefined }, `${nombre}: nota borrada`)}
           />
