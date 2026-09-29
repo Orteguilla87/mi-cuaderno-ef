@@ -90,3 +90,18 @@ describe('ambigüedad entre áreas', () => {
     ])
   })
 })
+
+describe('dígito con indicador ordinal', () => {
+  it('«equipos de 5º» nombra la clase; «equipos de 5» no', () => {
+    const con = detectarGrupoEnTexto('Crea 4 equipos heterogéneos de 5º', GRUPOS)
+    expect(con.candidatos).toEqual([quintoA])
+    expect(con.textoSinGrupo).toBe('Crea 4 equipos heterogéneos de')
+    expect(detectarGrupoEnTexto('haz equipos de 5', GRUPOS).candidatos).toEqual([])
+  })
+
+  it('el número de equipos no se toma por la clase: «crea 4 grupos de cuarto A»', () => {
+    const r = detectarGrupoEnTexto('crea 4 grupos de cuarto A', GRUPOS)
+    expect(r.candidatos).toEqual([cuartoA])
+    expect(r.textoSinGrupo).toBe('crea 4 grupos de')
+  })
+})

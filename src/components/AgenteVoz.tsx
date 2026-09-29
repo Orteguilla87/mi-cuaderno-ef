@@ -109,6 +109,8 @@ type Fase =
       intenciones?: Intencion[]
       /** Índices que el maestro ha descartado de la lista de arriba. */
       descartadas?: number[]
+      /** La orden admite varias lecturas: se elige una antes de poder confirmar. */
+      aclaracion?: { pregunta: string; opciones: Intencion[] }
       /** Quién lo resolvió: se enseña para saber si hubo llamada o no. */
       origen?: 'local' | 'ia'
       /** Candidatos de alumno DENTRO del grupo, para los chips. */
@@ -194,8 +196,16 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
         columnas: await columnasDelGrupo(grupo.id),
         etapa: grupo.etapa,
         buscarAlumno: buscarAlumnoEnTexto,
+        grupoDictado: textoSinGrupo.trim() !== texto.trim(),
       })
       if (resuelto.tipo === 'rechazada') return { paso: 'rechazada', motivo: resuelto.motivo }
+      if (resuelto.tipo === 'aclarar')
+        return {
+          ...base,
+          aclaracion: { pregunta: resuelto.pregunta, opciones: resuelto.opciones },
+          origen: 'local',
+          candidatosAlumno: [],
+        }
       if (resuelto.tipo === 'consulta') {
         // La respuesta se arma en local contra Dexie: ni la genera el modelo ni
         // pasa por ninguna API (2.5).
@@ -497,6 +507,28 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
               )}
             </div>
 
+            {fase.aclaracion && (
+              <div className="border-t border-agua pt-3 dark:border-noche-elevada">
+                <p role="alert" className="text-sm font-semibold text-acento">
+                  {fase.aclaracion.pregunta}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {fase.aclaracion.opciones.map((op, i) => (
+                    <button
+                      key={i}
+                      className="pildora min-h-[40px] bg-agua-claro px-3 text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+                      onClick={() =>
+                        setFase({ ...fase, aclaracion: undefined, intenciones: [op], descartadas: [] })
+                      }
+                      disabled={procesando}
+                    >
+                      {op.resumen}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {fase.intenciones && !fase.eligiendoAlumno && (
               <div className="space-y-2 border-t border-agua pt-3 dark:border-noche-elevada">
                 {fase.intenciones.map((intencion, i) => {
@@ -544,7 +576,9 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                     </div>
                   )
                 })}
-                {fase.candidatosAlumno.length > 1 && (
+                {/* Solo si alguna acción va sobre un alumno: en equipos,
+                    sorteo o columnas no hay alumno que cambiar. */}
+                {fase.candidatosAlumno.length > 1 && intencionesVivas(fase).some((x) => 'alumnoId' in x) && (
                   <button
                     className="text-xs font-semibold text-primario underline dark:text-agua"
                     onClick={() => setFase({ ...fase, eligiendoAlumno: true })}
@@ -560,7 +594,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
               <div className="border-t border-agua pt-3 dark:border-noche-elevada">
                 <p className="text-sm font-bold">{fase.accion.resumen}</p>
                 <p className="mt-1 text-xs texto-suave">{etiquetaDia(fase.accion.fecha)}</p>
-                {fase.candidatosAlumno.length > 1 && (
+                {fase.candidatosAlumno.length > 1 && fase.accion.alumnoId && (
                   <button
                     className="mt-2 text-xs font-semibold text-primario underline dark:text-agua"
                     onClick={() => setFase({ ...fase, eligiendoAlumno: true })}

@@ -167,8 +167,11 @@ function buscarMencion(texto: string, areas: Set<string>): Mencion | null {
 
     // Un dígito suelto no basta: «le he puesto un 4» no nombra a ningún grupo.
     // Solo cuenta como mención si algo más lo acompaña —la letra de clase o una
-    // palabra de área—. Los ordinales en palabra («cuarto») sí valen solos.
-    if (/^\d$/.test(cabeza) && !letra && hasta === palabras[i].hasta) continue
+    // palabra de área—. Los ordinales en palabra («cuarto») sí valen solos, y
+    // también el dígito con su indicador ordinal («5º»): «equipos de 5º» es
+    // una clase, «equipos de 5» no.
+    const conIndicador = /^\d[º°ᵒª]$/.test(palabras[i].bruto.replace(/[.,;:]+$/, ''))
+    if (/^\d$/.test(cabeza) && !letra && !conIndicador && hasta === palabras[i].hasta) continue
 
     return { nivel, letra, desde: palabras[i].desde, hasta }
   }

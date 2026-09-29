@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   filtrarPorPresentes,
   generarEquipos,
+  modoSegunNiveles,
   resolverTamanios,
   type AlumnoGenerable,
 } from './generadorEquipos'
@@ -251,5 +252,24 @@ describe('alumnado sin nivel valorado', () => {
     }
 
     expect(repartidos).toBe(true)
+  })
+})
+
+describe('modo sin nivel motriz valorado (1.4)', () => {
+  const sinNivel = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }]
+
+  it('equilibrado u homogéneo sin niveles: avisa y reparte al azar, sin fallar', () => {
+    for (const modo of ['heterogeneo', 'homogeneo'] as const) {
+      const r = modoSegunNiveles(sinNivel, modo)
+      expect(r.modo).toBe('aleatorio')
+      expect(r.aviso).toMatch(/nivel motriz/)
+      const { equipos } = generarEquipos({ alumnos: sinNivel, tamanios: [2, 2], modo: r.modo })
+      expect(equipos.flat().sort()).toEqual(['a', 'b', 'c', 'd'])
+    }
+  })
+
+  it('con algún nivel valorado se respeta el modo pedido, sin aviso', () => {
+    const r = modoSegunNiveles([{ id: 'a', nivelMotriz: 3 }, { id: 'b' }], 'homogeneo')
+    expect(r).toEqual({ modo: 'homogeneo' })
   })
 })

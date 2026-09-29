@@ -36,6 +36,12 @@ export interface ContextoIntencion {
   buscarAlumno: (texto: string, alumnos: Alumno[]) => { alumno: Alumno; puntuacion: number }[]
   /** Fecha de referencia. Los tests la fijan. */
   hoy?: string
+  /**
+   * Si el dictado nombraba una clase («de cuarto A») que ya se ha retirado del
+   * texto. Es una de las señales de que «grupos» son equipos (1.2): se hacen
+   * equipos DE una clase, y una clase no se crea a partir de otra.
+   */
+  grupoDictado?: boolean
 }
 
 export type Intencion =
@@ -119,6 +125,12 @@ export type Resuelto =
   | { tipo: 'consulta'; consulta: Consulta; resumen: string }
   /** Se entendió, y por eso mismo no se hace: hay cosas que no van por voz. */
   | { tipo: 'rechazada'; motivo: string }
+  /**
+   * Admite más de una lectura, o le falta lo que decide entre ellas. No se
+   * ejecuta nada: la tarjeta enseña la pregunta y cada opción se elige con un
+   * toque.
+   */
+  | { tipo: 'aclarar'; pregunta: string; opciones: Intencion[] }
   | { tipo: 'no_reconocido' }
 
 // ——————————————————— normalización ———————————————————
@@ -171,6 +183,18 @@ const PROHIBIDAS: { patron: RegExp; motivo: string }[] = [
   {
     patron: /\b(elimina[rn]?|borra[rn]?|quita[rn]?)\b.{0,20}\b(grupo|clase|alumn[oa]s?|alumnad[oa]|datos|base)\b/,
     motivo: 'Eliminar grupos o alumnado no se hace por voz. Está en Grupos, donde se ve qué se borra.',
+  },
+  {
+    // Crear CLASES es estructura del curso, no una acción de aula (1.1). Solo
+    // se corta lo que no admite otra lectura: «clase», «grupo nuevo», o «un
+    // grupo» sin tamaño detrás. «Crea 4 grupos de cuarto» son equipos y pasa.
+    patron: new RegExp(
+      '\\b(crea|crear|creame|anade|anadir|agrega|da de alta|dar de alta)\\b.{0,15}\\bclases?\\b' +
+        '|\\bnuev[oa]s? (grupo|clase)s?\\b|\\b(grupo|clase)s? nuev[oa]s?\\b' +
+        `|\\b(crea|crear|creame|anade|anadir|agrega)\\s+(un|el)\\s+grupo\\b(?!\\s+de\\s+${'(\\d+|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)'})`,
+    ),
+    motivo:
+      'Crear clases no se hace por voz: está en Grupos. Si querías equipos, di por ejemplo «haz 4 equipos» o «haz equipos de 5».',
   },
   {
     patron: /\bsincroniz\w*|\bpassphrase\b|\bcontrasena\b|\bpin\b|\bexporta[rn]?\b|\bbackup\b|\bcopia de seguridad\b/,
@@ -296,26 +320,6 @@ function comoAccionDeGrupo(t: string): Intencion | null {
     }
   }
 
-  if (/\bequipos?\b/.test(t) && /\b(haz|hacer|genera|generar|crea|crear|monta|montar|reparte|repartir|divide|dividir)\b/.test(t)) {
-    const porTamano = aNumero(new RegExp(`equipos? de ${CIFRA}`).exec(t)?.[1])
-    const porNumEquipos = porTamano ? undefined : aNumero(new RegExp(`${CIFRA}\\s+equipos?`).exec(t)?.[1])
-    const modo: ModoGeneracion = /\bpor niveles?\b|\bhomogene/.test(t)
-      ? 'homogeneo'
-      : /\bequilibrad|\bheterogene|\bnivelad/.test(t)
-        ? 'heterogeneo'
-        : 'aleatorio'
-    return {
-      accion: 'generar_equipos',
-      riesgo: 'sin_riesgo',
-      resumen: porTamano
-        ? `Equipos de ${porTamano}`
-        : `${porNumEquipos ?? 2} equipos${modo === 'aleatorio' ? '' : modo === 'homogeneo' ? ' por niveles' : ' equilibrados'}`,
-      porTamano,
-      porNumEquipos: porTamano ? undefined : (porNumEquipos ?? 2),
-      modo,
-    }
-  }
-
   if (/\b(abre|abrir|ve|vete|voy|llevame|lleva|muestra|ensename)\b/.test(t)) {
     const vista = VISTAS.find((v) => v.patron.test(t))
     if (vista)
@@ -328,6 +332,96 @@ function comoAccionDeGrupo(t: string): Intencion | null {
   }
 
   return null
+}
+
+// ——————————————————— 3 bis. equipos ———————————————————
+
+/**
+ * «Grupo» es ambiguo en la app: es la CLASE (4ºA) y también lo que sale del
+ * generador de equipos. Por voz solo existe la segunda lectura —crear clases no
+ * está en el catálogo (1.1)—, pero «grupos» a secas tampoco se da por hecho:
+ * cuenta como equipos si hay una señal (1.2) —un número, la composición o la
+ * clase de origen dictada—. Sin ninguna, se pregunta.
+ *
+ * «equipos» no tiene esa ambigüedad y basta con él.
+ */
+const VERBO_EQUIPOS =
+  /\b(haz|hazme|hacer|genera|generar|crea|crear|creame|monta|montar|reparte|repartir|divide|dividir|forma|formar|organiza|organizar)\b/
+
+const HOMOGENEO = /\bpor niveles?\b|\bhomogene|\bparecid/
+const HETEROGENEO = /\bequilibrad|\bheterogene|\bnivelad|\bmezclad/
+
+function composicionDe(t: string): ModoGeneracion | undefined {
+  if (HOMOGENEO.test(t)) return 'homogeneo'
+  if (HETEROGENEO.test(t)) return 'heterogeneo'
+  return undefined
+}
+
+function intencionEquipos(
+  modo: ModoGeneracion,
+  por: { porNumEquipos: number } | { porTamano: number },
+): Intencion {
+  const sufijo = modo === 'aleatorio' ? '' : modo === 'homogeneo' ? ' por niveles' : ' equilibrados'
+  return 'porTamano' in por
+    ? { accion: 'generar_equipos', riesgo: 'sin_riesgo', resumen: `Equipos de ${por.porTamano}${sufijo}`, porTamano: por.porTamano, modo }
+    : { accion: 'generar_equipos', riesgo: 'sin_riesgo', resumen: `${por.porNumEquipos} equipos${sufijo}`, porNumEquipos: por.porNumEquipos, modo }
+}
+
+type Equipos = { intencion: Intencion } | { aclarar: Extract<Resuelto, { tipo: 'aclarar' }> }
+
+/**
+ * `t` llega normalizado y SIN la mención de la clase (1.5): «crea 4 grupos de
+ * cuarto A» es aquí «crea 4 grupos de», y «cuarto» ya no puede leerse como el
+ * número de equipos.
+ */
+function comoEquipos(t: string, ctx: ContextoIntencion): Equipos | null {
+  if (!/\b(grupos?|equipos?)\b/.test(t) || !VERBO_EQUIPOS.test(t)) return null
+  // «abre el marcador de 4 equipos» es el marcador, no el generador.
+  if (/\bmarcador\b/.test(t)) return null
+
+  // «X grupos» es el número de equipos; «grupos de X» (con un adjetivo en medio
+  // si lo hay: «equipos mixtos de 5»), los integrantes de cada uno.
+  let porNumEquipos = aNumero(new RegExp(`${CIFRA}\\s+(?:grupos?|equipos?)\\b`).exec(t)?.[1])
+  const porTamano = aNumero(
+    new RegExp(`\\b(?:grupos?|equipos?)(?:\\s+[a-z]+)?\\s+de\\s+${CIFRA}(?![\\w])`).exec(t)?.[1],
+  )
+  // «haz un equipo de 5»: el «un» es artículo, no una cuenta.
+  if (porNumEquipos === 1) porNumEquipos = undefined
+
+  const composicion = composicionDe(t)
+  const modo = composicion ?? 'aleatorio'
+  const literal = /\bequipos?\b/.test(t)
+  const hayNumero = porNumEquipos !== undefined || porTamano !== undefined
+
+  if (!literal && !hayNumero && !composicion && !ctx.grupoDictado)
+    return {
+      aclarar: {
+        tipo: 'aclarar',
+        pregunta: '¿Quieres hacer equipos? Crear clases no se hace por voz. Elige cuántos equipos:',
+        opciones: [2, 3, 4, 5].map((n) => intencionEquipos(modo, { porNumEquipos: n })),
+      },
+    }
+
+  // Las dos lecturas a la vez («haz 4 grupos de 5»): la frase no dice cuál
+  // manda, y sale distinto. Se pregunta.
+  if (porNumEquipos !== undefined && porTamano !== undefined)
+    return {
+      aclarar: {
+        tipo: 'aclarar',
+        pregunta: `¿${porNumEquipos} equipos, o equipos de ${porTamano}?`,
+        opciones: [
+          intencionEquipos(modo, { porNumEquipos }),
+          intencionEquipos(modo, { porTamano }),
+        ],
+      },
+    }
+
+  return {
+    intencion:
+      porTamano !== undefined
+        ? intencionEquipos(modo, { porTamano })
+        : intencionEquipos(modo, { porNumEquipos: porNumEquipos ?? 2 }),
+  }
 }
 
 // ——————————————————— 4. crear columna (sensible) ———————————————————
@@ -520,6 +614,10 @@ function comoAccionDeAlumno(
 function unaIntencion(original: string, ctx: ContextoIntencion, fecha: string): Intencion | null {
   const t = normal(original)
   if (!t) return null
+  const equipos = comoEquipos(t, ctx)
+  // Una orden de equipos que pide aclaración no vale como trozo de una frase
+  // encadenada: se resuelve entera, arriba.
+  if (equipos) return 'intencion' in equipos ? equipos.intencion : null
   return (
     comoAccionDeGrupo(t) ??
     comoCrearColumna(original, t, ctx) ??
@@ -562,6 +660,12 @@ export function interpretarIntenciones(texto: string, ctx: ContextoIntencion): R
     if (intenciones.every((i): i is Intencion => i !== null))
       return { tipo: 'acciones', acciones: intenciones }
   }
+
+  // Una orden con «grupos»/«equipos» nunca cae a `no_reconocido`: de ahí iría
+  // a la IA o al fuzzy de nombres, y acababa como observación a un alumno
+  // cualquiera cuyo nombre se pareciera a «crea 4 grupos».
+  const equipos = comoEquipos(t, ctx)
+  if (equipos) return 'aclarar' in equipos ? equipos.aclarar : { tipo: 'acciones', acciones: [equipos.intencion] }
 
   const una = unaIntencion(original, ctx, fecha)
   return una ? { tipo: 'acciones', acciones: [una] } : { tipo: 'no_reconocido' }

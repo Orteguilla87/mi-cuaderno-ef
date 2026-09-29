@@ -9,7 +9,7 @@ import { construirMapaTokens, pseudonimizarTexto, resolverFechaRelativa } from '
  * de la base.
  */
 
-const CATALOGO_HERRAMIENTAS = [
+export const CATALOGO_HERRAMIENTAS = [
   {
     name: 'registrar_observacion',
     description: 'Anota una observación de conducta, aprendizaje, salud u otro para un alumno.',

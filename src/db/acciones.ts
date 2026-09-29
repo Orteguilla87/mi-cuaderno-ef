@@ -20,7 +20,7 @@ import { aISO } from '../lib/fechas'
 import { siguienteAleatorio } from './aleatorio'
 import { alumnosGenerables, vinculosDelGrupo } from './equipos'
 import { asignar, ETIQUETA_LESIONADO } from './etiquetasAlumno'
-import { generarEquipos, resolverTamanios } from '../lib/generadorEquipos'
+import { generarEquipos, modoSegunNiveles, resolverTamanios } from '../lib/generadorEquipos'
 import { useMarcador } from '../store/marcador'
 import { navegar } from '../lib/router'
 import type { Intencion } from '../lib/intenciones'
@@ -83,10 +83,11 @@ export async function ejecutarIntencion(
         porTamano: intencion.porTamano,
         sobra: 'repartir',
       })
+      const { modo, aviso } = modoSegunNiveles(alumnos, intencion.modo)
       const { equipos, advertencia } = generarEquipos({
         alumnos,
         tamanios,
-        modo: intencion.modo,
+        modo,
         vinculos: await vinculosDelGrupo(grupo.id),
       })
       const lineas = equipos.map(
@@ -96,7 +97,9 @@ export async function ejecutarIntencion(
             .map((a) => (a ? a.alias || a.nombre : '?'))
             .join(', ')}`,
       )
-      return { respuesta: [advertencia, ...lineas].filter(Boolean).join('\n') }
+      // Los miembros salen ya barajados dentro de cada equipo y sin nivel motriz
+      // (1.6): el orden no delata la valoración.
+      return { respuesta: [aviso, advertencia, ...lineas].filter(Boolean).join('\n') }
     }
 
     case 'marcador_abrir':

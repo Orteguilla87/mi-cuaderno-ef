@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { interpretarIntenciones, type ContextoIntencion, type Intencion } from './intenciones'
+import { interpretarIntenciones, type ContextoIntencion, type Intencion, type Resuelto } from './intenciones'
 import { buscarAlumnoEnTexto } from './pseudonimizacion'
-import type { Alumno } from '../db/types'
+import { detectarGrupoEnTexto } from './grupoEnTexto'
+import { CATALOGO_HERRAMIENTAS as HERRAMIENTAS } from '../db/agenteApi'
+import type { Alumno, Grupo } from '../db/types'
 
 /**
  * Todo lo de aquí tiene que resolverse SIN red. El espía sobre `fetch` no es
@@ -245,5 +247,123 @@ describe('lo que no entiende', () => {
     expect(interpretarIntenciones('a ver qué tal ha ido la clase de hoy en general', ctx).tipo).toBe(
       'no_reconocido',
     )
+  })
+})
+
+describe('«grupos» por voz son equipos, nunca clases (1.1–1.5)', () => {
+  function grupo(id: string, nombre: string, nivel: number): Grupo {
+    return { id, cursoEscolarId: 'c1', nombre, etapa: 'primaria', nivel, color: '#006A80', orden: 0, horario: [] }
+  }
+  const GRUPOS = [grupo('g4a', '4ºA', 4), grupo('g3b', '3ºB', 3), grupo('g5b', '5ºB', 5)]
+
+  /** El recorrido real de la hoja: retirar la clase, y el resto al parser. */
+  function dictar(texto: string): Resuelto {
+    const { candidatos, textoSinGrupo } = detectarGrupoEnTexto(texto, GRUPOS)
+    expect(candidatos.length, texto).toBeGreaterThan(0)
+    return interpretarIntenciones(textoSinGrupo, { ...ctx, grupoDictado: textoSinGrupo !== texto })
+  }
+
+  function unaDe(r: Resuelto): Intencion {
+    expect(r.tipo).toBe('acciones')
+    if (r.tipo !== 'acciones') throw new Error('no')
+    expect(r.acciones).toHaveLength(1)
+    return r.acciones[0]
+  }
+
+  it('«Crea 4 grupos de cuarto A» son 4 equipos, no 4 clases', () => {
+    const { candidatos } = detectarGrupoEnTexto('Crea 4 grupos de cuarto A', GRUPOS)
+    expect(candidatos.map((g) => g.id)).toEqual(['g4a'])
+    expect(unaDe(dictar('Crea 4 grupos de cuarto A'))).toMatchObject({
+      accion: 'generar_equipos',
+      porNumEquipos: 4,
+      modo: 'aleatorio',
+    })
+  })
+
+  it('«cuarto» no se lee como número de equipos: «crea dos grupos de cuarto A» son 2', () => {
+    expect(unaDe(dictar('crea dos grupos de cuarto A'))).toMatchObject({ porNumEquipos: 2 })
+  })
+
+  it('«Haz grupos de 5 de tercero B» son equipos de 5 integrantes', () => {
+    const i = unaDe(dictar('Haz grupos de 5 de tercero B'))
+    expect(i).toMatchObject({ accion: 'generar_equipos', porTamano: 5 })
+    expect(i).not.toHaveProperty('porNumEquipos', expect.anything())
+  })
+
+  it('«haz grupos de 5» sin clase también son equipos de 5', () => {
+    expect(accion('haz grupos de 5')).toMatchObject({ accion: 'generar_equipos', porTamano: 5 })
+  })
+
+  it('«Crea 4 equipos heterogéneos de 5º» → 4 equipos equilibrados', () => {
+    expect(unaDe(dictar('Crea 4 equipos heterogéneos de 5º'))).toMatchObject({
+      porNumEquipos: 4,
+      modo: 'heterogeneo',
+    })
+  })
+
+  it('«Haz 3 grupos homogéneos de cuarto» → 3 equipos por niveles', () => {
+    expect(unaDe(dictar('Haz 3 grupos homogéneos de cuarto'))).toMatchObject({
+      porNumEquipos: 3,
+      modo: 'homogeneo',
+    })
+  })
+
+  it('composición: cada palabra a su modo', () => {
+    for (const p of ['heterogéneos', 'equilibrados', 'mezclados'])
+      expect(accion(`haz 4 grupos ${p}`), p).toMatchObject({ modo: 'heterogeneo' })
+    for (const p of ['homogéneos', 'por niveles', 'parecidos'])
+      expect(accion(`haz 4 grupos ${p}`), p).toMatchObject({ modo: 'homogeneo' })
+    expect(accion('haz 4 grupos')).toMatchObject({ modo: 'aleatorio' })
+  })
+
+  it('«4 grupos de 5» admite dos lecturas: se pregunta y no se ejecuta nada', () => {
+    const r = interpretarIntenciones('haz 4 grupos de 5', ctx)
+    expect(r.tipo).toBe('aclarar')
+    if (r.tipo !== 'aclarar') return
+    expect(r.opciones).toEqual([
+      expect.objectContaining({ porNumEquipos: 4 }),
+      expect.objectContaining({ porTamano: 5 }),
+    ])
+  })
+
+  it('«grupos» sin número, composición ni clase: se pregunta, no se adivina', () => {
+    const r = interpretarIntenciones('crea grupos', ctx)
+    expect(r.tipo).toBe('aclarar')
+    if (r.tipo !== 'aclarar') return
+    expect(r.opciones.every((o) => o.accion === 'generar_equipos')).toBe(true)
+  })
+
+  it('una orden de equipos nunca acaba como acción sobre un alumno', () => {
+    // «Ana» está en el grupo: antes el fuzzy casaba cualquier cosa parecida.
+    for (const t of ['crea 4 grupos de', 'haz grupos de 5 de', 'crea grupos', 'haz 4 grupos de 5']) {
+      const r = interpretarIntenciones(t, ctx)
+      expect(r.tipo, t).not.toBe('no_reconocido')
+      if (r.tipo === 'acciones') expect(r.acciones.every((a) => !('alumnoId' in a)), t).toBe(true)
+    }
+  })
+
+  it('ninguna orden de voz crea una clase', () => {
+    for (const t of [
+      'crea un grupo',
+      'crea una clase nueva',
+      'crea la clase de quinto C',
+      'nuevo grupo de sexto',
+      'añade una clase',
+      'da de alta un grupo nuevo',
+    ]) {
+      const r = interpretarIntenciones(t, ctx)
+      expect(r.tipo, t).toBe('rechazada')
+    }
+    // Y el catálogo no tiene con qué: ni el parser ni la API.
+    const acciones: Intencion['accion'][] = [
+      'alumno_aleatorio', 'generar_equipos', 'marcador_abrir', 'marcador_puntos', 'abrir_vista',
+      'pasar_lista', 'contador_celda', 'observacion', 'nota_celda', 'etiqueta_lesionado', 'crear_columna',
+    ]
+    expect(acciones.some((a) => /grupo|clase/.test(a))).toBe(false)
+    expect(HERRAMIENTAS.map((h) => h.name).some((n) => /grupo|clase/.test(n))).toBe(false)
+  })
+
+  it('«haz un equipo de 5» toma el «un» como artículo', () => {
+    expect(accion('haz un equipo de 5')).toMatchObject({ porTamano: 5 })
   })
 })

@@ -48,6 +48,22 @@ export interface ResultadoGeneracion {
 export type ComoRepartirSobra = 'repartir' | 'extra'
 
 /**
+ * El modo que de verdad se puede aplicar. Equilibrar o agrupar por niveles sin
+ * ningún nivel motriz valorado sería un reparto al azar disfrazado: se dice y
+ * se reparte al azar, en vez de fallar o de aparentar un criterio que no hay.
+ */
+export function modoSegunNiveles(
+  alumnos: AlumnoGenerable[],
+  modo: ModoGeneracion,
+): { modo: ModoGeneracion; aviso?: string } {
+  if (modo === 'aleatorio' || alumnos.some((a) => a.nivelMotriz != null)) return { modo }
+  return {
+    modo: 'aleatorio',
+    aviso: 'Nadie de este grupo tiene nivel motriz valorado: reparto al azar.',
+  }
+}
+
+/**
  * Tamaños de cada equipo a partir del nº de alumnos y, o bien un número de
  * equipos, o bien un tamaño objetivo. `sobra` decide si el resto se reparte
  * entre los equipos existentes o forma un equipo adicional.
