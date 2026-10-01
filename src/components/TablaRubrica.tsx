@@ -152,7 +152,9 @@ export function TablaRubrica({
             avance.fijarModoRubrica(m)
           }}
         />
-        <div className="-mx-4 overflow-x-auto px-4 apaisado:max-h-[75dvh] apaisado:overflow-y-auto">
+        {/* Scroll propio en los dos ejes, como la rejilla del Cuaderno: sin
+            él la fila de criterios no tiene contra qué quedarse fija. */}
+        <div className="-mx-4 max-h-[60dvh] overflow-auto px-4 apaisado:max-h-[75dvh]">
           <table ref={tablaRef} className="w-max border-separate border-spacing-0">
             <caption className="sr-only">Rúbrica: alumnado por criterio, con la nota de cada uno</caption>
             <thead>
@@ -164,7 +166,7 @@ export function TablaRubrica({
                   // Ajustes. Aquí solo hay un nombre truncado —los botones
                   // +/− son cosa del Cuaderno—, así que esos ~76 px de más
                   // solo servían para esconder un criterio.
-                  className="sticky left-0 z-20 border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:!w-[120px] apaisado:!min-w-[120px] apaisado:top-0 lg:top-0"
+                  className="sticky left-0 top-0 z-[3] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:!w-[120px] apaisado:!min-w-[120px]"
                   style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
                 >
                   Alumno
@@ -176,14 +178,14 @@ export function TablaRubrica({
                     // Al girar, los criterios bajan de 140 a 112 px: con 4-6
                     // criterios es la diferencia entre verlos todos de un
                     // vistazo y tener que arrastrar la tabla para calificar.
-                    className="min-w-[140px] max-w-[220px] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold leading-snug text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:sticky apaisado:top-0 apaisado:z-10 apaisado:min-w-[112px] apaisado:max-w-[140px] lg:sticky lg:top-0 lg:z-10"
+                    className="min-w-[140px] max-w-[220px] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold leading-snug text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua sticky top-0 z-[2] apaisado:min-w-[112px] apaisado:max-w-[140px]"
                   >
                     {c.titulo}
                   </th>
                 ))}
                 <th
                   scope="col"
-                  className="min-w-[72px] border-b-2 border-borde bg-agua-claro px-2 py-2 text-center text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:sticky apaisado:top-0 apaisado:z-10 lg:sticky lg:top-0 lg:z-10"
+                  className="min-w-[72px] border-b-2 border-borde bg-agua-claro px-2 py-2 text-center text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua sticky top-0 z-[2]"
                 >
                   Nota
                 </th>
@@ -199,7 +201,7 @@ export function TablaRubrica({
                     <th
                       scope="row"
                       className={
-                        'sticky left-0 z-10 border-b border-r border-borde px-2 py-2 text-left text-sm font-semibold dark:border-noche-borde apaisado:!w-[120px] apaisado:!min-w-[120px] ' +
+                        'sticky left-0 z-[1] border-b border-r border-borde px-2 py-2 text-left text-sm font-semibold dark:border-noche-borde apaisado:!w-[120px] apaisado:!min-w-[120px] ' +
                         (fila % 2
                           ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
                           : 'bg-superficie dark:bg-noche-superficie')
@@ -251,7 +253,7 @@ export function TablaRubrica({
               <tr>
                 <th
                   scope="row"
-                  className="sticky left-0 border-t-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
+                  className="sticky left-0 z-[1] border-t-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
                 >
                   Media
                 </th>

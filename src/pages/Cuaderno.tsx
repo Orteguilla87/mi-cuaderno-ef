@@ -906,7 +906,7 @@ function CabeceraColumna({
         (columna.tipo === 'contador'
           ? 'min-w-[52px] apaisado:min-w-[46px] '
           : 'min-w-[76px] apaisado:min-w-[64px] ') +
-        'border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada apaisado:sticky apaisado:top-0 apaisado:z-10 lg:sticky lg:top-0 lg:z-10'
+        'border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada sticky top-0 z-[2]'
       }
     >
       <button
@@ -982,16 +982,19 @@ function Rejilla({
   const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
 
   return (
-    // En escritorio la rejilla acota su propia altura y hace scroll interno:
-    // así la cabecera de columnas puede quedarse fija (`lg:sticky lg:top-0`)
-    // sin tener que coordinar su posición con la altura variable de Cabecera.
-    <div className="carril-fab-derecha overflow-x-auto apaisado:max-h-[75dvh] apaisado:overflow-y-auto lg:max-h-[70vh] lg:overflow-y-auto">
+    // La rejilla hace scroll propio en los dos ejes y en todos los tamaños: un
+    // `sticky` se pega al contenedor con scroll más cercano, y con
+    // `overflow-x-auto` ese es este, no la página. Su alto (`rejilla-desplazable`)
+    // cabe entero entre la Cabecera y la barra inferior, así la fila de títulos
+    // nunca queda debajo de ninguna de las dos.
+    <div className="carril-fab-derecha rejilla-desplazable">
       <table className="w-max border-separate border-spacing-0">
         <caption className="sr-only">Cuaderno de notas: alumnos por columnas de evaluación</caption>
         <thead>
           <tr>
             <th
-              className="sticky left-0 z-20 border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:top-0 lg:top-0"
+              // Esquina: fija en los dos ejes y por encima de títulos y nombres.
+              className="sticky left-0 top-0 z-[3] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
               style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               scope="col"
             >
@@ -1017,7 +1020,7 @@ function Rejilla({
               <th
                 scope="row"
                 className={
-                  'sticky left-0 z-10 border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold dark:border-noche-borde ' +
+                  'sticky left-0 z-[1] border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold dark:border-noche-borde ' +
                   (fila % 2
                     ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
                     : 'bg-superficie dark:bg-noche-superficie')

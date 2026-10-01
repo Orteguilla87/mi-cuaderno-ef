@@ -252,6 +252,20 @@
     padding-right: calc(var(--alto-fab) + var(--holgura-capa) * 2);
   }
 
+  /* Rejilla con scroll propio (Cuaderno): su fila de títulos y su columna de
+     nombres son `sticky` contra ESTE contenedor. Mide lo que queda de pantalla
+     entre la Cabecera fija (`--alto-cabecera`, la publica Cabecera.tsx) y la
+     barra inferior con su inset: así, aunque la página se desplace hasta
+     tocar la Cabecera, la rejilla entera —títulos incluidos— sigue a la vista
+     y nunca bajo las barras del sistema. */
+  .rejilla-desplazable {
+    overflow: auto;
+    max-height: calc(
+      100dvh - var(--alto-cabecera, 0px) - var(--alto-nav) - var(--holgura-capa) * 2 -
+        env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+  }
+
   /* El aviso, encima del FAB. Usa siempre la altura del FAB grande aunque esté
      compacto: una posición estable se lee mejor que una que salta de pantalla
      en pantalla. */

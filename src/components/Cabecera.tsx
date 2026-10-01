@@ -1,5 +1,5 @@
 import { ChevronLeft } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { IndicadorSincro } from './IndicadorSincro'
 import { volver } from '../lib/router'
 
@@ -26,11 +26,30 @@ export function Cabecera({
   atras?: boolean
   acciones?: ReactNode
 }) {
+  const ref = useRef<HTMLElement>(null)
+
+  // Publica su alto como `--alto-cabecera`: lo que hace scroll por debajo de
+  // esta barra fija (la rejilla del Cuaderno) necesita saber cuánto le tapa.
+  // Varía con el subtítulo, las acciones y el giro de pantalla.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const raiz = document.documentElement.style
+    const publicar = () => raiz.setProperty('--alto-cabecera', `${el.offsetHeight}px`)
+    publicar()
+    const observador = new ResizeObserver(publicar)
+    observador.observe(el)
+    return () => {
+      observador.disconnect()
+      raiz.removeProperty('--alto-cabecera')
+    }
+  }, [])
+
   return (
     // En apaisado la cabecera se aprieta: es una barra fija sobre una pantalla
     // de 390 px de alto, y cada píxel que no gasta aquí lo gana la rejilla o
     // la lista de debajo.
-    <header className="sticky top-0 z-20 bg-primario px-4 pb-4 pt-3 text-white shadow-lg shadow-primario/20 dark:bg-primario-oscuro apaisado:pb-2 apaisado:pt-2">
+    <header ref={ref} className="sticky top-0 z-20 bg-primario px-4 pb-4 pt-3 text-white shadow-lg shadow-primario/20 dark:bg-primario-oscuro apaisado:pb-2 apaisado:pt-2">
       <div className="flex items-center gap-2">
         {atras && (
           <button
