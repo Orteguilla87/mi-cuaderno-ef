@@ -64,6 +64,7 @@ import type {
   ValorCelda,
 } from '../db/types'
 import { contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
+import { columnaVecina } from '../lib/entradaNota'
 import { iconoDe } from '../lib/iconosEtiqueta'
 import { formatearNombre } from '../lib/nombres'
 import { usePulsacionLarga } from '../lib/pulsacionLarga'
@@ -546,6 +547,11 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           indice={evaluando.indice}
           valores={mapaValores}
           onIndice={(indice) => setEvaluando({ ...evaluando, indice })}
+          onColumna={(delta) => {
+            const vecina = columnaVecina(visibles, evaluando.columna.id, delta)
+            if (vecina) setEvaluando({ columna: vecina, indice: evaluando.indice })
+            return !!vecina
+          }}
           onCerrar={() => setEvaluando(null)}
         />
       )}

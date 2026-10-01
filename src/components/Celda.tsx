@@ -1,9 +1,17 @@
-import { Check, ChevronLeft, ChevronRight, Delete, Minus, Plus, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Delete, Keyboard, Minus, Plus, X } from 'lucide-react'
 import { useLayoutEffect, useEffect, useRef, useState } from 'react'
 import type { ResultadoCalculo } from '../db/cuaderno'
 import { aplicarAGrupo, contarDestinatarios, guardarValor } from '../db/cuaderno'
 import type { Alumno, Columna, ValorCelda } from '../db/types'
 import { trasMarcarColumna } from '../lib/avanceCalificacion'
+import type { DecisionTecla, EscalaNota } from '../lib/entradaNota'
+import {
+  decidirTecla,
+  modoEntradaNota,
+  normalizarEntradaNota,
+  notaDeTexto,
+  textoDeNota,
+} from '../lib/entradaNota'
 import { useAvanceCalificacion } from '../store/avanceCalificacion'
 import { useUI } from '../store/ui'
 import { Campo, CampoArea } from './Campo'
@@ -582,6 +590,7 @@ export function EditorColumna({
   indice,
   valores,
   onIndice,
+  onColumna,
   onCerrar,
 }: {
   columna: Columna
@@ -589,11 +598,23 @@ export function EditorColumna({
   indice: number
   valores: Map<string, ValorCelda>
   onIndice: (i: number) => void
+  /**
+   * Salta a la columna numérica vecina con el mismo alumno (Tab y flechas del
+   * teclado físico). Devuelve `false` en el borde de la rejilla.
+   */
+  onColumna?: (delta: 1 | -1) => boolean
   onCerrar: () => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const avanceActivo = useAvanceCalificacion((s) => s.activo)
   const fijarAvance = useAvanceCalificacion((s) => s.fijarActivo)
+  // Puntero grueso = pantalla táctil (móvil en la pista): teclado propio. Con
+  // ratón, teclado físico, y el de pantalla plegado detrás de un botón para
+  // quien lo quiera sin que tape ni robe el foco al campo.
+  const [modo] = useState(() =>
+    modoEntradaNota(window.matchMedia?.('(pointer: coarse)').matches ?? false),
+  )
+  const [tecladoAbierto, setTecladoAbierto] = useState(modo.tecladoPantalla)
   const alumno = alumnos[indice]
   if (!alumno) return null
 
@@ -622,6 +643,32 @@ export function EditorColumna({
       onCerrar()
       mostrarAviso(`Último alumno de «${columna.titulo}»: fin del recorrido`)
     }
+  }
+
+  /**
+   * Teclado físico sobre la nota. Enter respeta la preferencia de avance: con
+   * ella, siguiente alumno (y al final, aviso y cierre); sin ella, guarda y
+   * cierra, que es lo que se espera de un Enter que no avanza.
+   */
+  const alTeclear = (decision: DecisionTecla) => {
+    if (decision.guardar) {
+      const { numero } = decision.guardar
+      guardarConDeshacer(
+        { numero },
+        numero == null ? `${nombre}: sin nota` : `${nombre}: ${textoDeNota(numero)}`,
+      )
+    }
+    const d = decision.destino
+    if (d.tipo === 'avanzar') {
+      if (avanceActivo) trasMarcar()
+      else onCerrar()
+    } else if (d.tipo === 'alumno') {
+      const i = indice + d.delta
+      if (i >= 0 && i < alumnos.length) onIndice(i)
+    } else if (d.tipo === 'columna') {
+      if (onColumna && !onColumna(d.delta))
+        mostrarAviso(d.delta > 0 ? 'No hay más columnas de nota a la derecha' : 'Primera columna de nota')
+    } else if (d.tipo === 'cerrar') onCerrar()
   }
 
   // «Guardar y siguiente» del texto es una orden explícita: avanza siempre.
@@ -724,16 +771,40 @@ export function EditorColumna({
         )}
 
         {columna.tipo === 'numero' && (
-          <TecladoNumerico
-            key={alumno.id}
-            escala={columna.escala ?? { min: 0, max: 10, decimales: 1 }}
-            valor={valor?.numero}
-            onValor={(numero) => {
-              guardarConDeshacer({ numero }, `${nombre}: ${numero}`)
-              trasMarcar()
-            }}
-            onLimpiar={() => guardarConDeshacer({ numero: undefined }, `${nombre}: nota borrada`)}
-          />
+          <>
+            <TecladoNumerico
+              key={`${columna.id}|${alumno.id}`}
+              escala={columna.escala ?? { min: 0, max: 10, decimales: 1 }}
+              valor={valor?.numero}
+              etiqueta={`${nombre}, ${columna.titulo}`}
+              inputMode={modo.inputMode}
+              mostrarTeclado={tecladoAbierto}
+              onValor={(numero) => {
+                guardarConDeshacer({ numero }, `${nombre}: ${textoDeNota(numero)}`)
+                trasMarcar()
+              }}
+              onLimpiar={() => guardarConDeshacer({ numero: undefined }, `${nombre}: nota borrada`)}
+              onTecla={alTeclear}
+            />
+            {!modo.tecladoPantalla && (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs texto-suave">
+                <span>
+                  Enter: guardar y siguiente · Tab: otra columna · Flechas: moverse · Esc: cancelar ·
+                  Supr en vacío: sin nota
+                </span>
+                <button
+                  tabIndex={-1}
+                  className="btn-suave px-3 text-xs"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setTecladoAbierto((v) => !v)}
+                  aria-pressed={tecladoAbierto}
+                >
+                  <Keyboard size={16} aria-hidden />
+                  {tecladoAbierto ? 'Ocultar teclado' : 'Teclado en pantalla'}
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {columna.tipo === 'texto' && (
@@ -769,113 +840,162 @@ export function EditorColumna({
   )
 }
 
-/** Teclado grande: se usa con una mano, de pie y con prisa. */
+/**
+ * Campo de nota. En móvil manda el teclado grande en pantalla —se usa con una
+ * mano, de pie y con prisa— y el campo no levanta el del sistema. En
+ * escritorio el campo recibe el teclado físico y el de pantalla va plegado.
+ */
 function TecladoNumerico({
   escala,
   valor,
+  etiqueta,
+  inputMode,
+  mostrarTeclado,
   onValor,
   onLimpiar,
+  onTecla,
 }: {
-  escala: { min: number; max: number; decimales: 0 | 1 | 2 }
+  escala: EscalaNota
   valor?: number
+  etiqueta: string
+  inputMode: 'none' | 'decimal'
+  mostrarTeclado: boolean
   onValor: (n: number) => void
   onLimpiar: () => void
+  onTecla: (decision: DecisionTecla) => void
 }) {
-  const [buffer, setBuffer] = useState('')
-  const mostrado = buffer || (valor != null ? String(valor) : '')
-  const contenedorRef = useRef<HTMLDivElement>(null)
+  const [texto, setTexto] = useState(() => textoDeNota(valor))
+  // Recién abierta, la primera pulsación del teclado en pantalla sustituye la
+  // nota en vez de añadirse detrás; con teclado físico lo hace la selección.
+  const [virgen, setVirgen] = useState(true)
+  const campoRef = useRef<HTMLInputElement>(null)
 
-  // Foco al montar para capturar el teclado físico sin robarlo en cada tecla.
+  // Foco y selección al abrir, en el siguiente fotograma: la Hoja enfoca su
+  // primer botón en su propio efecto, que corre DESPUÉS que el de este hijo y
+  // se llevaba el foco al aspa de cerrar. Era lo que dejaba el teclado físico
+  // escribiendo en ninguna parte.
   useEffect(() => {
-    contenedorRef.current?.focus()
+    const id = requestAnimationFrame(() => {
+      campoRef.current?.focus()
+      campoRef.current?.select()
+    })
+    return () => cancelAnimationFrame(id)
   }, [])
 
+  // Si la celda cambia por fuera (deshacer, otro dispositivo) y no se está
+  // escribiendo, el campo enseña el valor nuevo.
+  useEffect(() => {
+    if (virgen) setTexto(textoDeNota(valor))
+  }, [valor, virgen])
+
+  function escribir(siguiente: string) {
+    const limpio = normalizarEntradaNota(siguiente, escala)
+    // Carácter no válido: se ignora y se conserva lo ya escrito.
+    if (limpio == null) return
+    setTexto(limpio)
+    setVirgen(false)
+  }
+
   function pulsar(tecla: string) {
-    if (tecla === ',') {
-      if (escala.decimales === 0 || buffer.includes(',')) return
-      setBuffer((b) => (b === '' ? '0,' : b + ','))
-      return
-    }
-    setBuffer((b) => b + tecla)
+    const base = virgen ? '' : texto
+    escribir(tecla === ',' && base === '' ? '0,' : base + tecla)
+    campoRef.current?.focus()
   }
 
   function confirmar() {
-    const n = Number(mostrado.replace(',', '.'))
-    if (!Number.isFinite(n)) return
-    // Se recorta a la escala en vez de rechazar: escribir 12 en una escala 0–10
-    // casi siempre es un dedo torpe, no una nota de 12.
-    const acotado = Math.min(escala.max, Math.max(escala.min, n))
-    setBuffer('')
-    onValor(Number(acotado.toFixed(escala.decimales)))
+    const n = notaDeTexto(texto, escala)
+    if (n == null) return
+    setVirgen(true)
+    onValor(n)
   }
 
-  // En escritorio se teclea con el teclado físico: Enter guarda y salta al
-  // siguiente alumno (vía onValor→avanzar), como el botón «Guardar». Los
-  // dígitos y la coma alimentan el mismo buffer que los botones en pantalla.
-  function alPulsarTecla(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      if (mostrado) confirmar()
-    } else if (e.key === 'Backspace') {
-      setBuffer((b) => b.slice(0, -1))
-    } else if (/^[0-9]$/.test(e.key)) {
-      pulsar(e.key)
-    } else if (e.key === ',' || e.key === '.') {
-      pulsar(',')
-    }
+  function alPulsarTecla(e: React.KeyboardEvent<HTMLInputElement>) {
+    const campo = e.currentTarget
+    const sinSeleccion = campo.selectionStart === campo.selectionEnd
+    const decision = decidirTecla(
+      {
+        key: e.key,
+        shiftKey: e.shiftKey,
+        cursorInicio: sinSeleccion && campo.selectionStart === 0,
+        cursorFin: sinSeleccion && campo.selectionEnd === campo.value.length,
+      },
+      { texto, valorPrevio: valor, escala },
+    )
+    if (!decision) return
+    // La tecla es nuestra: ni Tab sale del campo, ni la trampa de foco ni el
+    // Escape de la Hoja la vuelven a procesar.
+    e.preventDefault()
+    e.stopPropagation()
+    if (decision.guardar) setVirgen(true)
+    onTecla(decision)
   }
 
   return (
-    <div
-      ref={contenedorRef}
-      onKeyDown={alPulsarTecla}
-      tabIndex={0}
-      className="rounded-xl2 outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
-    >
-      <div className="mb-2 flex items-center justify-center rounded-xl border-2 border-borde py-3 dark:border-noche-borde">
-        <span className="cifra text-3xl font-bold">{mostrado || '—'}</span>
-        <span className="ml-2 text-sm texto-suave">
-          / {escala.max}
-        </span>
+    <div>
+      <div className="mb-2 flex items-center justify-center rounded-xl border-2 border-borde focus-within:border-primario dark:border-noche-borde">
+        <input
+          ref={campoRef}
+          type="text"
+          inputMode={inputMode}
+          autoComplete="off"
+          enterKeyHint="next"
+          value={texto}
+          placeholder={valor != null ? textoDeNota(valor) : '—'}
+          onChange={(e) => escribir(e.target.value)}
+          onKeyDown={alPulsarTecla}
+          aria-label={etiqueta}
+          className="cifra w-28 bg-transparent py-3 text-center text-3xl font-bold placeholder:text-tinta-tenue focus:outline-none"
+        />
+        <span className="text-sm texto-suave">/ {escala.max}</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((t) => (
-          <button key={t} className="btn-suave h-14 text-xl" onClick={() => pulsar(t)}>
-            {t}
+      {mostrarTeclado && (
+        // `onMouseDown` sin foco: pulsar con ratón no saca el foco del campo,
+        // así se puede alternar entre clic y teclado sin volver a apuntar.
+        <div className="grid grid-cols-3 gap-2" onMouseDown={(e) => e.preventDefault()}>
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((t) => (
+            <button key={t} tabIndex={-1} className="btn-suave h-14 text-xl" onClick={() => pulsar(t)}>
+              {t}
+            </button>
+          ))}
+          <button
+            tabIndex={-1}
+            className="btn-suave h-14 text-xl"
+            onClick={() => pulsar(',')}
+            disabled={escala.decimales === 0}
+          >
+            ,
           </button>
-        ))}
-        <button
-          className="btn-suave h-14 text-xl"
-          onClick={() => pulsar(',')}
-          disabled={escala.decimales === 0}
-        >
-          ,
-        </button>
-        <button className="btn-suave h-14 text-xl" onClick={() => pulsar('0')}>
-          0
-        </button>
-        <button
-          className="btn-suave h-14"
-          onClick={() => setBuffer((b) => b.slice(0, -1))}
-          aria-label="Borrar último dígito"
-        >
-          <Delete size={20} aria-hidden />
-        </button>
-      </div>
+          <button tabIndex={-1} className="btn-suave h-14 text-xl" onClick={() => pulsar('0')}>
+            0
+          </button>
+          <button
+            tabIndex={-1}
+            className="btn-suave h-14"
+            onClick={() => {
+              escribir((virgen ? '' : texto).slice(0, -1))
+              campoRef.current?.focus()
+            }}
+            aria-label="Borrar último dígito"
+          >
+            <Delete size={20} aria-hidden />
+          </button>
+        </div>
+      )}
 
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           className="btn-peligro"
           onClick={() => {
-            setBuffer('')
+            setTexto('')
+            setVirgen(true)
             onLimpiar()
           }}
         >
           <X size={18} aria-hidden />
           Vaciar
         </button>
-        <button className="btn-primario" onClick={confirmar} disabled={!mostrado}>
+        <button className="btn-primario" onClick={confirmar} disabled={notaDeTexto(texto, escala) == null}>
           <Check size={18} aria-hidden />
           Guardar
         </button>
