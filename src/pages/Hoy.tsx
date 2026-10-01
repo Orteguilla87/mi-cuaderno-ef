@@ -266,7 +266,7 @@ export function Hoy() {
 
             <section>
               <TituloSeccion>Jornada completa</TituloSeccion>
-              <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+              <ul className="grid gap-2 apaisado:grid-cols-2">
                 {clases?.map((c) => (
                   <li key={`${c.grupo.id}-${c.franjaInicio ?? c.horaInicio}`}>
                     <TarjetaClase
@@ -521,7 +521,7 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
               <>
-                <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+                <ul className="grid gap-2 apaisado:grid-cols-2">
                   {(() => {
                     const ordinales = ordinalesDelDia(delDia.map((h) => ({ grupoId: h.grupo.id })))
                     return delDia.map((h, i) => {
@@ -663,10 +663,10 @@ function TarjetaSesionSemana({
           />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
-              <span className="truncate font-bold">{grupo.nombre}</span>
+              <span className="truncate font-bold lg:whitespace-normal">{grupo.nombre}</span>
               <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
             </span>
-            <span className="cifra mt-0.5 block truncate text-sm texto-suave">
+            <span className="cifra mt-0.5 block truncate text-sm texto-suave lg:line-clamp-2 lg:whitespace-normal">
               {horaInicio && horaFin ? `${horaInicio}–${horaFin}` : 'Sin hora fija'}
               {rotuloOrdinal(ordinal) ? ` · ${rotuloOrdinal(ordinal)}` : ''}
               {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
@@ -785,7 +785,7 @@ function TarjetaClase({
 
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
-              <span className="truncate text-lg font-bold">{grupo.nombre}</span>
+              <span className="truncate text-lg font-bold lg:whitespace-normal">{grupo.nombre}</span>
               <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
               {enCurso && (
                 <span className="pildora bg-primario text-white">
@@ -799,7 +799,9 @@ function TarjetaClase({
               {rotuloOrdinal(ordinal) ? `${rotuloOrdinal(ordinal)} · ` : ''}
               {totalAlumnos} {totalAlumnos === 1 ? 'alumno' : 'alumnos'}
             </span>
-            {sesion?.titulo && <span className="mt-0.5 block truncate text-sm">{sesion.titulo}</span>}
+            {sesion?.titulo && (
+              <span className="mt-0.5 block truncate text-sm lg:line-clamp-2 lg:whitespace-normal">{sesion.titulo}</span>
+            )}
           </span>
 
           <ChevronDown
