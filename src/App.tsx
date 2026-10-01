@@ -118,7 +118,9 @@ function Contenido({ ruta }: { ruta: string }) {
     case 'planificador':
       return param === 'importar' ? <ImportarUnidad /> : <Planificador />
     case 'sesiones':
-      return param ? <SesionDetalle sesionId={param} /> : <Planificador />
+      // La `key` remonta la pantalla al pasar a otra sesión con ‹ ›: sin ella,
+      // borradores y modos de edición de la anterior se quedarían pegados.
+      return param ? <SesionDetalle key={param} sesionId={param} /> : <Planificador />
     case 'juegos':
       return <Juegos />
     case 'etiquetas-alumnado':

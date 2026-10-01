@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowRight, Clipboard, Copy, Save, Shuffle, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowRight, ChevronLeft, ChevronRight, Clipboard, Copy, Save, Shuffle, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
@@ -20,6 +20,7 @@ import {
   pegarEnSesion,
   previsualizarEliminarClase,
   sesionAPlantilla,
+  sesionesDeGrupo,
   type ClaseEnPrevia,
   type ModoEliminarClase,
   type PreviaEliminarClase,
@@ -27,7 +28,7 @@ import {
 import type { Sesion, UnidadDidactica } from '../db/types'
 import { diaLectivo, formatoDiaCorto } from '../lib/fechas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
-import { navegar } from '../lib/router'
+import { navegar, reemplazarRuta } from '../lib/router'
 import { useLotesPlan } from '../store/lotesPlan'
 import { usePortapapeles } from '../store/portapapeles'
 import { useUI } from '../store/ui'
@@ -50,6 +51,40 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
       grupo ? db.unidades.where('etapa').equals(grupo.etapa).toArray() : ([] as UnidadDidactica[]),
     [grupo?.etapa],
   )
+  // Las del grupo en el mismo orden que el Planificador (cronológico, y por
+  // franja dentro del día): es el orden en que se recorren con ‹ y ›.
+  const delGrupo = useLiveQuery(
+    async () => (sesion ? sesionesDeGrupo(sesion.grupoId) : ([] as Sesion[])),
+    [sesion?.grupoId],
+  )
+  const posicion = delGrupo?.findIndex((s) => s.id === sesionId) ?? -1
+  const anteriorId = posicion > 0 ? delGrupo![posicion - 1].id : undefined
+  const siguienteId =
+    posicion >= 0 && delGrupo && posicion < delGrupo.length - 1 ? delGrupo[posicion + 1].id : undefined
+  const hojaAbierta = duplicando || eliminando
+
+  // Las flechas leen siempre los vecinos actuales sin volver a registrar el
+  // manejador en cada render.
+  const vecinas = useRef({ anteriorId, siguienteId, hojaAbierta })
+  vecinas.current = { anteriorId, siguienteId, hojaAbierta }
+
+  useEffect(() => {
+    function onTecla(e: KeyboardEvent) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      // Dentro de un campo las flechas mueven el cursor: no se tocan.
+      const t = e.target as HTMLElement | null
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
+      const { anteriorId, siguienteId, hojaAbierta } = vecinas.current
+      if (hojaAbierta) return
+      const destino = e.key === 'ArrowLeft' ? anteriorId : siguienteId
+      if (!destino) return
+      e.preventDefault()
+      irASesion(destino)
+    }
+    window.addEventListener('keydown', onTecla)
+    return () => window.removeEventListener('keydown', onTecla)
+  }, [])
 
   if (sesion === undefined) return null
   if (sesion === null) {
@@ -66,6 +101,32 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
   }
 
   const actualizar = (cambios: Partial<Sesion>) => void db.sesiones.update(sesionId, cambios)
+
+  const navegacion = delGrupo && posicion >= 0 && delGrupo.length > 1 && (
+    <nav className="flex items-center gap-2" aria-label="Sesiones del grupo">
+      <button
+        className="btn-suave px-3"
+        onClick={() => anteriorId && irASesion(anteriorId)}
+        disabled={!anteriorId}
+        aria-label="Sesión anterior"
+      >
+        <ChevronLeft size={20} aria-hidden />
+        <span className="hidden sm:inline">Anterior</span>
+      </button>
+      <p className="cifra min-w-0 flex-1 text-center text-sm texto-suave" aria-live="polite">
+        Sesión <strong className="font-bold">{posicion + 1}</strong> de {delGrupo.length}
+      </p>
+      <button
+        className="btn-suave px-3"
+        onClick={() => siguienteId && irASesion(siguienteId)}
+        disabled={!siguienteId}
+        aria-label="Sesión siguiente"
+      >
+        <span className="hidden sm:inline">Siguiente</span>
+        <ChevronRight size={20} aria-hidden />
+      </button>
+    </nav>
+  )
 
   async function guardarFechaHora(cambios: { fecha?: string; horaInicio?: string; horaFin?: string }) {
     try {
@@ -132,6 +193,8 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
       />
 
       <div className="space-y-4 p-4">
+        {navegacion}
+
         <div>
           <label className="etiqueta" htmlFor="s-titulo">
             Título
@@ -307,6 +370,20 @@ export function SesionDetalle({ sesionId }: { sesionId: string }) {
       />
     </>
   )
+}
+
+/**
+ * Pasa a otra sesión del grupo sin salir de la edición.
+ *
+ * Los campos ya escriben en la base en cada tecla, así que no hay nada
+ * pendiente salvo el borrador del campo con foco: quitarle el foco lo confirma
+ * antes de cambiar de ruta. La ruta se SUSTITUYE, no se apila: «Atrás» sigue
+ * devolviendo al Planificador en vez de deshacer el recorrido sesión a sesión.
+ */
+function irASesion(id: string) {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  reemplazarRuta(`/sesiones/${id}`)
+  window.scrollTo(0, 0)
 }
 
 /** Duplicar a otro grupo y fecha: crea una sesión nueva (distinto de copiar/pegar). */
