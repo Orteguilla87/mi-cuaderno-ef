@@ -154,7 +154,7 @@ export function PlanGrupo() {
         {(grupos ?? []).map((g) => (
           <div
             key={g.id}
-            className="max-h-[70dvh] w-[22rem] shrink-0 space-y-4 overflow-y-auto overflow-x-hidden px-0.5 pb-1"
+            className={`max-h-[70dvh] ${ANCHO_COLUMNA_ESCRITORIO} shrink-0 space-y-4 overflow-y-auto overflow-x-hidden px-0.5 pb-1`}
           >
             <ColumnaGrupo grupo={g} grupos={grupos ?? []} pegajosa />
           </div>
@@ -163,6 +163,14 @@ export function PlanGrupo() {
     </div>
   )
 }
+
+/**
+ * Ancho de cada columna de grupo en escritorio. Único sitio donde se fija:
+ * 33rem (1,5 × los 22rem de antes) deja leer completos títulos de sesión y de
+ * unidad del tipo «SESIÓN DE LECTURA · Libro B, bloque 2». Literal entero para
+ * que Tailwind lo encuentre al escanear.
+ */
+const ANCHO_COLUMNA_ESCRITORIO = 'w-[33rem]'
 
 /**
  * Un grupo: su cabecera, sus acciones y sus sesiones. Es el mismo bloque en
@@ -347,10 +355,12 @@ function ColumnaGrupo({
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-bold">
+                  {/* En escritorio, dos líneas antes de recortar: la columna ya
+                      es ancha y un título largo no debe perder el final. */}
+                  <span className="block truncate font-bold lg:line-clamp-2 lg:whitespace-normal">
                     {s.titulo || 'Sesión sin título'}
                   </span>
-                  <span className="cifra mt-0.5 block truncate text-sm texto-suave">
+                  <span className="cifra mt-0.5 block truncate text-sm texto-suave lg:line-clamp-2 lg:whitespace-normal">
                     {formatoDiaCorto(s.fecha)}
                     {horarios[i] && ` · ${horarios[i]}`}
                     {s.juegos.length > 0 && ` · ${s.juegos.length} juegos`}
