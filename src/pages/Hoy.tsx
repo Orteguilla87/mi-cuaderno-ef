@@ -72,6 +72,15 @@ function BotonMaterial({ dias, rotulo }: { dias: DiaMaterial[]; rotulo: string }
 }
 
 /**
+ * Rejilla de tarjetas de Hoy (Día y Semana). Propia de esta vista: no comparte
+ * nada con el ancho de columna del Planificador (`PlanGrupo.tsx`).
+ * `grid-cols-1` es `minmax(0, 1fr)` y no se puede omitir: sin él la pista
+ * implícita mide lo que el título `truncate` sin cortar, y un título largo
+ * ensanchaba la tarjeta más allá de la pantalla en móvil.
+ */
+const REJILLA_TARJETAS_HOY = 'grid grid-cols-1 gap-2 apaisado:grid-cols-2'
+
+/**
  * Clave de una CLASE, no de un día: `grupo|fecha|franja`. Un grupo con dos
  * clases el mismo día necesita dos conteos de asistencia distintos.
  */
@@ -266,7 +275,7 @@ export function Hoy() {
 
             <section>
               <TituloSeccion>Jornada completa</TituloSeccion>
-              <ul className="grid gap-2 apaisado:grid-cols-2">
+              <ul className={REJILLA_TARJETAS_HOY}>
                 {clases?.map((c) => (
                   <li key={`${c.grupo.id}-${c.franjaInicio ?? c.horaInicio}`}>
                     <TarjetaClase
@@ -521,7 +530,7 @@ function VistaSemanaHoy({ hoy, curso }: { hoy: string; curso: CursoEscolar | und
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
               <>
-                <ul className="grid gap-2 apaisado:grid-cols-2">
+                <ul className={REJILLA_TARJETAS_HOY}>
                   {(() => {
                     const ordinales = ordinalesDelDia(delDia.map((h) => ({ grupoId: h.grupo.id })))
                     return delDia.map((h, i) => {
