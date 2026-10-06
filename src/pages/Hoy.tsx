@@ -619,6 +619,42 @@ function AccionesClase({
   )
 }
 
+/**
+ * El título de la sesión, en su propia fila y a ancho completo de la tarjeta.
+ *
+ * Antes iba en la columna de la cabecera, apretado entre la barra de color y
+ * los accesos «Grupo»/«Pasar lista», y se recortaba incluso desplegada. Aquí
+ * solo cambia dónde va el texto: el ancho de la tarjeta no se toca (ver 96acda1).
+ * Plegada admite dos líneas; desplegada se ve entero. Pulsarlo despliega, igual
+ * que la cabecera.
+ */
+function TituloSesion({
+  titulo,
+  abierta,
+  onAlternar,
+  suave = false,
+}: {
+  titulo: string
+  abierta: boolean
+  onAlternar: () => void
+  suave?: boolean
+}) {
+  return (
+    <button
+      onClick={onAlternar}
+      aria-expanded={abierta}
+      className={
+        // `line-clamp-2` necesita su propio `display`: nada de `block` al plegar.
+        'mt-2 w-full min-w-0 break-words text-left text-sm ' +
+        (abierta ? 'block whitespace-normal ' : 'line-clamp-2 ') +
+        (suave ? 'texto-suave' : 'font-semibold')
+      }
+    >
+      {titulo}
+    </button>
+  )
+}
+
 function TarjetaSesionSemana({
   hueco,
   ordinal,
@@ -672,13 +708,12 @@ function TarjetaSesionSemana({
           />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
-              <span className="truncate font-bold lg:whitespace-normal">{grupo.nombre}</span>
+              <span className="shrink-0 whitespace-nowrap font-bold">{grupo.nombre}</span>
               <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
             </span>
-            <span className="cifra mt-0.5 block truncate text-sm texto-suave lg:line-clamp-2 lg:whitespace-normal">
+            <span className="cifra mt-0.5 block break-words text-sm texto-suave">
               {horaInicio && horaFin ? `${horaInicio}–${horaFin}` : 'Sin hora fija'}
               {rotuloOrdinal(ordinal) ? ` · ${rotuloOrdinal(ordinal)}` : ''}
-              {sesion?.titulo ? ` · ${sesion.titulo}` : ' · Sin título'}
             </span>
           </span>
           <ChevronDown
@@ -698,6 +733,13 @@ function TarjetaSesionSemana({
           totalAlumnos={totalAlumnos}
         />
       </div>
+
+      <TituloSesion
+        titulo={sesion?.titulo || 'Sin título'}
+        suave={!sesion?.titulo}
+        abierta={abierta}
+        onAlternar={() => setAbierta((v) => !v)}
+      />
 
       {abierta && (
         <div className="mt-3 space-y-3 border-t border-borde pt-3 dark:border-noche-borde">
@@ -794,7 +836,9 @@ function TarjetaClase({
 
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
-              <span className="truncate text-lg font-bold lg:whitespace-normal">{grupo.nombre}</span>
+              {/* El nombre del grupo nunca se recorta: es corto y es lo que
+                  identifica la tarjeta. Si falta sitio, salta la línea de datos. */}
+              <span className="shrink-0 whitespace-nowrap text-lg font-bold">{grupo.nombre}</span>
               <BadgeEtapa etapa={grupo.etapa} nivel={grupo.nivel} />
               {enCurso && (
                 <span className="pildora bg-primario text-white">
@@ -803,14 +847,11 @@ function TarjetaClase({
                 </span>
               )}
             </span>
-            <span className="cifra mt-0.5 block text-sm texto-suave">
+            <span className="cifra mt-0.5 block break-words text-sm texto-suave">
               {horaInicio && horaFin ? `${horaInicio}–${horaFin} · ` : ''}
               {rotuloOrdinal(ordinal) ? `${rotuloOrdinal(ordinal)} · ` : ''}
               {totalAlumnos} {totalAlumnos === 1 ? 'alumno' : 'alumnos'}
             </span>
-            {sesion?.titulo && (
-              <span className="mt-0.5 block truncate text-sm lg:line-clamp-2 lg:whitespace-normal">{sesion.titulo}</span>
-            )}
           </span>
 
           <ChevronDown
@@ -830,6 +871,10 @@ function TarjetaClase({
           totalAlumnos={totalAlumnos}
         />
       </div>
+
+      {sesion?.titulo && (
+        <TituloSesion titulo={sesion.titulo} abierta={abierta} onAlternar={() => setAbierta((v) => !v)} />
+      )}
 
       {abierta && (
         <div className="mt-3 space-y-3 border-t border-borde pt-3 text-sm dark:border-noche-borde">
