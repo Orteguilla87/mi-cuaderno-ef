@@ -77,6 +77,7 @@ import { usePortapapelesColumnas } from '../store/portapapelesColumnas'
 import { variablesColor } from '../components/SelectorColor'
 import { etiquetasPuestasDe, etiquetas as leerEtiquetas } from '../db/etiquetasAlumno'
 import { useEtiquetasVisibles } from '../store/etiquetasVisibles'
+import { decidirPeticion, resaltarDurante, useFilaCuaderno } from '../store/filaCuaderno'
 import { useUI } from '../store/ui'
 import { etiquetaNivelMotriz } from '../lib/nivelMotriz'
 
@@ -984,6 +985,46 @@ function Rejilla({
   const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
   const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
 
+  // ——— «Ver alumno» desde el sorteo (`store/filaCuaderno.ts`) ———
+  // Sitúa la fila y la resalta unos segundos. Solo eso: ni cambia de columna
+  // ni abre celda. Se atiende cuando la fila ya está pintada, así sirve igual
+  // llegando desde otra pantalla que con el Cuaderno ya abierto.
+  const filaPedida = useFilaCuaderno((s) => s.pendiente)
+  const filaPedidaEn = useFilaCuaderno((s) => s.pedidaEn)
+  const filaAtendida = useFilaCuaderno((s) => s.atendida)
+  const [resaltada, setResaltada] = useState<string | null>(null)
+  const contenedorRef = useRef<HTMLDivElement>(null)
+  // El apagado del resaltado vive en un ref, NO en la limpieza del efecto: al
+  // marcar la petición como atendida el efecto se vuelve a ejecutar, y esa
+  // limpieza cancelaría el apagado y dejaría la fila marcada para siempre.
+  const apagarResaltado = useRef<(() => void) | null>(null)
+  useEffect(() => () => apagarResaltado.current?.(), [])
+  useEffect(() => {
+    const decision = decidirPeticion(filaPedida, filaPedidaEn, alumnos.map((a) => a.id))
+    if (decision === 'descartar') filaAtendida()
+    if (decision !== 'situar' || !filaPedida) return
+    filaAtendida()
+    const fila = contenedorRef.current?.querySelector<HTMLElement>(`tr[data-alumno="${filaPedida}"]`)
+    const cont = contenedorRef.current
+    if (fila && cont) {
+      // Solo el eje vertical: la columna que el maestro tenía a la vista se
+      // queda donde estaba. `scrollIntoView` movería también el horizontal.
+      const cabecera = cont.querySelector('thead')?.getBoundingClientRect().height ?? 0
+      const f = fila.getBoundingClientRect()
+      const c = cont.getBoundingClientRect()
+      const fuera = f.top < c.top + cabecera || f.bottom > c.bottom
+      if (fuera) {
+        const hueco = c.height - cabecera - f.height
+        cont.scrollTo({ top: cont.scrollTop + (f.top - c.top) - cabecera - hueco / 2, behavior: 'smooth' })
+      }
+      // Fuera de pantalla el contenedor también puede estar por debajo de la
+      // página (escritorio con poca altura): que se vea entero.
+      cont.scrollIntoView({ block: 'nearest' })
+    }
+    apagarResaltado.current?.()
+    apagarResaltado.current = resaltarDurante(filaPedida, setResaltada)
+  }, [filaPedida, filaPedidaEn, alumnos, filaAtendida])
+
   // ——— Notas de celda (`NotaCelda`) ———
   // Una consulta para toda la rejilla, como los valores. Solo se pintan aquí.
   const idsVisibles = visibles.map((c) => c.id).join(',')
@@ -1016,7 +1057,7 @@ function Rejilla({
     // `overflow-x-auto` ese es este, no la página. Su alto (`rejilla-desplazable`)
     // cabe entero entre la Cabecera y la barra inferior, así la fila de títulos
     // nunca queda debajo de ninguna de las dos.
-    <div className="carril-fab-derecha rejilla-desplazable">
+    <div ref={contenedorRef} className="carril-fab-derecha rejilla-desplazable">
       <table className="w-max border-separate border-spacing-0">
         <caption className="sr-only">Cuaderno de notas: alumnos por columnas de evaluación</caption>
         <thead>
@@ -1063,14 +1104,27 @@ function Rejilla({
             const nombre = a.alias || a.nombre
             const contador = contadoresObs.get(a.id)
             return (
-            <tr key={a.id} className={fila % 2 ? 'bg-agua-claro/30 dark:bg-noche-elevada/30' : ''}>
+            <tr
+              key={a.id}
+              data-alumno={a.id}
+              data-resaltada={resaltada === a.id || undefined}
+              // El resaltado entra de golpe y se desvanece con la transición al
+              // quitarse: localizarla de un vistazo, sin dejarla marcada.
+              className={
+                'transition-colors duration-1000 ' +
+                (resaltada === a.id ? 'bg-acento/15' : fila % 2 ? 'bg-agua-claro/30 dark:bg-noche-elevada/30' : '')
+              }
+            >
               <th
                 scope="row"
                 className={
-                  'sticky left-0 z-[1] border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold dark:border-noche-borde ' +
-                  (fila % 2
-                    ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
-                    : 'bg-superficie dark:bg-noche-superficie')
+                  'sticky left-0 z-[1] border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold transition-colors duration-1000 dark:border-noche-borde ' +
+                  (resaltada === a.id
+                    ? // La columna fija tiene que ser opaca: superficie + una capa del acento.
+                      'bg-superficie shadow-[inset_4px_0_0_rgb(var(--accent)),inset_0_0_0_999px_rgb(var(--accent)/0.15)] dark:bg-noche-superficie'
+                    : fila % 2
+                      ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
+                      : 'bg-superficie dark:bg-noche-superficie')
                 }
                 style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               >

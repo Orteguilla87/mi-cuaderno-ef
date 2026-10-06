@@ -1,7 +1,11 @@
-import { RotateCcw, Shuffle, X } from 'lucide-react'
+import { RotateCcw, Shuffle, TableProperties, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { estadoCiclo, reiniciarCiclo, siguienteAleatorio, type EstadoSorteo } from '../db/aleatorio'
 import { useCapaAbierta } from '../lib/capas'
+import { verAlumnoEnCuaderno } from '../store/filaCuaderno'
+
+/** Lo que espera el segundo toque de «Ver alumno» antes de volver a su estado. */
+const ESPERA_CONFIRMACION_MS = 4000
 
 /**
  * Sorteo «Alumno aleatorio» del Cuaderno (Bloque 4): a pantalla completa para
@@ -11,15 +15,37 @@ import { useCapaAbierta } from '../lib/capas'
 export function SorteoAlumno({ grupoId, onCerrar }: { grupoId: string; onCerrar: () => void }) {
   const [estado, setEstado] = useState<EstadoSorteo | null>(null)
   const [soloPresentes, setSoloPresentes] = useState(false)
+  /**
+   * «Ver alumno» pide DOS toques. Esta pantalla se proyecta en la PDI, y el
+   * Cuaderno enseña a toda la clase con sus notas y etiquetas: el primer toque
+   * solo avisa de eso, y hace falta un segundo para salir. Además el botón es
+   * pequeño, discreto y está en la esquina contraria a «Sortear».
+   */
+  const [confirmandoVer, setConfirmandoVer] = useState(false)
   useCapaAbierta(true)
+
+  useEffect(() => {
+    if (!confirmandoVer) return
+    const t = window.setTimeout(() => setConfirmandoVer(false), ESPERA_CONFIRMACION_MS)
+    return () => window.clearTimeout(t)
+  }, [confirmandoVer])
 
   useEffect(() => {
     void estadoCiclo(grupoId).then(setEstado)
   }, [grupoId])
 
   async function sortear() {
+    setConfirmandoVer(false)
     if (estado?.agotado) await reiniciarCiclo(grupoId)
     setEstado(await siguienteAleatorio(grupoId, { soloPresentes }))
+  }
+
+  function verAlumno() {
+    const elegido = estado?.elegido
+    if (!elegido) return
+    if (!confirmandoVer) return setConfirmandoVer(true)
+    onCerrar()
+    verAlumnoEnCuaderno(grupoId, elegido.id)
   }
 
   async function reiniciar() {
@@ -37,6 +63,25 @@ export function SorteoAlumno({ grupoId, onCerrar }: { grupoId: string; onCerrar:
       >
         <X size={24} aria-hidden />
       </button>
+
+      {estado?.elegido && !estado.agotado && (
+        <button
+          onClick={verAlumno}
+          className={
+            'absolute left-4 top-4 flex min-h-[48px] max-w-[70%] items-center gap-2 rounded-xl px-3 text-left text-sm transition ' +
+            'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50 ' +
+            (confirmandoVer ? 'bg-white/20 font-semibold' : 'bg-transparent text-white/60 hover:text-white')
+          }
+          aria-label={
+            confirmandoVer
+              ? 'Confirmar: abrir el Cuaderno de toda la clase'
+              : `Ver a ${estado.elegido.alias || estado.elegido.nombre} en el Cuaderno`
+          }
+        >
+          <TableProperties size={18} aria-hidden className="shrink-0" />
+          {confirmandoVer ? 'Abre el Cuaderno de toda la clase. Toca otra vez' : 'Ver alumno'}
+        </button>
+      )}
 
       <div className="mt-16 flex flex-1 flex-col items-center justify-center gap-6 text-center">
         {estado?.hayAsistenciaHoy && (
