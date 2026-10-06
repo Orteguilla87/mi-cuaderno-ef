@@ -1,6 +1,8 @@
-import Fuse from 'fuse.js'
 import type { Alumno, Grupo } from '../db/types'
+import { candidatosAlumno, coincidencias, type CandidatoAlumno } from './emparejarAlumno'
 import { aISO, deISO, diaLectivo, sumarDias } from './fechas'
+
+export type { CandidatoAlumno }
 
 /**
  * Nada de nombres ni contenido de la base viaja a la API sin pasar por aquí
@@ -36,22 +38,31 @@ export function construirMapaTokens(alumnos: Alumno[], grupos: Grupo[]): MapaTok
   return { alumnoPorToken, grupoPorToken, tokenPorAlumno, tokenPorGrupo }
 }
 
-/** Sustituye menciones de nombre/alias y de grupo por sus tokens `[A1]`/`[G1]`. */
+/**
+ * Sustituye las menciones de alumno y de grupo por sus tokens `[A1]`/`[G1]`.
+ *
+ * Los alumnos se localizan con el MISMO emparejador que decide a quién se
+ * refiere el dictado (`lib/emparejarAlumno.ts`): solo se tokeniza a quien supera
+ * su umbral, y por tramos del texto, no con `\b`. El `\b` de JavaScript no
+ * reconoce las letras acentuadas como letras, así que «Íker» o «Álvaro» al
+ * principio de frase no casaban y viajaban EN CLARO a la API (§1.2).
+ */
 export function pseudonimizarTexto(texto: string, mapa: MapaTokens, alumnos: Alumno[], grupos: Grupo[]): string {
-  let salida = texto
-
-  const porLongitud = (a: string, b: string) => b.length - a.length
-  const nombresAlumno = alumnos
-    .flatMap((a) => [a.alias, a.nombre, `${a.nombre} ${a.apellidos}`.trim()].filter(Boolean))
-    .sort(porLongitud)
-  for (const nombre of nombresAlumno) {
-    const alumno = alumnos.find((a) => a.alias === nombre || a.nombre === nombre || `${a.nombre} ${a.apellidos}`.trim() === nombre)
-    if (!alumno) continue
-    const token = mapa.tokenPorAlumno.get(alumno.id)
+  // Tramos sin solaparse, del más fiable al menos: una misma mención no puede
+  // convertirse en dos tokens.
+  const tramos: { inicio: number; fin: number; token: string }[] = []
+  for (const c of coincidencias(texto, alumnos)) {
+    const token = mapa.tokenPorAlumno.get(c.alumno.id)
     if (!token) continue
-    salida = reemplazarPalabra(salida, nombre, `[${token}]`)
+    if (tramos.some((t) => c.inicio < t.fin && t.inicio < c.fin)) continue
+    tramos.push({ inicio: c.inicio, fin: c.fin, token })
+  }
+  let salida = texto
+  for (const t of [...tramos].sort((a, b) => b.inicio - a.inicio)) {
+    salida = `${salida.slice(0, t.inicio)}[${t.token}]${salida.slice(t.fin)}`
   }
 
+  const porLongitud = (a: string, b: string) => b.length - a.length
   const nombresGrupo = grupos.map((g) => g.nombre).sort(porLongitud)
   for (const nombre of nombresGrupo) {
     const grupo = grupos.find((g) => g.nombre === nombre)
@@ -68,9 +79,10 @@ function escaparRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** Como `\b…\b`, pero contando las letras acentuadas como letras. */
 function reemplazarPalabra(texto: string, buscado: string, reemplazo: string): string {
   if (!buscado.trim()) return texto
-  const re = new RegExp(`\\b${escaparRegex(buscado)}\\b`, 'gi')
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escaparRegex(buscado)}(?![\\p{L}\\p{N}])`, 'giu')
   return texto.replace(re, reemplazo)
 }
 
@@ -99,13 +111,12 @@ export function resolverFechaRelativa(texto: string, hoy = aISO()): string {
   return hoy
 }
 
-export interface CandidatoAlumno {
-  alumno: Alumno
-  puntuacion: number
-}
-
 /**
- * Fuzzy local de nombres (§6): busca al alumno mencionado en el texto.
+ * Fuzzy local de nombres (§6): los alumnos mencionados en el texto, de más a
+ * menos parecido, SOLO los que superan el umbral de `lib/emparejarAlumno.ts`.
+ * Vacío si nadie se parece lo bastante: entonces la UI enseña la lista del
+ * grupo, no al «menos malo». Para decidir entre ellos, `decidir()` del mismo
+ * módulo (empate dentro de `MARGEN` → se pregunta con chips).
  *
  * ——— INVARIANTE: `alumnos` YA VIENE ACOTADO AL GRUPO ———
  *
@@ -116,39 +127,12 @@ export interface CandidatoAlumno {
  * «Pablo» de 4ºA por tener el nombre mejor escrito, y nadie lo notaba porque no
  * había empate que disparara los chips.
  *
- * `texto` es el dictado SIN la mención del grupo (`lib/grupoEnTexto.ts`): el
- * filtro de abajo es `p.length > 2`, así que «cuarto» y «tercero» entrarían aquí
- * como palabras de búsqueda y casarían con apellidos tipo «Cuartero».
- *
- * Si hay varios candidatos con puntuación parecida, la UI desambigua con chips
- * en vez de adivinar.
+ * `texto` es el dictado SIN la mención del grupo (`lib/grupoEnTexto.ts`): si no,
+ * «cuarto» y «tercero» competirían con los nombres y casarían con apellidos
+ * tipo «Cuartero».
  */
 export function buscarAlumnoEnTexto(texto: string, alumnos: Alumno[]): CandidatoAlumno[] {
-  const fuse = new Fuse(alumnos, {
-    keys: [
-      { name: 'alias', weight: 2 },
-      { name: 'nombre', weight: 2 },
-      { name: 'apellidos', weight: 1 },
-    ],
-    threshold: 0.4,
-    ignoreLocation: true,
-    includeScore: true,
-  })
-
-  const palabras = texto.split(/\s+/).filter((p) => p.length > 2)
-  const puntuados = new Map<string, number>()
-  for (const palabra of palabras) {
-    for (const r of fuse.search(palabra)) {
-      const score = 1 - (r.score ?? 1)
-      const previo = puntuados.get(r.item.id) ?? 0
-      if (score > previo) puntuados.set(r.item.id, score)
-    }
-  }
-
-  return [...puntuados.entries()]
-    .map(([id, puntuacion]) => ({ alumno: alumnos.find((a) => a.id === id)!, puntuacion }))
-    .sort((a, b) => b.puntuacion - a.puntuacion)
-    .slice(0, 4)
+  return candidatosAlumno(texto, alumnos)
 }
 
 /**

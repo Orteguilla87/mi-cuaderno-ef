@@ -3,6 +3,7 @@ import { crearObservacion } from './observaciones'
 import type { Alumno, AccionAgente, EstadoAsistencia, Grupo, SignoObservacion } from './types'
 import { grupoPorFranja, resolverFechaRelativa } from '../lib/pseudonimizacion'
 import { detectarGrupoEnTexto } from '../lib/grupoEnTexto'
+import { decidir } from '../lib/emparejarAlumno'
 import { horaActual } from '../lib/fechas'
 
 /** Catálogo cerrado de acciones (§6). */
@@ -97,14 +98,14 @@ export function interpretarLocal(
 
   let alumno = alumnoForzado
   if (!alumno) {
-    const candidatos = buscarAlumno(texto, alumnosDelGrupo)
-    if (candidatos.length === 0) return { tipo: 'no_reconocido' }
-    const [mejor, segundo] = candidatos
-    // Ambiguo si el segundo mejor va casi empatado con el primero.
-    if (segundo && segundo.puntuacion > mejor.puntuacion - 0.12) {
-      return { tipo: 'ambiguo', grupo, candidatos: candidatos.map((c) => c.alumno), textoOriginal: texto }
+    const r = decidir(buscarAlumno(texto, alumnosDelGrupo))
+    // Nadie supera el umbral: `candidatos` vacío, y la UI enseña la lista
+    // entera del grupo para elegir con un toque. Mejor no proponer que
+    // proponer mal. Con varios casi empatados, se enseñan todos.
+    if (r.estado !== 'unico') {
+      return { tipo: 'ambiguo', grupo, candidatos: r.candidatos.map((c) => c.alumno), textoOriginal: texto }
     }
-    alumno = mejor.alumno
+    alumno = r.alumno
   }
 
   const nombre = alumno.alias || alumno.nombre

@@ -52,6 +52,23 @@ describe('lo que se manda a la API', () => {
     expect(texto).toContain('[A1]')
   })
 
+  it('tapa también los nombres que empiezan o acaban en vocal con tilde', () => {
+    // Con `\b`, «Íker» al principio de frase no casaba (la Í no es «letra» para
+    // el `\b` de JavaScript) y viajaba en claro.
+    const otros: Alumno[] = [
+      { id: 'b1', grupoId: 'g1', nombre: 'Íker', apellidos: 'Moreno', alias: '', activo: true },
+      { id: 'b2', grupoId: 'g1', nombre: 'José', apellidos: 'Álvarez', alias: '', activo: true },
+    ]
+    const m = construirMapaTokens(otros, grupos)
+    const texto = pseudonimizarTexto('Íker falta y José sin chándal', m, otros, grupos)
+    expect(texto).toBe('[A1] falta y [A2] sin chándal')
+  })
+
+  it('no tapa como alumno lo que no supera el umbral: el modelo no puede elegir a nadie', () => {
+    const texto = pseudonimizarTexto('Bea falta', mapa, alumnos, grupos)
+    expect(texto).toBe('Bea falta')
+  })
+
   it('sustituye también el nombre del grupo', () => {
     const texto = pseudonimizarTexto('Hoy 3ºB ha trabajado bien', mapa, alumnos, grupos)
     expect(texto).not.toContain('3ºB')

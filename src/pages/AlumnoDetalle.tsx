@@ -849,6 +849,31 @@ function FormularioAlumno({ alumnoId }: { alumnoId: string }) {
           Cómo le llamas en clase. El agente de voz lo usará para reconocerle.
         </p>
       </div>
+      <div>
+        <label className="etiqueta" htmlFor="f-alias-voz">
+          Cómo lo llamas al dictar
+        </label>
+        <Campo
+          id="f-alias-voz"
+          className="campo"
+          valor={(alumno.aliasVoz ?? []).join(', ')}
+          // Tal cual los escribe el maestro; la normalización (tildes, b/v,
+          // ll/y…) la hace `lib/emparejarAlumno.ts` al comparar.
+          onValor={(v) =>
+            actualizar({
+              aliasVoz: v
+                .split(',')
+                .map((a) => a.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="Peque, Txus"
+        />
+        <p className="mt-1 text-xs texto-suave">
+          Separados por comas. Solo para el agente de voz; no se ve en ninguna otra parte. Cuando
+          corriges una sugerencia del agente, te ofrece añadir aquí lo que dictaste.
+        </p>
+      </div>
 
       <div>
         <label className="etiqueta" htmlFor="f-apoyos">

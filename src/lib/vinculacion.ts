@@ -53,9 +53,10 @@ export interface Propuesta {
 }
 
 /**
- * Por debajo de esto no se propone nada. Es el mismo umbral que usa el fuzzy de
- * nombres del agente de voz (`lib/pseudonimizacion.ts`), que resuelve el mismo
- * problema —un nombre escrito a medias— sobre los mismos datos.
+ * Por debajo de esto no se propone nada (escala de Fuse: 1 − score). No es el
+ * umbral del agente de voz: aquel compara un dictado contra formas fonéticas
+ * (`lib/emparejarAlumno.ts`); esto, dos listas escritas, nombre completo contra
+ * nombre completo.
  */
 const UMBRAL = 0.55
 

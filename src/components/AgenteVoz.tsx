@@ -29,6 +29,7 @@ import {
   type ColumnaConocida,
   type Intencion,
 } from '../lib/intenciones'
+import { emparejarAlumno, fragmentoParaAlias } from '../lib/emparejarAlumno'
 import { buscarAlumnoEnTexto, construirMapaTokens } from '../lib/pseudonimizacion'
 import { navegar } from '../lib/router'
 import { etiquetaDia } from '../lib/fechas'
@@ -117,6 +118,14 @@ type Fase =
       candidatosAlumno: Alumno[]
       eligiendoAlumno: boolean
       aviso?: string
+      /** No se dictó grupo: se usa el abierto en la app. Se dice, para que se vea. */
+      grupoPorContexto?: boolean
+      /**
+       * Tras elegir a mano un alumno que el emparejador no reconoció: lo que se
+       * dictó para nombrarlo, que se OFRECE guardar como alias de voz. Nunca se
+       * guarda sin el toque del maestro.
+       */
+      aliasPropuesto?: { alumno: Alumno; texto: string; guardado: boolean }
     }
   | { paso: 'respuesta'; texto: string; enlace?: { ruta: string; etiqueta: string } }
   /** Se entendió y por eso no se hace: hay cosas que no van por voz (2.3). */
@@ -232,17 +241,22 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
         })
         if (r) {
           const mapa = construirMapaTokens(delGrupo, [grupo])
-          const { alumno } = resolverTokens(r.input, mapa)
+          const { alumno } = resolverTokens(r.input, mapa, r.textoEnviado)
           if (r.accion === 'consultar') {
             return { paso: 'respuesta', texto: await responderConsulta(r.input, alumno) }
           }
           const resuelta = construirAccionDesdeApi(r.accion, r.input, grupo, alumno)
           if (resuelta) {
+            // El modelo clasifica, pero no desempata nombres: si el emparejador
+            // ve a varios casi iguales, se pregunta aunque la API traiga uno.
+            const local = emparejarAlumno(textoSinGrupo, delGrupo)
+            const preguntar = !!resuelta.alumnoId && local.estado === 'varios'
             return {
               ...base,
               accion: resuelta,
               origen: 'ia',
-              candidatosAlumno: candidatosDe(textoSinGrupo, delGrupo),
+              candidatosAlumno: preguntar ? local.candidatos.map((c) => c.alumno) : candidatosDe(textoSinGrupo, delGrupo),
+              eligiendoAlumno: preguntar,
             }
           }
         }
@@ -307,7 +321,10 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
         return
       }
 
-      setFase(await resolverEnGrupo(texto, textoSinGrupo, grupo, ambiguos?.length ? ambiguos : grupos))
+      const siguiente = await resolverEnGrupo(texto, textoSinGrupo, grupo, ambiguos?.length ? ambiguos : grupos)
+      // Sin mención de grupo en el dictado, el grupo es el abierto en la app.
+      const porContexto = siguiente.paso === 'confirmar' && textoSinGrupo.trim() === texto.trim()
+      setFase(porContexto ? { ...siguiente, grupoPorContexto: true } : siguiente)
     } finally {
       setProcesando(false)
     }
@@ -330,7 +347,44 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     if (fase.paso !== 'confirmar' || !fase.grupo || procesando) return
     setProcesando(true)
     try {
-      setFase(await resolverEnGrupo(fase.texto, fase.textoSinGrupo, fase.grupo, fase.gruposOfrecidos, alumno))
+      const { texto, textoSinGrupo, grupo, gruposOfrecidos, grupoPorContexto } = fase
+      const siguiente = await resolverEnGrupo(texto, textoSinGrupo, grupo, gruposOfrecidos, alumno)
+      if (siguiente.paso !== 'confirmar') return setFase(siguiente)
+      // Si el emparejador no lo había reconocido por sí solo, se ofrece
+      // guardar lo dictado como alias de voz para la próxima vez.
+      const reconocido = emparejarAlumno(textoSinGrupo, alumnosDe(grupo))
+      const yaLoEra = reconocido.estado === 'unico' && reconocido.alumno.id === alumno.id
+      const fragmento = yaLoEra ? undefined : fragmentoParaAlias(textoSinGrupo, alumno)
+      setFase({
+        ...siguiente,
+        grupoPorContexto,
+        aliasPropuesto: fragmento ? { alumno, texto: fragmento, guardado: false } : undefined,
+      })
+    } finally {
+      setProcesando(false)
+    }
+  }
+
+  /**
+   * «No es este alumno»: los otros candidatos que superan el umbral si los
+   * hay; si no, la lista entera del grupo (candidatos vacíos).
+   */
+  function corregirAlumno(f: Extract<Fase, { paso: 'confirmar' }>): Fase {
+    const elegido = f.accion?.alumnoId ?? intencionesVivas(f).map((x) => ('alumnoId' in x ? x.alumnoId : undefined)).find(Boolean)
+    const otros = f.candidatosAlumno.filter((a) => a.id !== elegido)
+    return { ...f, eligiendoAlumno: true, candidatosAlumno: otros.length ? f.candidatosAlumno : [] }
+  }
+
+  /** Guarda (o retira) el alias de voz propuesto. Solo con el toque del maestro. */
+  async function alternarAlias(guardar: boolean) {
+    if (fase.paso !== 'confirmar' || !fase.aliasPropuesto || procesando) return
+    const { alumno, texto } = fase.aliasPropuesto
+    setProcesando(true)
+    try {
+      const actual = (await db.alumnos.get(alumno.id))?.aliasVoz ?? []
+      const aliasVoz = guardar ? [...actual, texto] : actual.filter((a) => a !== texto)
+      await db.alumnos.update(alumno.id, { aliasVoz })
+      setFase({ ...fase, aliasPropuesto: { ...fase.aliasPropuesto, guardado: guardar } })
     } finally {
       setProcesando(false)
     }
@@ -476,11 +530,16 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                 Grupo
               </span>
               {fase.grupo ? (
-                <SelectorGrupo
-                  grupos={fase.gruposOfrecidos}
-                  valor={fase.grupo.id}
-                  onCambio={(id) => void elegirGrupo(id)}
-                />
+                <>
+                  <SelectorGrupo
+                    grupos={fase.gruposOfrecidos}
+                    valor={fase.grupo.id}
+                    onCambio={(id) => void elegirGrupo(id)}
+                  />
+                  {fase.grupoPorContexto && (
+                    <p className="mt-1 text-xs texto-suave">No has dicho grupo: es el que tienes abierto.</p>
+                  )}
+                </>
               ) : (
                 // Sin grupo resuelto NO se preselecciona ninguno: un desplegable
                 // con el primero puesto parecería una respuesta, y aquí lo que
@@ -578,10 +637,10 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                 })}
                 {/* Solo si alguna acción va sobre un alumno: en equipos,
                     sorteo o columnas no hay alumno que cambiar. */}
-                {fase.candidatosAlumno.length > 1 && intencionesVivas(fase).some((x) => 'alumnoId' in x) && (
+                {intencionesVivas(fase).some((x) => 'alumnoId' in x) && (
                   <button
                     className="text-xs font-semibold text-primario underline dark:text-agua"
-                    onClick={() => setFase({ ...fase, eligiendoAlumno: true })}
+                    onClick={() => setFase(corregirAlumno(fase))}
                     disabled={procesando}
                   >
                     No es este alumno
@@ -594,10 +653,10 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
               <div className="border-t border-agua pt-3 dark:border-noche-elevada">
                 <p className="text-sm font-bold">{fase.accion.resumen}</p>
                 <p className="mt-1 text-xs texto-suave">{etiquetaDia(fase.accion.fecha)}</p>
-                {fase.candidatosAlumno.length > 1 && fase.accion.alumnoId && (
+                {fase.accion.alumnoId && (
                   <button
                     className="mt-2 text-xs font-semibold text-primario underline dark:text-agua"
-                    onClick={() => setFase({ ...fase, eligiendoAlumno: true })}
+                    onClick={() => setFase(corregirAlumno(fase))}
                     disabled={procesando}
                   >
                     No es este alumno
@@ -621,6 +680,32 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {fase.aliasPropuesto && !fase.eligiendoAlumno && (
+              <div className="border-t border-agua pt-3 dark:border-noche-elevada">
+                {fase.aliasPropuesto.guardado ? (
+                  <p className="flex items-center gap-2 text-xs texto-suave">
+                    «{fase.aliasPropuesto.texto}» guardado como alias de voz.
+                    <button
+                      className="font-semibold text-primario underline dark:text-agua"
+                      onClick={() => void alternarAlias(false)}
+                      disabled={procesando}
+                    >
+                      Deshacer
+                    </button>
+                  </p>
+                ) : (
+                  <button
+                    className="btn-suave w-full text-sm"
+                    onClick={() => void alternarAlias(true)}
+                    disabled={procesando}
+                  >
+                    Guardar «{fase.aliasPropuesto.texto}» como alias de voz de{' '}
+                    {fase.aliasPropuesto.alumno.alias || fase.aliasPropuesto.alumno.nombre}
+                  </button>
+                )}
               </div>
             )}
           </div>

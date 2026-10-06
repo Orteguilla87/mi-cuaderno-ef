@@ -120,7 +120,7 @@ export async function interpretarConApi(
   alumnos: Alumno[],
   grupos: Grupo[],
   config: { apiKey: string; modelo: string },
-): Promise<{ accion: AccionId; input: Record<string, unknown> } | null> {
+): Promise<{ accion: AccionId; input: Record<string, unknown>; textoEnviado: string } | null> {
   const mapa = construirMapaTokens(alumnos, grupos)
   const pseudo = pseudonimizarTexto(texto, mapa, alumnos, grupos)
   const fecha = resolverFechaRelativa(texto)
@@ -148,15 +148,24 @@ export async function interpretarConApi(
   const datos: RespuestaClaude = await respuesta.json()
   const uso = datos.content.find((c) => c.type === 'tool_use')
   if (!uso?.name) return null
-  return { accion: uso.name as AccionId, input: uso.input ?? {} }
+  return { accion: uso.name as AccionId, input: uso.input ?? {}, textoEnviado: pseudo }
 }
 
-/** Resuelve los tokens de la respuesta del modelo a ids reales, en local. */
+/**
+ * Resuelve los tokens de la respuesta del modelo a ids reales, en local.
+ *
+ * Con `textoEnviado`, un token de alumno que NO iba en ese texto se descarta:
+ * el mapa trae a todo el grupo, pero solo están en el texto los que el
+ * emparejador reconoció. Si el modelo devuelve otro, se lo ha inventado, y eso
+ * no puede acabar como sugerencia: sin alumno, la UI pregunta.
+ */
 export function resolverTokens(
   input: Record<string, unknown>,
   mapa: ReturnType<typeof construirMapaTokens>,
+  textoEnviado?: string,
 ): { alumno?: Alumno; grupo?: Grupo } {
-  const alumnoToken = typeof input.alumnoToken === 'string' ? input.alumnoToken.replace(/[[\]]/g, '') : undefined
+  const crudo = typeof input.alumnoToken === 'string' ? input.alumnoToken.replace(/[[\]]/g, '') : undefined
+  const alumnoToken = crudo && (textoEnviado === undefined || textoEnviado.includes(`[${crudo}]`)) ? crudo : undefined
   const grupoToken = typeof input.grupoToken === 'string' ? input.grupoToken.replace(/[[\]]/g, '') : undefined
   return {
     alumno: alumnoToken ? mapa.alumnoPorToken.get(alumnoToken) : undefined,

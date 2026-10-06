@@ -108,6 +108,17 @@ export interface Alumno {
   nombre: string
   apellidos: string
   alias: string
+  /**
+   * Cómo lo nombra el maestro AL DICTAR, si no es su nombre ni su `alias`
+   * visible: «Peque», «Txus». Solo lo lee el
+   * emparejador del agente de voz (`lib/emparejarAlumno.ts`). Se edita en la
+   * ficha y el agente OFRECE añadirlo tras una corrección; nunca lo escribe solo.
+   *
+   * Sin índice, así que no hace falta `version()` nueva: entra en el backup
+   * cifrado con el resto de la fila, y no sale en informes (que enumeran sus
+   * campos uno a uno).
+   */
+  aliasVoz?: string[]
   activo: boolean
   /** Pautas prácticas de apoyo. NUNCA se exporta en informes; solo en backup cifrado. */
   apoyos?: string

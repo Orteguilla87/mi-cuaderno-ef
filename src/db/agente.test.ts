@@ -126,9 +126,12 @@ describe('interpretarLocal acotado', () => {
     expect(r.grupo).toBe(cuartoA)
   })
 
-  it('nadie del grupo se parece: no_reconocido, y no se sale a buscar fuera', () => {
-    // «Cuartero» está en el otro grupo y casaría de sobra; aquí no se ve.
+  it('nadie del grupo se parece: pide elegir de la lista del grupo, y no sale a buscar fuera', () => {
+    // «Cuartero» está en el otro grupo y casaría de sobra; aquí no se ve. Sin
+    // nadie por encima del umbral no se sugiere a nadie: `candidatos` vacío es
+    // la señal para que la UI enseñe la lista entera del grupo.
     const r = interpretarLocal('Cuartero sin chándal', cuartoA, [pabloDeCuarto], buscarAlumnoEnTexto)
-    expect(r.tipo).toBe('no_reconocido')
+    expect(r.tipo).toBe('ambiguo')
+    if (r.tipo === 'ambiguo') expect(r.candidatos).toEqual([])
   })
 })

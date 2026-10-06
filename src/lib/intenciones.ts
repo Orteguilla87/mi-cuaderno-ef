@@ -17,6 +17,7 @@
 
 import type { Alumno, EstadoAsistencia, SignoObservacion, TipoColumna } from '../db/types'
 import type { ModoGeneracion } from './generadorEquipos'
+import { decidir } from './emparejarAlumno'
 import { resolverFechaRelativa } from './pseudonimizacion'
 
 export type Riesgo = 'sin_riesgo' | 'reversible' | 'sensible'
@@ -474,11 +475,10 @@ function nombreDe(a: Alumno): string {
 
 /** El alumno del fragmento, solo si uno destaca sobre el segundo. */
 function unAlumno(texto: string, ctx: ContextoIntencion): Alumno | null {
-  const candidatos = ctx.buscarAlumno(texto, ctx.alumnos)
-  if (candidatos.length === 0) return null
-  const [mejor, segundo] = candidatos
-  if (segundo && segundo.puntuacion > mejor.puntuacion - 0.12) return null
-  return mejor.alumno
+  // Misma regla que el resto del agente (`lib/emparejarAlumno.ts`): si nadie
+  // supera el umbral o hay empate, aquí no se resuelve y lo pregunta la UI.
+  const r = decidir(ctx.buscarAlumno(texto, ctx.alumnos))
+  return r.estado === 'unico' ? r.alumno : null
 }
 
 /** La columna cuyo título se menciona, si solo hay una que encaje. */
