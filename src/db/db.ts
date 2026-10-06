@@ -33,6 +33,7 @@ import type {
   Sesion,
   UnidadDidactica,
   ValorCelda,
+  NotaCelda,
   Vinculo,
 } from './types'
 
@@ -68,6 +69,8 @@ class CuadernoDB extends Dexie {
   filas!: EntityTable<FilaInstrumento, 'id'>
   rubricas!: EntityTable<Rubrica, 'id'>
   valores!: EntityTable<ValorCelda, 'id'>
+  /** Clave compuesta `[columnaId+alumnoId]`: una nota por celda (v26). */
+  notasCelda!: Table<NotaCelda, [string, string]>
   criterios!: EntityTable<Criterio, 'id'>
   vinculos!: EntityTable<Vinculo, 'id'>
   equipos!: EntityTable<Equipo, 'id'>
@@ -565,6 +568,21 @@ class CuadernoDB extends Dexie {
     this.version(25).stores({
       alumnos: 'id, grupoId, apellidos, activo, [grupoId+activo], *etiquetas, personaId',
     })
+
+    /**
+     * v26 — `notasCelda`: nota de texto por celda del Cuaderno (`NotaCelda`).
+     *
+     * ADITIVA e IDEMPOTENTE, sin `upgrade()`: es una tabla nueva y vacía; nada
+     * de lo existente cambia. Los índices `columnaId` y `alumnoId` sirven para
+     * cargar las de la rejilla y para borrarlas en cascada con su columna o su
+     * grupo.
+     *
+     * Sin espejo en `backup.ts`: una copia anterior no trae la tabla y se
+     * restaura vacía; `volcarTablas()` la mete sola en la copia cifrada.
+     */
+    this.version(26).stores({
+      notasCelda: '[columnaId+alumnoId], columnaId, alumnoId',
+    })
   }
 }
 
@@ -585,7 +603,7 @@ function diaDeLaSemana(iso: string): number {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 25
+export const ESQUEMA_ACTUAL = 26
 
 export const db = new CuadernoDB()
 

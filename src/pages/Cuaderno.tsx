@@ -23,6 +23,7 @@ import { EstadoVacio } from '../components/EstadoVacio'
 import { Hoja } from '../components/Hoja'
 import { HojaColumna } from '../components/HojaColumna'
 import { HojaObservacion } from '../components/HojaObservacion'
+import { HojaNotaCelda, MarcaNota, MenuNotaCelda, type CeldaNota } from '../components/NotaCelda'
 import { HojaPesosTrimestre } from '../components/HojaPesosTrimestre'
 import { SelectorGrupo } from '../components/SelectorGrupo'
 import { SorteoAlumno } from '../components/SorteoAlumno'
@@ -64,6 +65,8 @@ import type {
   ValorCelda,
 } from '../db/types'
 import { contadoresPorAlumno, type ContadorSigno } from '../db/observaciones'
+import { claveCelda, notasDeColumnas } from '../db/notasCelda'
+import { crearGestoCelda } from '../lib/gestoCelda'
 import { columnaVecina } from '../lib/entradaNota'
 import { iconoDe } from '../lib/iconosEtiqueta'
 import { formatearNombre } from '../lib/nombres'
@@ -981,6 +984,32 @@ function Rejilla({
   const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
   const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
 
+  // ——— Notas de celda (`NotaCelda`) ———
+  // Una consulta para toda la rejilla, como los valores. Solo se pintan aquí.
+  const idsVisibles = visibles.map((c) => c.id).join(',')
+  const notasCelda =
+    useLiveQuery(() => notasDeColumnas(idsVisibles ? idsVisibles.split(',') : []), [idsVisibles]) ??
+    new Map()
+  const [notaAbierta, setNotaAbierta] = useState<CeldaNota | null>(null)
+  const [menuNota, setMenuNota] = useState<(CeldaNota & { x: number; y: number }) | null>(null)
+  // Un solo controlador para toda la rejilla, por delegación: cada `<td>` de
+  // celda lleva `data-celda` y se resuelve al vuelo.
+  const gesto = useMemo(
+    () =>
+      crearGestoCelda<CeldaNota>({
+        onNota: setNotaAbierta,
+        onMenu: (celda, x, y) => setMenuNota({ ...celda, x, y }),
+      }),
+    [],
+  )
+  const celdaDe = (objetivo: EventTarget): CeldaNota | null => {
+    const td = (objetivo as Element).closest?.('td[data-celda]')
+    const [columnaId, alumnoId] = (td?.getAttribute('data-celda') ?? '').split('|')
+    const columna = visibles.find((c) => c.id === columnaId)
+    const alumno = alumnos.find((a) => a.id === alumnoId)
+    return columna && alumno ? { columna, alumno } : null
+  }
+
   return (
     // La rejilla hace scroll propio en los dos ejes y en todos los tamaños: un
     // `sticky` se pega al contenedor con scroll más cercano, y con
@@ -1011,7 +1040,25 @@ function Rejilla({
           </tr>
         </thead>
 
-        <tbody>
+        <tbody
+          onPointerDown={(e) => {
+            const celda = celdaDe(e.target)
+            if (celda) gesto.abajo(celda, { pointerType: e.pointerType, button: e.button, x: e.clientX, y: e.clientY })
+          }}
+          onPointerMove={(e) => gesto.mover({ x: e.clientX, y: e.clientY })}
+          onPointerUp={() => gesto.soltar()}
+          onPointerCancel={() => gesto.soltar()}
+          onContextMenu={(e) => {
+            const celda = celdaDe(e.target)
+            if (celda && gesto.menuContextual(celda, e.clientX, e.clientY)) e.preventDefault()
+          }}
+          onClickCapture={(e) => {
+            if (gesto.click()) {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
+        >
           {alumnos.map((a, fila) => {
             const nombre = a.alias || a.nombre
             const contador = contadoresObs.get(a.id)
@@ -1065,8 +1112,13 @@ function Rejilla({
               {visibles.map((columna) => (
                 <td
                   key={`${columna.id}-${a.id}`}
-                  className="border-b border-r border-borde p-0 dark:border-noche-borde"
+                  data-celda={claveCelda(columna.id, a.id)}
+                  // `relative` solo para anclar la marca de nota; la pulsación
+                  // larga no debe abrir la lupa ni seleccionar texto en iOS/Android.
+                  className="relative select-none border-b border-r border-borde p-0 dark:border-noche-borde"
+                  style={{ WebkitTouchCallout: 'none' }}
                 >
+                  {notasCelda.has(claveCelda(columna.id, a.id)) && <MarcaNota />}
                   <Celda
                     columna={columna}
                     alumno={a}
@@ -1098,6 +1150,14 @@ function Rejilla({
         alumno={observando?.alumno}
         signoInicial={observando?.signo}
         onCerrar={() => setObservando(null)}
+      />
+
+      <HojaNotaCelda celda={notaAbierta} onCerrar={() => setNotaAbierta(null)} />
+      <MenuNotaCelda
+        menu={menuNota}
+        tieneNota={!!menuNota && notasCelda.has(claveCelda(menuNota.columna.id, menuNota.alumno.id))}
+        onEditar={setNotaAbierta}
+        onCerrar={() => setMenuNota(null)}
       />
     </div>
   )

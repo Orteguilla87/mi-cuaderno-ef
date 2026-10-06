@@ -12,6 +12,7 @@ import {
   type Columna,
   type Etapa,
   type FilaInstrumento,
+  type NotaCelda,
   type Grupo,
   type JuegoEnSesion,
   type Plantilla,
@@ -1222,13 +1223,14 @@ export async function eliminarUnidad(udId: string): Promise<() => Promise<void>>
   let unidadPrevia: UnidadDidactica | undefined
   let columnasBorradas: Columna[] = []
   let filasBorradas: FilaInstrumento[] = []
+  let notasBorradas: NotaCelda[] = []
   let sesionesDesvinculadas: string[] = []
   let equiposDesvinculados: string[] = []
   let columnasDesvinculadas: { id: string; udId: string; pesoUd: number }[] = []
 
   await db.transaction(
     'rw',
-    [db.unidades, db.sesiones, db.columnas, db.filas, db.valores, db.equipos],
+    [db.unidades, db.sesiones, db.columnas, db.filas, db.valores, db.equipos, db.notasCelda],
     async () => {
       const unidad = await db.unidades.get(udId)
       if (!unidad) throw new Error('La unidad ya no existe')
@@ -1263,6 +1265,12 @@ export async function eliminarUnidad(udId: string): Promise<() => Promise<void>>
         ? await db.filas.where('columnaId').anyOf(idsABorrar).toArray()
         : []
       columnasBorradas = aBorrar
+      // Las notas de celda no bloquean el borrado como los valores: son
+      // apuntes, no calificaciones. Se van con su columna y vuelven al deshacer.
+      notasBorradas = idsABorrar.length
+        ? await db.notasCelda.where('columnaId').anyOf(idsABorrar).toArray()
+        : []
+      await db.notasCelda.where('columnaId').anyOf(idsABorrar).delete()
       await db.filas.bulkDelete(filasBorradas.map((f) => f.id))
       await db.columnas.bulkDelete(idsABorrar)
 
@@ -1286,11 +1294,12 @@ export async function eliminarUnidad(udId: string): Promise<() => Promise<void>>
   return async () => {
     await db.transaction(
       'rw',
-      [db.unidades, db.sesiones, db.columnas, db.filas, db.equipos],
+      [db.unidades, db.sesiones, db.columnas, db.filas, db.equipos, db.notasCelda],
       async () => {
         if (unidadPrevia) await db.unidades.put(unidadPrevia)
         if (columnasBorradas.length) await db.columnas.bulkAdd(columnasBorradas)
         if (filasBorradas.length) await db.filas.bulkAdd(filasBorradas)
+        if (notasBorradas.length) await db.notasCelda.bulkPut(notasBorradas)
         for (const c of columnasDesvinculadas) {
           await db.columnas.update(c.id, { udId: c.udId, pesoUd: c.pesoUd })
         }

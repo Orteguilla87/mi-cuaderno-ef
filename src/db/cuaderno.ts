@@ -108,24 +108,27 @@ export async function crearColumna(datos: {
   return columna.id
 }
 
-/** Borra la columna con sus filas y sus valores. Devuelve la función de deshacer. */
+/** Borra la columna con sus filas, sus valores y sus notas de celda. Devuelve la función de deshacer. */
 export async function eliminarColumna(columnaId: string): Promise<() => Promise<void>> {
   const columna = await db.columnas.get(columnaId)
   const valores = await db.valores.where('columnaId').equals(columnaId).toArray()
   const filas = await db.filas.where('columnaId').equals(columnaId).toArray()
+  const notas = await db.notasCelda.where('columnaId').equals(columnaId).toArray()
   if (!columna) return async () => {}
 
-  await db.transaction('rw', [db.columnas, db.valores, db.filas], async () => {
+  await db.transaction('rw', [db.columnas, db.valores, db.filas, db.notasCelda], async () => {
     await db.valores.bulkDelete(valores.map((v) => v.id))
     await db.filas.bulkDelete(filas.map((f) => f.id))
+    await db.notasCelda.where('columnaId').equals(columnaId).delete()
     await db.columnas.delete(columnaId)
   })
 
   return async () => {
-    await db.transaction('rw', [db.columnas, db.valores, db.filas], async () => {
+    await db.transaction('rw', [db.columnas, db.valores, db.filas, db.notasCelda], async () => {
       await db.columnas.add(columna)
       await db.filas.bulkAdd(filas)
       await db.valores.bulkAdd(valores)
+      await db.notasCelda.bulkPut(notas)
     })
   }
 }

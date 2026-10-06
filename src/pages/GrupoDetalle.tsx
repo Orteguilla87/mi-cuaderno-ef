@@ -28,6 +28,7 @@ import type {
   Alumno,
   Asistencia,
   Calificacion,
+  NotaCelda,
   EtiquetaAlumno,
   FranjaHorario,
   Grupo,
@@ -99,19 +100,22 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
     let copiaAsistencias: Asistencia[] = []
     let copiaObservaciones: Observacion[] = []
     let copiaCalificaciones: Calificacion[] = []
+    let copiaNotasCelda: NotaCelda[] = []
 
     await db.transaction(
       'rw',
-      [db.grupos, db.alumnos, db.asistencias, db.observaciones, db.calificaciones],
+      [db.grupos, db.alumnos, db.asistencias, db.observaciones, db.calificaciones, db.notasCelda],
       async () => {
         copiaGrupo = await db.grupos.get(grupo.id)
         copiaAlumnos = await db.alumnos.where('grupoId').equals(grupo.id).toArray()
         copiaAsistencias = await db.asistencias.where('alumnoId').anyOf(ids).toArray()
         copiaObservaciones = await db.observaciones.where('grupoId').equals(grupo.id).toArray()
         copiaCalificaciones = await db.calificaciones.where('alumnoId').anyOf(ids).toArray()
+        copiaNotasCelda = await db.notasCelda.where('alumnoId').anyOf(ids).toArray()
 
         await db.asistencias.where('alumnoId').anyOf(ids).delete()
         await db.calificaciones.where('alumnoId').anyOf(ids).delete()
+        await db.notasCelda.where('alumnoId').anyOf(ids).delete()
         await db.observaciones.where('grupoId').equals(grupo.id).delete()
         await db.alumnos.where('grupoId').equals(grupo.id).delete()
         await db.grupos.delete(grupo.id)
@@ -121,13 +125,14 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
     mostrarAviso(`Grupo «${grupo.nombre}» eliminado`, async () => {
       await db.transaction(
         'rw',
-        [db.grupos, db.alumnos, db.asistencias, db.observaciones, db.calificaciones],
+        [db.grupos, db.alumnos, db.asistencias, db.observaciones, db.calificaciones, db.notasCelda],
         async () => {
           if (copiaGrupo) await db.grupos.put(copiaGrupo)
           await db.alumnos.bulkPut(copiaAlumnos)
           await db.asistencias.bulkPut(copiaAsistencias)
           await db.observaciones.bulkPut(copiaObservaciones)
           await db.calificaciones.bulkPut(copiaCalificaciones)
+          await db.notasCelda.bulkPut(copiaNotasCelda)
         },
       )
       navegar(`/grupos/${grupo.id}`)

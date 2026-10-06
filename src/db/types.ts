@@ -738,6 +738,28 @@ export interface ValorCelda {
   actualizado: number
 }
 
+/**
+ * Nota de texto suelta sobre UNA celda del Cuaderno («repetir salto», «ese
+ * día venía lesionado»). Es del maestro y solo para la vista Cuaderno:
+ *
+ *  - NO es un valor: vive en su propia tabla, así que ningún cálculo (medias,
+ *    ponderaciones, columnas de cálculo) la ve. Excluida en origen.
+ *  - NO se exporta: ni PDF, ni XLSX, ni CSV, ni informes. Lo vigila una lista
+ *    blanca de ficheros en `lib/notasCeldaPrivacidad.test.ts`.
+ *  - SÍ va en el backup cifrado y en la sincronización (`volcarTablas()`).
+ *
+ * Independiente del valor: puede haber nota sin valor, y borrar uno no borra la
+ * otra. Sin nota NO hay fila: vaciar el texto elimina el registro.
+ *
+ * La clave es la propia celda, `[columnaId+alumnoId]`: una nota por celda.
+ */
+export interface NotaCelda {
+  columnaId: Id
+  alumnoId: Id
+  texto: string
+  actualizadoEn: number
+}
+
 export type TipoInstrumento = 'rubrica' | 'lista_control' | 'nota_directa'
 
 export interface ItemInstrumento {

@@ -260,6 +260,10 @@ export function datosEjemplo(): Tablas {
     valores: [
       { id: 'val-1', columnaId: 'col-1', alumnoId: ID_ALUMNO, numero: 8, actualizado: 1_790_000_000_000 },
     ],
+    // Nota de celda (v26): solo Cuaderno y copia cifrada, nunca exportaciones.
+    notasCelda: [
+      { columnaId: 'col-1', alumnoId: ID_ALUMNO, texto: 'Repetir el giro el jueves', actualizadoEn: 1_790_000_000_000 },
+    ],
     criterios: [
       {
         id: 'EF.2C.1.1',
