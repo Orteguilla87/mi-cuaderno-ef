@@ -59,6 +59,7 @@ import {
 import { huecosCanceladosDe, huecosDe, type HuecoCalendario } from '../db/sesiones'
 import { ordinalesDelDia, rotuloOrdinal } from '../lib/clasesDelDia'
 import { BotonNoHayClase, FilasCanceladas } from '../components/ClasesCanceladas'
+import { DISPOSICION } from '../lib/disposicion'
 import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, diaLectivo, formatoCorto, formatoDiaCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
@@ -253,7 +254,7 @@ function VistaSemana({
                 <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
               ) : (
                 <>
-                <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2">
+                <ul className={DISPOSICION.planSemana.rejilla}>
                   {(() => {
                     // Un grupo con dos clases ese día se rotula «1.ª de 2» /
                     // «2.ª de 2»: sin la marca, dos filas iguales seguidas
@@ -309,7 +310,7 @@ function VistaSemana({
                     })
                   })()}
                 </ul>
-                <FilasCanceladas huecos={sinClase} />
+                <FilasCanceladas huecos={sinClase} rejilla={DISPOSICION.planSemanaCanceladas.rejilla} />
                 </>
               )}
             </section>

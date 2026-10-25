@@ -7,3 +7,7 @@ dist-ssr
 
 # Salida generada por graphify (grafo, informes, caché): no versionar.
 graphify-out/
+
+# Salida de Playwright (e2e/)
+test-results/
+playwright-report/

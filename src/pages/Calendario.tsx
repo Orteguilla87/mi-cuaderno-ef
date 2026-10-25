@@ -14,6 +14,7 @@ import {
   type SesionConGrupo,
 } from '../db/sesiones'
 import { FilasCanceladas } from '../components/ClasesCanceladas'
+import { DISPOSICION } from '../lib/disposicion'
 import type { CursoEscolar } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
 import { aISO, deISO, formatoCorto, formatoLargo, NOMBRES_DIA, sumarDias } from '../lib/fechas'
@@ -362,14 +363,14 @@ function VistaSemana({ curso }: { curso: CursoEscolar | undefined }) {
               <p className="text-sm texto-suave">{etiquetaNoLectivo(noLectivo)}</p>
             ) : (
               <>
-                <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+                <ul className={DISPOSICION.calendario.rejilla}>
                   {delDia.map((h) => (
                     <li key={`${h.grupo.id}-${h.franjaInicio ?? h.horaInicio}`}>
                       <TarjetaHueco hueco={h} />
                     </li>
                   ))}
                 </ul>
-                <FilasCanceladas huecos={sinClase} />
+                <FilasCanceladas huecos={sinClase} rejilla={DISPOSICION.calendarioCanceladas.rejilla} />
               </>
             )}
           </section>

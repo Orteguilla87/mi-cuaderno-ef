@@ -27,6 +27,7 @@ import { leerCursoActivo, obtenerCursoActivo } from '../db/curso'
 import { crearGrupo, gruposVisiblesDelCurso } from '../db/grupos'
 import type { Etapa, FranjaHorario, Grupo } from '../db/types'
 import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, nivelesDe, rotuloNivel, textoNivel } from '../lib/etapas'
+import { DISPOSICION } from '../lib/disposicion'
 import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import { COLOR_POR_DEFECTO, colorPorId } from '../lib/paleta'
 import { navegar } from '../lib/router'
@@ -112,7 +113,7 @@ export function Grupos() {
         {grupos && grupos.length > 0 && (
           <DndContext sensors={sensores} collisionDetection={closestCenter} onDragEnd={alSoltar}>
             <SortableContext items={grupos.map((g) => g.id)} strategy={rectSortingStrategy}>
-              <div className="grid gap-3 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+              <div className={DISPOSICION.grupos.rejilla}>
                 {grupos.map((g) => (
                   <GrupoTarjeta key={g.id} grupo={g} alumnos={conteos?.[g.id] ?? 0} />
                 ))}

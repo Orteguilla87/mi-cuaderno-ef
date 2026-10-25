@@ -14,10 +14,14 @@ import type { Grupo } from '../db/types'
  * Calendario lo enseñen exactamente igual — el mismo error que ya se corrigió
  * al unificar la resolución de sesiones en `db/sesiones.ts`.
  */
-export function FilasCanceladas({ huecos }: { huecos: HuecoCancelado[] }) {
+/**
+ * `rejilla` la pone cada vista, de `lib/disposicion.ts`: el componente es común,
+ * pero su ancho y su disposición son de quien lo usa.
+ */
+export function FilasCanceladas({ huecos, rejilla }: { huecos: HuecoCancelado[]; rejilla: string }) {
   if (huecos.length === 0) return null
   return (
-    <ul className="grid gap-2 apaisado:grid-cols-2 lg:grid-cols-2">
+    <ul className={rejilla}>
       {huecos.map((h) => (
         <li key={`${h.grupo.id}-${h.fecha}-${h.franjaInicio ?? h.horaInicio ?? ''}`}>
           <FilaCancelada hueco={h} />

@@ -21,6 +21,7 @@ import {
   type ResultadoCopia,
 } from '../db/planificador'
 import type { FranjaHorario, Grupo, Sesion } from '../db/types'
+import { DISPOSICION } from '../lib/disposicion'
 import { aISO, diaLectivo, formatoDiaCorto } from '../lib/fechas'
 import { rotuloOrdinal } from '../lib/clasesDelDia'
 import { navegar } from '../lib/router'
@@ -140,7 +141,7 @@ export function PlanGrupo() {
       {avisoCopiado}
 
       {/* Móvil y tableta: el desplegable de siempre, un grupo cada vez. */}
-      <div className={`${ANCHO_COLUMNA_GRUPO.movil} space-y-4 lg:hidden`}>
+      <div data-columna-grupo className={DISPOSICION.planGrupo.movil}>
         <SelectorGrupo grupos={grupos ?? []} valor={grupoId} onCambio={fijarGrupoActivo} />
         {grupo && <ColumnaGrupo grupo={grupo} grupos={grupos ?? []} />}
       </div>
@@ -150,11 +151,12 @@ export function PlanGrupo() {
           vista de quién es la sesión que se está leyendo. El ancho es fijo
           (`shrink-0`) para que el contenido no se comprima, y la tira scrollea
           en horizontal; el `pr-4` deja aire tras la última columna. */}
-      <div className="hidden gap-4 overflow-x-auto pb-2 pr-4 lg:flex">
+      <div className={DISPOSICION.planGrupo.escritorioTira}>
         {(grupos ?? []).map((g) => (
           <div
             key={g.id}
-            className={`max-h-[70dvh] ${ANCHO_COLUMNA_GRUPO.escritorio} shrink-0 space-y-4 overflow-y-auto overflow-x-hidden px-0.5 pb-1`}
+            data-columna-grupo
+            className={`max-h-[70dvh] ${DISPOSICION.planGrupo.escritorioColumna} shrink-0 space-y-4 overflow-y-auto overflow-x-hidden px-0.5 pb-1`}
           >
             <ColumnaGrupo grupo={g} grupos={grupos ?? []} pegajosa />
           </div>
@@ -163,20 +165,6 @@ export function PlanGrupo() {
     </div>
   )
 }
-
-/**
- * Ancho de la columna de grupo, uno por viewport. Único sitio donde se fija.
- * - movil: todo el ancho del contenedor, sin scroll lateral (como siempre).
- * - escritorio: 33rem (1,5 × los 22rem de antes) para leer completos títulos
- *   del tipo «SESIÓN DE LECTURA · Libro B, bloque 2». Lleva el prefijo `lg:`
- *   dentro del propio valor: aunque se use fuera del bloque de escritorio,
- *   nunca ensancha el móvil.
- * Literales enteros para que Tailwind los encuentre al escanear.
- */
-const ANCHO_COLUMNA_GRUPO = {
-  movil: 'w-full',
-  escritorio: 'lg:w-[33rem]',
-} as const
 
 /**
  * Un grupo: su cabecera, sus acciones y sus sesiones. Es el mismo bloque en
