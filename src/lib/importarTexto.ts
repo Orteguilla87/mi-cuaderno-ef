@@ -12,7 +12,7 @@
  * escrito.
  */
 
-import { aMarkdown } from './estructuraSesion'
+import { aMarkdown, esActividadConTiempo } from './estructuraSesion'
 import { URL, extraerRecursos } from './recursosTexto'
 import { normalizarLinea } from './texto'
 
@@ -79,6 +79,17 @@ const ETIQUETA_ENLACES = /^\s*(?:enlaces?|links?|notas)\s*[:\-–]\s*(.*)$/i
 const ETIQUETA_CONSEJO = /^\s*consejos?\s*[:\-–]\s*(.*)$/i
 
 /**
+ * Viñeta con rótulo de nota para el docente —«Por qué cooperativo aquí: …»,
+ * «Registro: …»—. Como `Consejo:`, va a «Enlaces y notas», pero con el rótulo
+ * puesto: aquí dice de qué va la nota. Lista cerrada a propósito: «Contenidos:»
+ * o «Lectura:» también llevan dos puntos y son contenido de la sesión.
+ */
+const NOTA_DOCENTE = /^\s*-\s+((?:por\s+qu[ée](?:\s[^:]{0,40})?|registro|nota|ojo|atenci[óo]n)\s*:\s*\S.*)$/i
+
+/** Elemento numerado: las notas docentes solo cuentan DESPUÉS del último. */
+const ELEMENTO_NUMERADO = /^\s*\d+[.)]\s+\S/
+
+/**
  * Etiquetas que SÍ son contenido de la sesión. Se quedan en la descripción,
  * pero con el rótulo en negrita: además de leerse mejor, la negrita protege la
  * línea de `comoActividad`, que si no convertiría «Contenidos: vocabulario —
@@ -140,6 +151,13 @@ const ETIQUETA_DE_CAMPO =
   /^\s*(?:contenidos?|consejos?|lectura|dictado\s*\d*(?:\s*\([^)]*\))?|recursos?|materiales?)\s*:/i
 
 /**
+ * Un elemento de lista nunca es cabecera: es contenido DE una sesión. Sin esto,
+ * «- Registro: … pasan al taller de errores de la S18» abría una sesión 18 con
+ * la viñeta de título y dejaba las actividades de verdad en el preámbulo.
+ */
+const ELEMENTO_DE_LISTA = /^(?:-|\d+[.)])\s/
+
+/**
  * El número de sesión de una cabecera `S<n>`, o `null` si la línea no lo es.
  *
  * `alInicio` distingue los dos intentos: el primero exige que la línea empiece
@@ -148,7 +166,7 @@ const ETIQUETA_DE_CAMPO =
 function numeroDeCabecera(linea: string, alInicio: boolean): number | null {
   const t = linea.trim()
   if (!t || t.length >= LARGO_CABECERA) return null
-  if (ETIQUETA_DE_CAMPO.test(t)) return null
+  if (ETIQUETA_DE_CAMPO.test(t) || ELEMENTO_DE_LISTA.test(t)) return null
   const m = (alInicio ? TOKEN_SESION_AL_INICIO : TOKEN_SESION).exec(t)
   return m ? Number(m[1]) : null
 }
@@ -218,7 +236,9 @@ function detectarCortes(lineas: string[]): Corte[] {
   // Numeración: solo si hay 2+ y entre ellas hay texto de longitud significativa.
   // Sin esta condición, «1. Calentamiento / 2. Juego / 3. Vuelta a la calma»
   // —la lista de actividades de UNA sesión— saldría como tres sesiones.
-  const numerada = porPatron('numerada', (l) => NUMERADA.test(l))
+  // Una línea con forma de actividad —«4. Cabezas numeradas (15 min · G4). …»—
+  // es un paso de la sesión, no el principio de otra: no corta nunca.
+  const numerada = porPatron('numerada', (l) => NUMERADA.test(l) && !esActividadConTiempo(l))
   if (numerada.length >= 2) {
     const cuerpos = numerada.map((c, i) => {
       const fin = i + 1 < numerada.length ? numerada[i + 1].linea : lineas.length
@@ -393,9 +413,20 @@ function parsearBloque(
   // esto el enlace se perdería por el camino.
   for (const u of enlacesDelMaterial) anadirEnlace(u)
 
+  // Tras la última actividad numerada, las viñetas con rótulo de nota docente
+  // ya no son pasos de la sesión: son apuntes para quien la da.
+  const ultimoNumerado = lineas.reduce((ultimo, l, i) => (ELEMENTO_NUMERADO.test(l) ? i : ultimo), -1)
+
   for (let i = 0; i < lineas.length; i++) {
     if (lineasTitulo.has(i) || lineasRecursos.has(i)) continue
     const linea = lineas[i]
+
+    const nota = ultimoNumerado >= 0 && i > ultimoNumerado ? NOTA_DOCENTE.exec(linea) : null
+    if (nota) {
+      anadirNota(nota[1])
+      lineasEnlace.add(i)
+      continue
+    }
 
     const consejo = ETIQUETA_CONSEJO.exec(linea)
     if (consejo) {

@@ -9,7 +9,9 @@
  * inyecta HTML en ningún momento.
  *
  * El subconjunto es exactamente el que produce `aMarkdown`:
- *   `### ` momento · `#### ` submomento · `- ` lista · `**negrita**` · párrafo.
+ *   `### ` momento · `#### ` submomento · `- ` lista · `1. ` lista numerada ·
+ *   `  - ` sublista (2 espacios, cuelga del elemento anterior) · `**negrita**` ·
+ *   párrafo.
  */
 
 export interface TrozoMd {
@@ -17,13 +19,23 @@ export interface TrozoMd {
   fuerte: boolean
 }
 
+/** Un elemento de lista y su sublista, si la tiene. */
+export interface ItemMd {
+  trozos: TrozoMd[]
+  hijos: TrozoMd[][]
+}
+
 export type BloqueMd =
   | { tipo: 'titulo'; nivel: 1 | 2; trozos: TrozoMd[] }
   | { tipo: 'parrafo'; lineas: TrozoMd[][] }
-  | { tipo: 'lista'; items: TrozoMd[][] }
+  | { tipo: 'lista'; items: ItemMd[] }
+  /** `numero` es el que traía el texto: no se renumera, ni al pintar. */
+  | { tipo: 'listaOrdenada'; items: (ItemMd & { numero: number })[] }
 
 const ENCABEZADO = /^(#{1,6})\s+(.*)$/
 const ITEM = /^[-*]\s+(.*)$/
+const NUMERADO = /^(\d+)[.)]\s+(.*)$/
+const SANGRIA = /^\s{2,}/
 const FUERTE = /\*\*(.+?)\*\*/g
 
 /** Parte una línea en trozos normales y en negrita. Sin anidar: no hace falta. */
@@ -46,23 +58,30 @@ export function trozos(linea: string): TrozoMd[] {
  * Las líneas seguidas se agrupan en un párrafo y las viñetas seguidas en una
  * lista: agrupar es lo que da el aire entre bloques que hace legible el texto
  * en el móvil, y sin ello cada salto de línea sería un párrafo con su margen.
+ *
+ * Una línea en blanco NO cierra una lista numerada: entre «4.» y su sublista, y
+ * entre la sublista y «5.», el texto deja aire, pero sigue siendo la misma
+ * lista. La cierra un párrafo, un encabezado o una viñeta sin sangría.
  */
 export function bloques(texto: string): BloqueMd[] {
   const salida: BloqueMd[] = []
   let parrafo: TrozoMd[][] = []
-  let lista: TrozoMd[][] = []
+  let vinetas: ItemMd[] = []
+  let numerados: (ItemMd & { numero: number })[] = []
 
   const cerrar = () => {
     if (parrafo.length) salida.push({ tipo: 'parrafo', lineas: parrafo })
-    if (lista.length) salida.push({ tipo: 'lista', items: lista })
+    if (vinetas.length) salida.push({ tipo: 'lista', items: vinetas })
+    if (numerados.length) salida.push({ tipo: 'listaOrdenada', items: numerados })
     parrafo = []
-    lista = []
+    vinetas = []
+    numerados = []
   }
 
   for (const cruda of (texto ?? '').split('\n')) {
     const t = cruda.trim()
     if (!t) {
-      cerrar()
+      if (!numerados.length) cerrar()
       continue
     }
 
@@ -78,13 +97,26 @@ export function bloques(texto: string): BloqueMd[] {
     }
 
     const item = ITEM.exec(t)
-    if (item) {
-      if (parrafo.length) cerrar()
-      lista.push(trozos(item[1]))
+    const abierta = numerados.length ? numerados : vinetas
+    if (item && SANGRIA.test(cruda) && abierta.length) {
+      abierta[abierta.length - 1].hijos.push(trozos(item[1]))
       continue
     }
 
-    if (lista.length) cerrar()
+    const numerado = NUMERADO.exec(t)
+    if (numerado) {
+      if (!numerados.length) cerrar()
+      numerados.push({ numero: Number(numerado[1]), trozos: trozos(numerado[2]), hijos: [] })
+      continue
+    }
+
+    if (item) {
+      if (!vinetas.length) cerrar()
+      vinetas.push({ trozos: trozos(item[1]), hijos: [] })
+      continue
+    }
+
+    if (vinetas.length || numerados.length) cerrar()
     parrafo.push(trozos(t))
   }
 

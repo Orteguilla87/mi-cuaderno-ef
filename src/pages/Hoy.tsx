@@ -14,6 +14,7 @@ import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { NavegadorFecha } from '../components/NavegadorFecha'
 import { TextoLargo } from '../components/TextoLargo'
+import { TextoMarkdown } from '../components/TextoMarkdown'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { ValoracionSesion } from '../components/ValoracionSesion'
 import { leerCursoActivo } from '../db/curso'
@@ -873,11 +874,13 @@ function TarjetaClase({
           <div className="space-y-1.5">
           {hayDescripcion ? (
             <>
+              {/* En markdown, como en la ficha de la sesión: la importación la
+                  guarda con listas y negritas, y en crudo se leería con `**`. */}
               {sesion!.notas && (
-                <p>
-                  <span className="font-bold">Descripción: </span>
-                  <TextoLargo texto={sesion!.notas} />
-                </p>
+                <div>
+                  <span className="font-bold">Descripción</span>
+                  <TextoMarkdown texto={sesion!.notas} className="mt-1" />
+                </div>
               )}
               {sesion!.recursosNecesarios && (
                 <p>

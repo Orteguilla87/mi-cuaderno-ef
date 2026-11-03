@@ -114,6 +114,72 @@ export function comoActividad(linea: string): Actividad | null {
   return { nombre, descripcion }
 }
 
+// ——————————————————————— listas ———————————————————————
+
+/**
+ * `4. Cabezas numeradas (15 min · G4). Ocho preguntas…` — actividad escrita
+ * como elemento de lista: marcador, nombre corto, paréntesis con duración y
+ * agrupamiento, punto y el resto.
+ */
+const ACTIVIDAD_CON_TIEMPO = /^(\s*(?:\d+\.|[-*•])\s*)([^.()]{3,70})\s*(\([^)]{1,30}\))\.\s*(.+)$/
+
+const NUMERADO = /^\d+[.)]\s+\S/
+const VINETA = /^[-*•]\s+\S/
+
+/** `true` si la línea es una actividad de lista con su paréntesis de tiempo. */
+export function esActividadConTiempo(linea: string): boolean {
+  return ACTIVIDAD_CON_TIEMPO.test(linea)
+}
+
+/**
+ * Un elemento de lista con el nombre de la actividad en negrita, conservando el
+ * marcador —el número tal cual, sin renumerar—, el paréntesis y el resto.
+ */
+function elementoDeLista(t: string): string {
+  const [, marca, contenido] = /^(\d+[.)]|[-*•])\s+(.*)$/.exec(t) ?? ['', '-', t]
+  const marcador = /^[-*•]$/.test(marca) ? '-' : marca
+  // Una línea que ya trae negrita no se vuelve a marcar: idempotencia.
+  if (contenido.includes('**')) return `${marcador} ${contenido}`
+
+  const m = ACTIVIDAD_CON_TIEMPO.exec(t)
+  if (m) return `${marcador} **${m[2].trim()}** ${m[3]}. ${m[4].trim()}`
+
+  // El formato EF, «Nombre — descripción», también dentro de una lista.
+  const actividad = comoActividad(contenido)
+  if (actividad) return `${marcador} **${actividad.nombre}** — ${actividad.descripcion}`
+
+  return `${marcador} ${contenido}`
+}
+
+/**
+ * Índices de las viñetas que van DENTRO de un elemento numerado: las de un
+ * tramo situado entre dos numerados. Son el desarrollo del anterior —las
+ * preguntas de «4. Cabezas numeradas»—, no una lista suelta al mismo nivel.
+ * Las viñetas de después del último numerado no tienen a quién pertenecer y
+ * se quedan arriba.
+ */
+function vinetasAnidadas(lineas: string[]): Set<number> {
+  const anidadas = new Set<number>()
+  let i = 0
+  while (i < lineas.length) {
+    if (!VINETA.test(lineas[i].trim()) || /^\s{2,}/.test(lineas[i])) {
+      i++
+      continue
+    }
+    const tramo: number[] = []
+    let j = i
+    while (j < lineas.length && (!lineas[j].trim() || VINETA.test(lineas[j].trim()))) {
+      if (lineas[j].trim()) tramo.push(j)
+      j++
+    }
+    const anterior = lineas.slice(0, i).reverse().find((l) => l.trim())
+    if (anterior && NUMERADO.test(anterior.trim()) && j < lineas.length && NUMERADO.test(lineas[j].trim()))
+      for (const k of tramo) anidadas.add(k)
+    i = j
+  }
+  return anidadas
+}
+
 // ——————————————————————— jerarquía → markdown ———————————————————————
 
 /**
@@ -137,7 +203,10 @@ export function aMarkdown(descripcion: string): string {
     parrafo = []
   }
 
-  for (const cruda of descripcion.split('\n')) {
+  const lineas = descripcion.split('\n')
+  const anidadas = vinetasAnidadas(lineas)
+
+  for (const [i, cruda] of lineas.entries()) {
     const t = cruda.trim()
     if (!t) {
       cerrarParrafo()
@@ -159,6 +228,15 @@ export function aMarkdown(descripcion: string): string {
     if (esSubmomento(t)) {
       cerrarParrafo()
       bloques.push(`#### ${t}`)
+      continue
+    }
+
+    // Las listas pasan tal cual, en el párrafo en curso: una línea en blanco
+    // sigue cerrando el bloque, así que el aire que traía el texto se conserva.
+    // La sangría de 2 espacios marca la sublista para `lib/markdown.ts`.
+    if (NUMERADO.test(t) || VINETA.test(t)) {
+      const subLista = VINETA.test(t) && (anidadas.has(i) || /^\s{2,}/.test(cruda))
+      parrafo.push((subLista ? '  ' : '') + elementoDeLista(t))
       continue
     }
 

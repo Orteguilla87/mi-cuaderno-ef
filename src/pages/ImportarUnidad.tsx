@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { AlertTriangle, ClipboardPaste, Combine, Plus, Trash2, Wand2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ClipboardEvent } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
 import { CampoTexto } from '../components/CampoTexto'
@@ -17,6 +17,7 @@ import {
 } from '../lib/importarTexto'
 import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, nivelesDe } from '../lib/etapas'
 import { terminologia } from '../lib/literales'
+import { htmlConListas, textoConMarcas } from '../lib/pegadoHtml'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 import { useVistaPlanificador } from '../store/vistaPlanificador'
@@ -31,6 +32,29 @@ const NOMBRE_PATRON: Record<string, string> = {
 }
 
 type Paso = 'pegar' | 'ambiguedad' | 'preview'
+
+/**
+ * Pegado desde Google Docs o la vista de Claude: si el portapapeles trae listas
+ * en HTML, se pega el texto con sus «1.» y sus viñetas escritas
+ * (`lib/pegadoHtml.ts`), que el `text/plain` del navegador pierde.
+ *
+ * Se inserta con `insertText` y no tocando el estado: así el campo lo vive como
+ * una escritura más —su borrador local, el deshacer del navegador— en vez de
+ * recibir un valor por debajo mientras tiene el foco.
+ */
+function pegarConListas(e: ClipboardEvent<HTMLTextAreaElement>) {
+  const html = e.clipboardData.getData('text/html')
+  if (!htmlConListas(html)) return
+  const texto = textoConMarcas(new DOMParser().parseFromString(html, 'text/html').body)
+  if (!texto.trim()) return
+  e.preventDefault()
+  const campo = e.currentTarget
+  if (document.execCommand('insertText', false, texto)) return
+  // Sin `insertText`: se escribe a mano y se avisa a React como lo haría el teclado.
+  const valor = campo.value.slice(0, campo.selectionStart) + texto + campo.value.slice(campo.selectionEnd)
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(campo, valor)
+  campo.dispatchEvent(new Event('input', { bubbles: true }))
+}
 
 /**
  * Importación de una unidad pegando la programación como texto plano.
@@ -164,6 +188,7 @@ export function ImportarUnidad() {
                 className="campo h-72 resize-none py-2 text-sm"
                 valor={texto}
                 onValor={setTexto}
+                onPaste={pegarConListas}
                 placeholder={'Sesión 1: Familiarización\nBotar el balón…\nMaterial: 10 balones'}
               />
             </div>

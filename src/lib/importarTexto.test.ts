@@ -237,3 +237,89 @@ describe('analizarTexto — reparto del apartado de material', () => {
     expect(sesiones[0].descripcion).toBe('Antes.\n\nDespués.')
   })
 })
+
+describe('analizarTexto — listas de actividades', () => {
+  const ACTIVIDADES = [
+    '1. Sintagma nominal (8 min · GG). Núcleo y determinantes en la flauta, un balón nuevo.',
+    '2. Pronombres personales (10 min · P). Sustituir y analizar persona y número.',
+    '3. Campo semántico frente a campo léxico (10 min · GG). Clasificar en dos columnas.',
+    '4. Cabezas numeradas (15 min · G4). Ocho preguntas proyectadas; el grupo piensa un minuto.',
+    '',
+    '* Núcleo de aquel perro pequeño (perro).',
+    '* Pronombre que sustituye a Lena y Theo (ellos).',
+    '* Clasifica médico, árbol, sofá.',
+    '',
+    '5. Cierre (2 min · GG). Qué pregunta ha costado más.',
+    '',
+    '* Por qué cooperativo aquí: en un repaso interesa que todos sepan la respuesta.',
+    '* Registro: anota las preguntas que fallan más grupos; pasan al taller de errores de la S18.',
+  ].join('\n')
+
+  const ESPERADA = [
+    '1. **Sintagma nominal** (8 min · GG). Núcleo y determinantes en la flauta, un balón nuevo.',
+    '2. **Pronombres personales** (10 min · P). Sustituir y analizar persona y número.',
+    '3. **Campo semántico frente a campo léxico** (10 min · GG). Clasificar en dos columnas.',
+    '4. **Cabezas numeradas** (15 min · G4). Ocho preguntas proyectadas; el grupo piensa un minuto.',
+    '',
+    '  - Núcleo de aquel perro pequeño (perro).',
+    '  - Pronombre que sustituye a Lena y Theo (ellos).',
+    '  - Clasifica médico, árbol, sofá.',
+    '',
+    '5. **Cierre** (2 min · GG). Qué pregunta ha costado más.',
+  ].join('\n')
+
+  /** Las viñetas con rótulo de nota docente, tras el último numerado, se mudan. */
+  const NOTAS = [
+    'Por qué cooperativo aquí: en un repaso interesa que todos sepan la respuesta.',
+    'Registro: anota las preguntas que fallan más grupos; pasan al taller de errores de la S18.',
+  ].join('\n')
+
+  it.each([
+    ['S17 – Repaso cooperativo', 'S17 – Repaso cooperativo'],
+    ['UD2 – S17 – Repaso', 'UD2 – S17 – Repaso'],
+    ['Sesión 17: Repaso', 'Repaso'],
+  ])('con cabecera «%s» es UNA sesión con la estructura intacta', (cabecera, titulo) => {
+    const { sesiones } = analizarTexto(`${cabecera}\n${ACTIVIDADES}`)
+    expect(sesiones).toHaveLength(1)
+    expect(sesiones[0].titulo).toBe(titulo)
+    expect(sesiones[0].descripcion).toBe(ESPERADA)
+    expect(sesiones[0].enlacesYNotas).toBe(NOTAS)
+  })
+
+  it('sin cabecera, ni la numeración ni la «S18» de una viñeta trocean', () => {
+    const { sesiones } = analizarTexto(ACTIVIDADES)
+    expect(sesiones).toHaveLength(1)
+    expect(sesiones[0].titulo).toBeUndefined()
+    expect(sesiones[0].descripcion).toBe(ESPERADA)
+  })
+
+  it('una viñeta que menciona otra sesión no es cabecera', () => {
+    const { sesiones } = analizarTexto(
+      ['S1 – Bote', 'Botar.', '- Pasa a la S2 si sale bien.', 'S2 – Pase', 'Pasar.'].join('\n'),
+    )
+    expect(sesiones.map((s) => s.titulo)).toEqual(['S1 – Bote', 'S2 – Pase'])
+  })
+
+  it('el formato EF «Nombre — descripción» sigue igual', () => {
+    const { sesiones } = analizarTexto(
+      ['Sesión 1: Bote', 'Tulipán — Juego de persecución.', '- Pilla-pilla — Por parejas.'].join('\n'),
+    )
+    expect(sesiones[0].descripcion).toBe(
+      '**Tulipán** — Juego de persecución.\n\n- **Pilla-pilla** — Por parejas.',
+    )
+  })
+
+  it('una nota ANTES del último numerado se queda, y «Contenidos:» nunca se muda', () => {
+    const { sesiones } = analizarTexto(
+      ['S1 – Bote', '1. Uno.', '- Registro: a mitad.', '2. Dos.', '- Contenidos: bote.'].join('\n'),
+    )
+    expect(sesiones[0].enlacesYNotas).toBe('')
+    expect(sesiones[0].descripcion).toContain('- Registro: a mitad.')
+    expect(sesiones[0].descripcion).toContain('- Contenidos: bote.')
+  })
+
+  it('es idempotente: pasar la descripción otra vez no la cambia', () => {
+    const { sesiones } = analizarTexto(`S17 – Repaso\n${ESPERADA}`)
+    expect(sesiones[0].descripcion).toBe(ESPERADA)
+  })
+})

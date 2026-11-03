@@ -22,7 +22,7 @@ export function TextoMarkdown({ texto, className }: { texto: string; className?:
   if (partes.length === 0) return null
 
   return (
-    <div className={'space-y-3 text-base leading-7' + (className ? ` ${className}` : '')}>
+    <div className={'space-y-3 break-words text-base leading-7' + (className ? ` ${className}` : '')}>
       {partes.map((b, i) => {
         if (b.tipo === 'titulo' && b.nivel === 1) {
           return (
@@ -53,10 +53,29 @@ export function TextoMarkdown({ texto, className }: { texto: string; className?:
             <ul key={i} className="list-disc space-y-1.5 pl-5 marker:text-agua">
               {b.items.map((item, j) => (
                 <li key={j}>
-                  <Trozos trozos={item} />
+                  <Trozos trozos={item.trozos} />
+                  <SubLista hijos={item.hijos} />
                 </li>
               ))}
             </ul>
+          )
+        }
+
+        // `value` en cada elemento: el número es el que traía el texto, también
+        // si salta («4.» tras una lista partida), nunca uno recontado.
+        if (b.tipo === 'listaOrdenada') {
+          return (
+            <ol
+              key={i}
+              className="list-decimal space-y-2 pl-6 tabular-nums marker:font-bold marker:text-primario dark:marker:text-agua"
+            >
+              {b.items.map((item, j) => (
+                <li key={j} value={item.numero} className="pl-1">
+                  <Trozos trozos={item.trozos} />
+                  <SubLista hijos={item.hijos} />
+                </li>
+              ))}
+            </ol>
           )
         }
 
@@ -71,6 +90,23 @@ export function TextoMarkdown({ texto, className }: { texto: string; className?:
         )
       })}
     </div>
+  )
+}
+
+/**
+ * La sublista de un elemento: sangrada y con un marcador distinto (círculo)
+ * para que se lea DENTRO del elemento y no como una lista más al mismo nivel.
+ */
+function SubLista({ hijos }: { hijos: TrozoMd[][] }) {
+  if (hijos.length === 0) return null
+  return (
+    <ul className="mt-1.5 list-[circle] space-y-1 pl-5 font-normal marker:text-agua">
+      {hijos.map((h, k) => (
+        <li key={k}>
+          <Trozos trozos={h} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
