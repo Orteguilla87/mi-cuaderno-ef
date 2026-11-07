@@ -146,6 +146,8 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
    * base cada corrección del motor borraría lo ya dictado o lo duplicaría.
    */
   const baseDictado = useRef('')
+  /** Con el micro abierto el campo es de solo lectura: lo que se ve es lo que se oye. */
+  const [escuchando, setEscuchando] = useState(false)
 
   const alumnos = useLiveQuery(async () => (await db.alumnos.toArray()).filter((a) => a.activo), []) ?? []
   const grupos = useLiveQuery(() => gruposVisibles(), []) ?? []
@@ -449,14 +451,24 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
           <BotonDictado
             yaExplicado={!!config.dictadoExplicado}
             deshabilitado={procesando}
-            onParcial={(t) => setFase({ paso: 'dictado', texto: unirDictado(baseDictado.current, t) })}
-            onFinal={(t) => {
-              baseDictado.current = unirDictado(baseDictado.current, t)
-              setFase({ paso: 'dictado', texto: baseDictado.current })
+            onInicio={() => {
+              baseDictado.current = fase.texto
+              setEscuchando(true)
+            }}
+            onTexto={(t) => setFase({ paso: 'dictado', texto: unirDictado(baseDictado.current, t) })}
+            onFin={(t, motivo) => {
+              setEscuchando(false)
+              // Cancelar descarta lo de esta escucha y deja lo que ya había.
+              const texto = motivo === 'cancelar' ? baseDictado.current : unirDictado(baseDictado.current, t)
+              baseDictado.current = texto
+              setFase({ paso: 'dictado', texto })
+              // Solo «Parar» procesa. Límite o error dejan el texto para revisarlo.
+              if (motivo === 'parar' && texto.trim()) void procesar(texto)
             }}
           />
           <CampoArea
             className="campo h-28 resize-none py-2"
+            readOnly={escuchando}
             valor={fase.texto}
             onValor={(v) => {
               // Corregir a mano manda: lo escrito pasa a ser la base de lo que
@@ -487,7 +499,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
           <button
             className="btn-primario w-full"
             onClick={() => void procesar(fase.texto)}
-            disabled={!fase.texto.trim() || procesando}
+            disabled={!fase.texto.trim() || procesando || escuchando}
           >
             {procesando ? 'Interpretando…' : 'Interpretar'}
           </button>

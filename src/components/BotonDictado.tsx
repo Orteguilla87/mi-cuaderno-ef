@@ -1,31 +1,28 @@
-import { Mic, MicOff, Square } from 'lucide-react'
+import { Mic, MicOff, Square, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { crearDictado, mensajeDeError, soporteDictado, type SesionDictado } from '../lib/dictado'
+import { crearDictado, mensajeDeError, soporteDictado, type MotivoFin, type SesionDictado } from '../lib/dictado'
 import { guardarConfig } from '../db/config'
 
 /**
- * Botón de dictado de la hoja del agente: un toque empieza a escuchar, otro
- * para (§6, 1.1).
+ * Dictado de la hoja del agente: «Dictar» abre el micro y SOLO el maestro lo
+ * cierra, con «Parar» (procesa) o «Cancelar» (descarta). Los silencios no
+ * cortan: el maestro necesita pensar entre palabras (`lib/dictado.ts`).
  *
- * Lo que se transcribe aterriza SIEMPRE en el campo de texto de la hoja, que
- * sigue siendo editable con un toque. No hay ningún camino que ejecute una
- * transcripción sin haberla enseñado antes: en una pista con 25 alumnos, el
- * motor se equivoca a menudo y actuar a ciegas sería peor que teclear.
+ * Lo que se transcribe aterriza SIEMPRE en el campo de texto de la hoja y en la
+ * tarjeta de confirmación, que siguen siendo editables. No hay ningún camino que
+ * escriba en la base sin enseñar antes lo entendido.
  *
  * Si el navegador no sabe transcribir, el botón no se pinta y la entrada por
  * teclado queda tal cual. La detección es en tiempo de ejecución, nunca por
  * suposición: Safari y Firefox no traen `SpeechRecognition`.
  */
-export function BotonDictado({
-  onParcial,
-  onFinal,
-  yaExplicado,
-  deshabilitado,
-}: {
-  /** Texto provisional: sustituye a lo dictado en esta pulsación. */
-  onParcial: (texto: string) => void
-  /** Texto definitivo del motor. */
-  onFinal: (texto: string) => void
+export function BotonDictado(props: {
+  /** Arranca la escucha: quien lo usa guarda aquí lo que había escrito. */
+  onInicio: () => void
+  /** El transcrito acumulado de la sesión, en vivo. */
+  onTexto: (acumulado: string) => void
+  /** Fin de la sesión. Solo `parar` pide procesar. */
+  onFin: (texto: string, motivo: MotivoFin) => void
   /** Si ya se explicó alguna vez para qué se pide el micrófono. */
   yaExplicado: boolean
   deshabilitado?: boolean
@@ -35,10 +32,14 @@ export function BotonDictado({
   const [error, setError] = useState<string | null>(null)
   const [explicando, setExplicando] = useState(false)
   const sesion = useRef<SesionDictado | null>(null)
+  // La sesión vive más que un render: sin esto llamaría a los callbacks de la
+  // pulsación, con el estado de la hoja de hace un minuto.
+  const ultimas = useRef(props)
+  ultimas.current = props
 
   // Salir de la hoja con el micrófono abierto dejaría el motor escuchando y el
   // indicador de grabación encendido en la pestaña.
-  useEffect(() => () => sesion.current?.detener(), [])
+  useEffect(() => () => sesion.current?.cancelar(), [])
 
   if (!soportado) {
     return (
@@ -51,13 +52,14 @@ export function BotonDictado({
 
   function arrancar() {
     setError(null)
+    ultimas.current.onInicio()
     const s = crearDictado({
-      onParcial,
-      onFinal,
+      onTexto: (t) => ultimas.current.onTexto(t),
       onError: (e) => setError(mensajeDeError(e)),
-      onFin: () => {
+      onFin: (texto, motivo) => {
         sesion.current = null
         setEscuchando(false)
+        ultimas.current.onFin(texto, motivo)
       },
     })
     sesion.current = s
@@ -65,15 +67,11 @@ export function BotonDictado({
     s.iniciar()
   }
 
-  function alternar() {
-    if (escuchando) {
-      sesion.current?.detener()
-      return
-    }
+  function empezar() {
     // La primera vez se explica ANTES de que salte el diálogo del navegador: un
     // permiso que aparece sin avisar se deniega, y denegarlo cuesta mucho más
     // de deshacer que concederlo.
-    if (!yaExplicado) {
+    if (!props.yaExplicado) {
       setExplicando(true)
       return
     }
@@ -88,21 +86,46 @@ export function BotonDictado({
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
-        className={
-          'flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl font-semibold transition-colors ' +
-          (escuchando
-            ? 'bg-acento text-white animate-pulse'
-            : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
-        }
-        onClick={alternar}
-        disabled={deshabilitado}
-        aria-pressed={escuchando}
-      >
-        {escuchando ? <Square size={18} aria-hidden /> : <Mic size={18} aria-hidden />}
-        {escuchando ? 'Escuchando… toca para parar' : 'Dictar'}
-      </button>
+      {escuchando ? (
+        <div className="space-y-2">
+          <p
+            className="flex items-center gap-2 text-sm font-semibold text-acento"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-acento" aria-hidden />
+            Escuchando — tómate tu tiempo, no se corta por los silencios
+          </p>
+          <div className="grid grid-cols-[2fr_1fr] gap-2">
+            <button
+              type="button"
+              className="btn-primario min-h-[64px] text-lg"
+              onClick={() => sesion.current?.parar()}
+            >
+              <Square size={20} aria-hidden />
+              Parar
+            </button>
+            <button
+              type="button"
+              className="btn-suave min-h-[64px]"
+              onClick={() => sesion.current?.cancelar()}
+            >
+              <X size={18} aria-hidden />
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-agua-claro font-semibold text-primario-oscuro transition-colors dark:bg-noche-elevada dark:text-agua"
+          onClick={empezar}
+          disabled={props.deshabilitado}
+        >
+          <Mic size={18} aria-hidden />
+          Dictar
+        </button>
+      )}
 
       {explicando && (
         <div className="panel-agua space-y-2 text-sm">
