@@ -124,59 +124,74 @@ const RELLENO = ['de', 'del', 'la', 'el', 'los']
  * dictó el maestro menos el tramo reconocido.
  */
 function buscarMencion(texto: string, areas: Set<string>): Mencion | null {
-  const palabras = [...texto.matchAll(/\S+/g)].map((m) => ({
+  const palabras = palabrasDelTexto(texto)
+  for (let i = 0; i < palabras.length; i++) {
+    const m = leerMencion(palabras, i, areas)
+    if (m) return m
+  }
+  return null
+}
+
+interface PalabraTexto {
+  bruto: string
+  norm: string
+  desde: number
+  hasta: number
+}
+
+function palabrasDelTexto(texto: string): PalabraTexto[] {
+  return [...texto.matchAll(/\S+/g)].map((m) => ({
     bruto: m[0],
     norm: normalizarParaGrupo(m[0]),
     desde: m.index,
     hasta: m.index + m[0].length,
   }))
+}
 
-  for (let i = 0; i < palabras.length; i++) {
-    // «4A» llega pegado: se parte en ordinal + letra antes de comparar.
-    const partido = palabras[i].norm.match(DIGITO_Y_LETRA)
-    const cabeza = partido ? partido[1] : palabras[i].norm
-    const nivel = Number(
-      Object.keys(ORDINALES).find((n) => ORDINALES[Number(n)].includes(cabeza)) ?? NaN,
-    )
-    if (!Number.isFinite(nivel) || nivel === 0) continue
+/** La mención de curso que EMPIEZA en la palabra `i`, si la hay. */
+function leerMencion(palabras: PalabraTexto[], i: number, areas: Set<string>): Mencion | null {
+  // «4A» llega pegado: se parte en ordinal + letra antes de comparar.
+  const partido = palabras[i].norm.match(DIGITO_Y_LETRA)
+  const cabeza = partido ? partido[1] : palabras[i].norm
+  const nivel = Number(
+    Object.keys(ORDINALES).find((n) => ORDINALES[Number(n)].includes(cabeza)) ?? NaN,
+  )
+  if (!Number.isFinite(nivel) || nivel === 0) return null
 
-    let letra = partido?.[2]
-    let hasta = palabras[i].hasta
-    let j = i + 1
+  let letra = partido?.[2]
+  let hasta = palabras[i].hasta
+  let j = i + 1
 
-    // Relleno + letra de clase + área, mientras sigan encadenados.
-    while (j < palabras.length) {
-      const p = palabras[j].norm
-      if (RELLENO.includes(p)) {
-        j++
-        continue
-      }
-      if (!letra && LETRAS_CLASE.includes(p)) {
-        letra = p
-        hasta = palabras[j].hasta
-        j++
-        continue
-      }
-      if (areas.has(p)) {
-        hasta = palabras[j].hasta
-        j++
-        continue
-      }
-      break
+  // Relleno + letra de clase + área, mientras sigan encadenados.
+  while (j < palabras.length) {
+    const p = palabras[j].norm
+    if (RELLENO.includes(p)) {
+      j++
+      continue
     }
-
-    // Un dígito suelto no basta: «le he puesto un 4» no nombra a ningún grupo.
-    // Solo cuenta como mención si algo más lo acompaña —la letra de clase o una
-    // palabra de área—. Los ordinales en palabra («cuarto») sí valen solos, y
-    // también el dígito con su indicador ordinal («5º»): «equipos de 5º» es
-    // una clase, «equipos de 5» no.
-    const conIndicador = /^\d[º°ᵒª]$/.test(palabras[i].bruto.replace(/[.,;:]+$/, ''))
-    if (/^\d$/.test(cabeza) && !letra && !conIndicador && hasta === palabras[i].hasta) continue
-
-    return { nivel, letra, desde: palabras[i].desde, hasta }
+    if (!letra && LETRAS_CLASE.includes(p)) {
+      letra = p
+      hasta = palabras[j].hasta
+      j++
+      continue
+    }
+    if (areas.has(p)) {
+      hasta = palabras[j].hasta
+      j++
+      continue
+    }
+    break
   }
 
-  return null
+  // Un dígito suelto no basta: «le he puesto un 4» no nombra a ningún grupo.
+  // Solo cuenta como mención si algo más lo acompaña —la letra de clase o una
+  // palabra de área—. Los ordinales en palabra («cuarto») sí valen solos, y
+  // también el dígito con su indicador ordinal («5º»): «equipos de 5º» es
+  // una clase, «equipos de 5» no.
+  const conIndicador = /^\d[º°ᵒª]$/.test(palabras[i].bruto.replace(/[.,;:]+$/, ''))
+  if (/^\d$/.test(cabeza) && !letra && !conIndicador && hasta === palabras[i].hasta) return null
+
+  return { nivel, letra, desde: palabras[i].desde, hasta }
 }
 
 /**
@@ -231,6 +246,18 @@ export function detectarGrupoEnTexto(texto: string, grupos: Grupo[]): GrupoEnTex
   const mencion = buscarMencion(texto, palabrasDeArea(grupos))
   if (!mencion) return { candidatos: [], textoSinGrupo: texto }
 
+  const { candidatos, bruto } = gruposDeMencion(texto, mencion, grupos)
+
+  const textoSinGrupo = (texto.slice(0, mencion.desde) + texto.slice(mencion.hasta))
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,;:.]+/, '')
+    .trim()
+
+  return { candidatos, textoSinGrupo, mencion: bruto }
+}
+
+/** Los grupos que encajan con una mención ya localizada, y cómo se dijo. */
+function gruposDeMencion(texto: string, mencion: Mencion, grupos: Grupo[]): { candidatos: Grupo[]; bruto: string } {
   // Sin la puntuación de cierre: «Cuarto A,» se enseña como «Cuarto A».
   const bruto = texto.slice(mencion.desde, mencion.hasta).replace(/[\s,;:.]+$/, '')
   const mencionNorm = normalizarParaGrupo(bruto)
@@ -241,11 +268,34 @@ export function detectarGrupoEnTexto(texto: string, grupos: Grupo[]): GrupoEnTex
   const candidatos = porForma.length
     ? porForma
     : grupos.filter((g) => coincidePorNivel(g, mencion.nivel, mencion.letra))
+  return { candidatos, bruto }
+}
 
-  const textoSinGrupo = (texto.slice(0, mencion.desde) + texto.slice(mencion.hasta))
-    .replace(/\s+/g, ' ')
-    .replace(/^[\s,;:.]+/, '')
-    .trim()
+/** Una mención de curso introducida por «de»/«del», con su posición. */
+export interface CursoTrasDe {
+  /** Grupos compatibles: 0 (el curso no existe), 1, o varios (ambiguo). */
+  candidatos: Grupo[]
+  /** Lo dicho tal cual, sin el «de»: «cuarto A», «4ºB». */
+  mencion: string
+  /** Desde el «de»/«del» (incluido) hasta el final de la mención, sobre el texto original. */
+  desde: number
+  hasta: number
+}
 
-  return { candidatos, textoSinGrupo, mencion: bruto }
+/**
+ * La PRIMERA mención de curso precedida de «de» o «del» («David DE cuarto A»,
+ * «Lucía Martín DEL 4ºB»). Un «de» que no va seguido de un curso no cuenta:
+ * «María DE los Ángeles de quinto» corta en el segundo, no en el primero.
+ */
+export function buscarCursoTrasDe(texto: string, grupos: Grupo[]): CursoTrasDe | null {
+  const areas = palabrasDeArea(grupos)
+  const palabras = palabrasDelTexto(texto)
+  for (let i = 0; i + 1 < palabras.length; i++) {
+    if (palabras[i].norm !== 'de' && palabras[i].norm !== 'del') continue
+    const m = leerMencion(palabras, i + 1, areas)
+    if (!m) continue
+    const { candidatos, bruto } = gruposDeMencion(texto, m, grupos)
+    return { candidatos, mencion: bruto, desde: palabras[i].desde, hasta: m.hasta }
+  }
+  return null
 }

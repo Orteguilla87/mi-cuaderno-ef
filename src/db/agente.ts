@@ -4,7 +4,7 @@ import type { Alumno, AccionAgente, EstadoAsistencia, Grupo, SignoObservacion } 
 import { grupoPorFranja, resolverFechaRelativa } from '../lib/pseudonimizacion'
 import { detectarGrupoEnTexto } from '../lib/grupoEnTexto'
 import { decidir } from '../lib/emparejarAlumno'
-import { horaActual } from '../lib/fechas'
+import { aISO, horaActual } from '../lib/fechas'
 
 /** Catálogo cerrado de acciones (§6). */
 export type AccionId =
@@ -56,18 +56,29 @@ export function resolverGrupo(
   ahora = { fecha: resolverFechaRelativa(texto), hora: horaActual() },
 ): { grupo?: Grupo; ambiguos?: Grupo[]; textoSinGrupo: string } {
   const { candidatos, textoSinGrupo } = detectarGrupoEnTexto(texto, grupos)
+  if (candidatos.length === 0) return { grupo: grupoActivo, textoSinGrupo }
+  return { ...desempatarGrupo(candidatos, grupoActivo, ahora), textoSinGrupo }
+}
 
-  if (candidatos.length === 1) return { grupo: candidatos[0], textoSinGrupo }
-
-  if (candidatos.length > 1) {
-    const porActivo = grupoActivo && candidatos.find((g) => g.id === grupoActivo.id)
-    if (porActivo) return { grupo: porActivo, textoSinGrupo }
-    const porHorario = grupoPorFranja(candidatos, ahora.fecha, ahora.hora)
-    if (porHorario) return { grupo: porHorario, textoSinGrupo }
-    return { ambiguos: candidatos, textoSinGrupo }
-  }
-
-  return { grupo: grupoActivo, textoSinGrupo }
+/**
+ * Entre los grupos que encajan con lo dictado, el que toca: uno solo; si no, el
+ * abierto en la app; si no, el de la franja horaria. Si nada desempata, se
+ * devuelven todos para PREGUNTAR: nunca se elige por el maestro.
+ *
+ * Con `candidatos` vacío (se dijo un curso que no existe) también se pregunta.
+ */
+export function desempatarGrupo(
+  candidatos: Grupo[],
+  grupoActivo?: Grupo,
+  ahora = { fecha: aISO(), hora: horaActual() },
+): { grupo?: Grupo; ambiguos?: Grupo[] } {
+  if (candidatos.length === 1) return { grupo: candidatos[0] }
+  if (candidatos.length === 0) return { ambiguos: [] }
+  const porActivo = grupoActivo && candidatos.find((g) => g.id === grupoActivo.id)
+  if (porActivo) return { grupo: porActivo }
+  const porHorario = grupoPorFranja(candidatos, ahora.fecha, ahora.hora)
+  if (porHorario) return { grupo: porHorario }
+  return { ambiguos: candidatos }
 }
 
 /**

@@ -8,11 +8,12 @@ import {
   pendientesDeDeshacer,
   interpretarLocal,
   registrarEnLog,
+  desempatarGrupo,
   resolverGrupo,
   type AccionResuelta,
   type ResultadoInterpretar,
 } from '../db/agente'
-import { interpretarConApi, resolverTokens } from '../db/agenteApi'
+import { interpretarComentarioConApi, interpretarConApi, resolverTokens } from '../db/agenteApi'
 import { useConfig } from '../db/config'
 import { db } from '../db/db'
 import { gruposVisibles } from '../db/grupos'
@@ -29,8 +30,14 @@ import {
   type ColumnaConocida,
   type Intencion,
 } from '../lib/intenciones'
-import { emparejarAlumno, fragmentoParaAlias } from '../lib/emparejarAlumno'
-import { buscarAlumnoEnTexto, construirMapaTokens } from '../lib/pseudonimizacion'
+import { canonico, emparejarAlumno, emparejarNombre, fragmentoParaAlias } from '../lib/emparejarAlumno'
+import {
+  partirPorCurso,
+  redactarComentario,
+  sanearComentario,
+  signoDeComentario,
+} from '../lib/dictadoEstructurado'
+import { buscarAlumnoEnTexto, construirMapaTokens, resolverFechaRelativa } from '../lib/pseudonimizacion'
 import { navegar } from '../lib/router'
 import { etiquetaDia } from '../lib/fechas'
 import { useGrupoActivo } from '../store/grupoActivo'
@@ -39,7 +46,7 @@ import { BotonDictado } from './BotonDictado'
 import { CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 import { SelectorGrupo } from './SelectorGrupo'
-import type { Alumno, Etapa, Grupo, TipoColumna } from '../db/types'
+import type { Alumno, Etapa, Grupo, SignoObservacion, TipoColumna } from '../db/types'
 
 /**
  * FAB global de voz (§5, §6). La captura es propia, con la Web Speech API del
@@ -126,6 +133,15 @@ type Fase =
        * guarda sin el toque del maestro.
        */
       aliasPropuesto?: { alumno: Alumno; texto: string; guardado: boolean }
+      /**
+       * Dictado con la convención «nombre + de/del curso + comentario»: los tres
+       * tramos ya partidos. Si está, el alumno se busca SOLO con `nombre`.
+       */
+      estructura?: Estructura
+      /** El alumno resuelto, para enseñarlo aparte en la tarjeta. */
+      alumnoResuelto?: Alumno
+      /** El comentario final, ya saneado; editable antes de confirmar. */
+      comentario?: string
     }
   | { paso: 'respuesta'; texto: string; enlace?: { ruta: string; etiqueta: string } }
   /** Se entendió y por eso no se hace: hay cosas que no van por voz (2.3). */
@@ -294,6 +310,122 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     }
   }
 
+  /**
+   * Vía «nombre + curso + comentario». El alumno se empareja SOLO con el tramo
+   * del nombre y SOLO dentro de `grupo`; la acción y el texto salen SOLO del
+   * comentario. Todo texto que se vaya a enseñar pasa por `sanearComentario`.
+   */
+  async function resolverEstructurado(
+    texto: string,
+    est: Estructura,
+    grupo: Grupo,
+    gruposOfrecidos: Grupo[],
+    alumnoForzado?: Alumno,
+  ): Promise<Fase> {
+    const delGrupo = alumnosDe(grupo)
+    const emparejado = emparejarNombre(est.nombre, delGrupo)
+    const base = {
+      paso: 'confirmar' as const,
+      texto,
+      textoSinGrupo: est.nombre,
+      grupo,
+      gruposOfrecidos,
+      estructura: est,
+      eligiendoAlumno: false,
+      candidatosAlumno: emparejado.candidatos.map((c) => c.alumno),
+    }
+
+    const alumno = alumnoForzado ?? (emparejado.estado === 'unico' ? emparejado.alumno : undefined)
+    if (!alumno) {
+      // Nadie supera el umbral → lista entera del grupo (candidatos vacíos).
+      // Varios próximos → se enseñan esos. Nunca se elige por el maestro.
+      return {
+        ...base,
+        eligiendoAlumno: true,
+        comentario: sanearComentario(redactarComentario(est.comentario), { grupo, mencion: est.mencion }),
+      }
+    }
+
+    const limpio = (t: string) => sanearComentario(redactarComentario(t), { alumno, grupo, mencion: est.mencion })
+    const comentario = limpio(est.comentario)
+    const conAlumno = { ...base, alumnoResuelto: alumno, comentario }
+    if (!comentario)
+      return {
+        paso: 'dictado',
+        texto,
+        error: `Entendido: ${nombreCompleto(alumno)} de ${grupo.nombre}. Falta decir qué ha hecho después del curso.`,
+      }
+
+    // ——— Local primero: chándal, asistencia, positivo, contador, nota ———
+    const resuelto = interpretarIntenciones(est.comentario, {
+      alumnos: [alumno],
+      columnas: await columnasDelGrupo(grupo.id),
+      etapa: grupo.etapa,
+      buscarAlumno: () => [{ alumno, puntuacion: 1 }],
+      grupoDictado: true,
+    })
+    if (resuelto.tipo === 'rechazada') return { paso: 'rechazada', motivo: resuelto.motivo }
+    // Solo valen acciones sobre ESTE alumno: un comentario no crea equipos ni columnas.
+    if (
+      resuelto.tipo === 'acciones' &&
+      resuelto.acciones.every((x) => 'alumnoId' in x && x.alumnoId === alumno.id)
+    ) {
+      const acciones = resuelto.acciones.map((x) =>
+        x.accion === 'observacion' ? { ...x, texto: limpio(x.texto) || comentario } : x,
+      )
+      const conObs = acciones.find((x) => x.accion === 'observacion')
+      return {
+        ...conAlumno,
+        comentario: conObs && conObs.accion === 'observacion' ? conObs.texto : comentario,
+        intenciones: acciones,
+        descartadas: [],
+        origen: 'local',
+      }
+    }
+
+    // ——— IA: solo recibe el tramo del comentario ———
+    let degradado = false
+    if (config.apiKey) {
+      try {
+        const r = await interpretarComentarioConApi(est.comentario, delGrupo, grupo, {
+          apiKey: config.apiKey,
+          modelo: config.modeloAgente,
+        })
+        if (r) {
+          for (const campo of ['texto', 'comentario'] as const)
+            if (typeof r.input[campo] === 'string') r.input[campo] = limpio(r.input[campo] as string)
+          const accion = construirAccionDesdeApi(r.accion, r.input, grupo, alumno)
+          if (accion) {
+            const redactado = (r.input.texto ?? r.input.comentario) as string | undefined
+            return { ...conAlumno, accion, origen: 'ia', comentario: redactado || comentario }
+          }
+        }
+      } catch {
+        degradado = true
+      }
+    }
+
+    // ——— Sin IA o sin acción clara: observación con el comentario tal cual ———
+    const signo = signoDeComentario(comentario)
+    return {
+      ...conAlumno,
+      intenciones: [
+        {
+          accion: 'observacion',
+          riesgo: 'reversible',
+          resumen: resumenObservacion(alumno, signo, comentario),
+          alumnoId: alumno.id,
+          fecha: resolverFechaRelativa(texto),
+          signo,
+          texto: comentario,
+        },
+      ],
+      descartadas: [],
+      origen: 'local',
+      aviso: degradado ? 'Sin conexión con la API: interpretado con el reconocimiento local.' : undefined,
+    }
+  }
+
   async function procesar(texto: string) {
     if (!texto.trim() || procesando) return
     setProcesando(true)
@@ -307,6 +439,29 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
       }
 
       const grupoActivo = grupos.find((g) => g.id === grupoActivoId)
+
+      // Convención «nombre + de/del curso + lo que ha hecho»: el curso parte la
+      // frase y cada trozo va a lo suyo (`lib/dictadoEstructurado.ts`).
+      const partido = partirPorCurso(texto, grupos)
+      if (partido) {
+        const estructura = { nombre: partido.nombre, mencion: partido.mencion, comentario: partido.comentario }
+        const d = desempatarGrupo(partido.candidatos, grupoActivo)
+        if (!d.grupo) {
+          setFase({
+            paso: 'confirmar',
+            texto,
+            textoSinGrupo: partido.nombre,
+            gruposOfrecidos: d.ambiguos?.length ? d.ambiguos : grupos,
+            candidatosAlumno: [],
+            eligiendoAlumno: false,
+            estructura,
+          })
+          return
+        }
+        setFase(await resolverEstructurado(texto, estructura, d.grupo, d.ambiguos?.length ? d.ambiguos : grupos))
+        return
+      }
+
       const { grupo, ambiguos, textoSinGrupo } = resolverGrupo(texto, grupos, grupoActivo)
 
       // Sin grupo (ni dictado ni de contexto) o con varios candidatos: se
@@ -339,7 +494,11 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     if (!grupo) return
     setProcesando(true)
     try {
-      setFase(await resolverEnGrupo(fase.texto, fase.textoSinGrupo, grupo, fase.gruposOfrecidos))
+      setFase(
+        fase.estructura
+          ? await resolverEstructurado(fase.texto, fase.estructura, grupo, fase.gruposOfrecidos)
+          : await resolverEnGrupo(fase.texto, fase.textoSinGrupo, grupo, fase.gruposOfrecidos),
+      )
     } finally {
       setProcesando(false)
     }
@@ -349,14 +508,21 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     if (fase.paso !== 'confirmar' || !fase.grupo || procesando) return
     setProcesando(true)
     try {
-      const { texto, textoSinGrupo, grupo, gruposOfrecidos, grupoPorContexto } = fase
-      const siguiente = await resolverEnGrupo(texto, textoSinGrupo, grupo, gruposOfrecidos, alumno)
+      const { texto, textoSinGrupo, grupo, gruposOfrecidos, grupoPorContexto, estructura } = fase
+      const siguiente = estructura
+        ? await resolverEstructurado(texto, estructura, grupo, gruposOfrecidos, alumno)
+        : await resolverEnGrupo(texto, textoSinGrupo, grupo, gruposOfrecidos, alumno)
       if (siguiente.paso !== 'confirmar') return setFase(siguiente)
       // Si el emparejador no lo había reconocido por sí solo, se ofrece
-      // guardar lo dictado como alias de voz para la próxima vez.
-      const reconocido = emparejarAlumno(textoSinGrupo, alumnosDe(grupo))
+      // guardar lo dictado como alias de voz para la próxima vez. Con la
+      // convención nombre+curso, lo dictado para nombrarlo es el tramo entero.
+      const reconocido = (estructura ? emparejarNombre : emparejarAlumno)(textoSinGrupo, alumnosDe(grupo))
       const yaLoEra = reconocido.estado === 'unico' && reconocido.alumno.id === alumno.id
-      const fragmento = yaLoEra ? undefined : fragmentoParaAlias(textoSinGrupo, alumno)
+      const fragmento = yaLoEra
+        ? undefined
+        : estructura
+          ? aliasNuevo(estructura.nombre, alumno)
+          : fragmentoParaAlias(textoSinGrupo, alumno)
       setFase({
         ...siguiente,
         grupoPorContexto,
@@ -404,7 +570,12 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
     const { texto, grupo } = fase
     setProcesando(true)
     try {
-      const vivas = intencionesVivas(fase)
+      // El comentario editado en la tarjeta es el que se guarda.
+      const vivas = intencionesVivas(fase).map((x) =>
+        x.accion === 'observacion' && fase.comentario !== undefined && fase.alumnoResuelto
+          ? { ...x, texto: fase.comentario, resumen: resumenObservacion(fase.alumnoResuelto, x.signo, fase.comentario) }
+          : x,
+      )
       if (vivas.length > 0) {
         // Cada intención escribe por su cuenta y apila su propio deshacer: una
         // frase con dos órdenes son dos acciones, no una transacción.
@@ -431,7 +602,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
       }
 
       if (!fase.accion) return
-      const { accion } = fase
+      const accion = conComentario(fase.accion, fase.comentario)
       const deshacer = await ejecutarAccion(accion)
       const logId = await registrarEnLog(texto, accion)
       apilarDeshacer(logId, accion.resumen, deshacer)
@@ -476,7 +647,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
               baseDictado.current = v
               setFase({ paso: 'dictado', texto: v })
             }}
-            placeholder="Cuarto A, Ana ha ayudado a un compañero… (o toca «Dictar»)"
+            placeholder="David de cuarto A ha ayudado a recoger el material… (o toca «Dictar»)"
             aria-label="Dictado para el agente de voz"
             aria-invalid={!!fase.error}
             aria-describedby={fase.error ? 'agente-error' : undefined}
@@ -488,7 +659,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
             </p>
           )}
           <p className="text-xs texto-suave">
-            Di el grupo al principio («cuarto A», «3ºB»): el alumno se busca solo dentro de él.
+            Di nombre, curso y lo que ha hecho: «Lucía Martín del 4ºB no ha traído el chándal». El alumno se busca solo dentro de ese curso.
           </p>
           {!config.apiKey && (
             <p className="text-xs texto-suave">
@@ -536,6 +707,11 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
       {fase.paso === 'confirmar' && (
         <div className="space-y-4">
           <div className="panel-agua space-y-3">
+            {/* 2.8: lo que se oyó, literal, para cotejar con lo entendido. */}
+            <div>
+              <span className="etiqueta">Has dicho</span>
+              <p className="text-sm italic texto-suave">«{fase.texto}»</p>
+            </div>
             <div>
               <span className="etiqueta flex items-center gap-1.5">
                 <Users size={14} aria-hidden />
@@ -577,6 +753,13 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                 </>
               )}
             </div>
+
+            {fase.estructura && fase.alumnoResuelto && !fase.eligiendoAlumno && (
+              <div>
+                <span className="etiqueta">Alumno</span>
+                <p className="text-sm font-bold">{nombreCompleto(fase.alumnoResuelto)}</p>
+              </div>
+            )}
 
             {fase.aclaracion && (
               <div className="border-t border-agua pt-3 dark:border-noche-elevada">
@@ -674,6 +857,35 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                     No es este alumno
                   </button>
                 )}
+              </div>
+            )}
+
+            {!fase.eligiendoAlumno && llevaComentario(fase, intencionesVivas(fase)) && (
+              <div className="border-t border-agua pt-3 dark:border-noche-elevada">
+                <label className="etiqueta" htmlFor="agente-comentario">
+                  Comentario
+                </label>
+                <CampoArea
+                  id="agente-comentario"
+                  className="campo h-20 resize-none py-2"
+                  valor={fase.comentario ?? ''}
+                  onValor={(v) =>
+                    setFase({
+                      ...fase,
+                      comentario: v,
+                      // El resumen de arriba enseña lo mismo que se va a guardar.
+                      intenciones: fase.intenciones?.map((x) =>
+                        x.accion === 'observacion' && fase.alumnoResuelto
+                          ? { ...x, texto: v, resumen: resumenObservacion(fase.alumnoResuelto, x.signo, v) }
+                          : x,
+                      ),
+                      accion: fase.accion && {
+                        ...conComentario(fase.accion, v),
+                        resumen: fase.accion.resumen.replace(/«[^»]*»/, `«${v}»`),
+                      },
+                    })
+                  }
+                />
               </div>
             )}
 
@@ -824,6 +1036,48 @@ function unirDictado(base: string, tramo: string): string {
   if (!b) return t
   if (!t) return b
   return `${b} ${t}`
+}
+
+interface Estructura {
+  nombre: string
+  mencion: string
+  comentario: string
+}
+
+function nombreCompleto(a: Alumno): string {
+  return `${a.nombre} ${a.apellidos}`.trim()
+}
+
+function resumenObservacion(a: Alumno, signo: SignoObservacion, texto: string): string {
+  const etiqueta = signo === '+' ? 'positivo' : signo === '-' ? 'negativo' : 'observación'
+  return `${a.alias || a.nombre}: ${etiqueta} — «${texto}»`
+}
+
+/** Si la acción lleva texto redactado, el de la tarjeta (quizá editado) manda. */
+function conComentario(accion: AccionResuelta, comentario?: string): AccionResuelta {
+  if (comentario === undefined) return accion
+  if (accion.accion === 'registrar_observacion')
+    return { ...accion, payload: { ...accion.payload, texto: comentario } }
+  if (accion.accion === 'anadir_comentario_eval')
+    return { ...accion, payload: { ...accion.payload, comentario } }
+  return accion
+}
+
+/** ¿La tarjeta tiene un texto que vaya a guardarse? Solo entonces se enseña el campo editable. */
+function llevaComentario(f: Extract<Fase, { paso: 'confirmar' }>, vivas: Intencion[]): boolean {
+  if (f.comentario === undefined || !f.alumnoResuelto) return false
+  if (vivas.some((x) => x.accion === 'observacion')) return true
+  return f.accion?.accion === 'registrar_observacion' || f.accion?.accion === 'anadir_comentario_eval'
+}
+
+/** Lo dictado para nombrar al alumno, si no es ya uno de sus alias de voz. */
+function aliasNuevo(dicho: string, alumno: Alumno): string | undefined {
+  const t = dicho.trim()
+  if (!t) return undefined
+  const ya = [alumno.nombre, nombreCompleto(alumno), alumno.alias, ...(alumno.aliasVoz ?? [])]
+    .filter(Boolean)
+    .some((a) => canonico(a!) === canonico(t))
+  return ya ? undefined : t
 }
 
 /** Los otros nombres del grupo que se parecen a lo dictado, para el «no es este alumno». */

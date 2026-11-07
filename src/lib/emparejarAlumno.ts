@@ -262,6 +262,67 @@ export function emparejarAlumno(texto: string, alumnos: Alumno[]): ResultadoEmpa
   return decidir(candidatosAlumno(texto, alumnos))
 }
 
+/** Partículas de nombres compuestos: no son una forma por sí solas. */
+const PARTICULAS = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'y'])
+
+/** Artículos con que se nombra a veces al alumno («la Bea», «el Hugo»). */
+const ARTICULO_INICIAL = /^(?:el|la|los|las)\s+/i
+
+/**
+ * Las formas con las que se nombra a un alumno ENTERO, ya canónicas: nombre de
+ * pila (y cada palabra de un compuesto), nombre + primer apellido, nombre
+ * completo, alias y alias de voz. A diferencia de `formasDe`, sin apellidos
+ * sueltos: «Lucía Martín» no puede acabar en el Hugo Cuartero Martín.
+ */
+function formasDeNombre(a: Pick<Alumno, 'nombre' | 'apellidos' | 'alias' | 'aliasVoz'>): string[] {
+  const nombre = palabrasCanonicas(a.nombre)
+  const apellidos = palabrasCanonicas(a.apellidos)
+  const primerApellido = apellidos.find((p) => p.length >= 3)
+  const formas = [
+    nombre,
+    ...nombre.filter((p) => !PARTICULAS.has(p)).map((p) => [p]),
+    primerApellido ? [...nombre, primerApellido] : [],
+    [...nombre, ...apellidos],
+    palabrasCanonicas((a.alias ?? '').replace(ARTICULO_INICIAL, '')),
+    ...(a.aliasVoz ?? []).map((v) => palabrasCanonicas(v.replace(ARTICULO_INICIAL, ''))),
+  ]
+  return [...new Set(formas.filter((f) => f.length > 0).map((f) => f.join(' ')))]
+}
+
+/**
+ * Empareja el TRAMO DEL NOMBRE de un dictado «nombre + curso + comentario»
+ * (`lib/dictadoEstructurado.ts`) con el alumnado del grupo: el tramo entero
+ * contra cada forma entera, la mejor por alumno, mismo UMBRAL y MARGEN que el
+ * resto. Sin ventanas: aquí no hay comentario alrededor que esquivar.
+ *
+ * `alumnos` YA VIENE ACOTADO al grupo resuelto.
+ */
+export function emparejarNombre(tramo: string, alumnos: Alumno[]): ResultadoEmparejar {
+  return decidir(puntuarNombre(tramo, alumnos).filter((c) => c.puntuacion >= UMBRAL))
+}
+
+/** Todas las puntuaciones del tramo, sin umbral, de mejor a peor. Para depurar y para la comparativa. */
+export function puntuarNombre(tramo: string, alumnos: Alumno[]): CandidatoAlumno[] {
+  const dicho = palabrasCanonicas(tramo.replace(ARTICULO_INICIAL, '')).join(' ')
+  if (!dicho) return []
+  return alumnos
+    .map((alumno) => {
+      let mejor = 0
+      let palabras = 1
+      for (const forma of formasDeNombre(alumno)) {
+        // Una forma de menos de tres letras («Lu») solo vale idéntica.
+        const p = forma.length < 3 ? (forma === dicho ? 1 : 0) : similitud(dicho, forma)
+        const n = forma.split(' ').length
+        if (p > mejor || (p === mejor && n > palabras)) {
+          mejor = p
+          palabras = n
+        }
+      }
+      return { alumno, puntuacion: mejor, palabras }
+    })
+    .sort((a, b) => b.puntuacion - a.puntuacion || (b.palabras ?? 1) - (a.palabras ?? 1))
+}
+
 /**
  * Lo que el maestro dijo para referirse a `alumno`, cuando el emparejador no lo
  * reconoció y lo ha elegido a mano: el tramo del dictado más parecido a alguna
