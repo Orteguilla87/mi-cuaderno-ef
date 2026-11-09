@@ -8,13 +8,21 @@ import {
   ChevronDown,
   ClipboardPaste,
   Copy,
+  Folder,
+  FolderPlus,
+  GitBranch,
   Layers,
   MinusCircle,
   MoreVertical,
   MoveRight,
   Plus,
+  Search,
   Trash2,
+  Undo2,
   Users,
+  ArrowDown,
+  ArrowUp,
+  Pencil,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
@@ -27,19 +35,30 @@ import { SelectorCriterios } from '../components/SelectorCriterios'
 import { TituloSeccion } from '../components/TituloSeccion'
 import { coberturaInfantil } from '../db/coberturaInfantil'
 import { leerCursoActivo } from '../db/curso'
+import {
+  crearCarpeta,
+  eliminarCarpeta,
+  listarCarpetas,
+  moverCarpeta,
+  moverUnidadACarpeta,
+  renombrarCarpeta,
+} from '../db/carpetas'
 import { db } from '../db/db'
 import {
   anadirCursoAUnidad,
   anadirSesionPlan,
+  adaptarSesionPlan,
   aplicarVolcado,
   archivarUnidad,
   contarImpactoUnidad,
+  convertirEnUnidadDeCiclo,
   copiarUnidad,
   crearSesion,
   crearUnidad,
   duplicarSesionPlan,
   eliminarSesionPlan,
   eliminarUnidad,
+  esUnidadDeCiclo,
   guardarSesionPlan,
   impactoQuitarCurso,
   lunesDe,
@@ -47,9 +66,11 @@ import {
   marcarCriteriosRevisados,
   moverUnidad,
   quitarCursoDeUnidad,
+  previaConversionCiclo,
   previsualizarVolcado,
   resumenCopia,
   sesionesDe,
+  volverAVersionComun,
   type ImpactoQuitarCurso,
   type ImpactoUnidad,
   type ModoVolcado,
@@ -60,12 +81,19 @@ import { huecosCanceladosDe, huecosDe, type HuecoCalendario } from '../db/sesion
 import { ordinalesDelDia, rotuloOrdinal } from '../lib/clasesDelDia'
 import { BotonNoHayClase, FilasCanceladas } from '../components/ClasesCanceladas'
 import { DISPOSICION } from '../lib/disposicion'
-import type { Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
+import type { CarpetaUnidades, Etapa, Recurso, SesionPlan, UnidadDidactica } from '../db/types'
 import { estadoDia, type EstadoDia } from '../lib/calendarioEscolar'
+import { cicloDeCurso, cursosDelCiclo } from '../lib/ciclos'
 import { aISO, diaLectivo, formatoCorto, formatoDiaCorto, NOMBRES_DIA, sumarDias } from '../lib/fechas'
 import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, etapaVisible, nivelesDe } from '../lib/etapas'
 import { ambitoUnidad, terminologia } from '../lib/literales'
 import { navegar } from '../lib/router'
+import {
+  agruparUnidades,
+  buscarUnidades,
+  type ModoOrganizar,
+} from '../lib/organizarUnidades'
+import { useOrganizarUnidades } from '../store/organizarUnidades'
 import { useLotesPlan } from '../store/lotesPlan'
 import { useUI } from '../store/ui'
 import { useVistaPlanificador, type VistaPlanificador } from '../store/vistaPlanificador'
@@ -336,6 +364,12 @@ const FILTROS: { valor: FiltroEtapa; etiqueta: string }[] = [
   ...ETAPAS_DISPONIBLES.map((e) => ({ valor: e as FiltroEtapa, etiqueta: ETIQUETA_ETAPA[e] })),
 ]
 
+const ORGANIZAR: { valor: ModoOrganizar; etiqueta: string }[] = [
+  { valor: 'curso', etiqueta: 'Curso' },
+  { valor: 'ciclo', etiqueta: 'Ciclo' },
+  { valor: 'carpeta', etiqueta: 'Carpeta' },
+]
+
 function VistaUnidades() {
   const [creando, setCreando] = useState(false)
   const [editando, setEditando] = useState<UnidadDidactica | null>(null)
@@ -354,6 +388,12 @@ function VistaUnidades() {
   const [desplegada, setDesplegada] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<FiltroEtapa>('todas')
   const [verArchivadas, setVerArchivadas] = useState(false)
+  const [busqueda, setBusqueda] = useState('')
+  const [guardandoEnCarpeta, setGuardandoEnCarpeta] = useState<UnidadDidactica | null>(null)
+  const [nombrandoCarpeta, setNombrandoCarpeta] = useState<CarpetaUnidades | 'nueva' | null>(null)
+  const [accionesCarpeta, setAccionesCarpeta] = useState<CarpetaUnidades | null>(null)
+  const { modo, plegadas, fijarModo, alternarPlegada } = useOrganizarUnidades()
+  const carpetas = useLiveQuery(() => listarCarpetas(), []) ?? []
 
   const unidades = useLiveQuery(async () => {
     const lista = await db.unidades.toArray()
@@ -388,6 +428,98 @@ function VistaUnidades() {
   // «Infantil» activo, «Nueva unidad didáctica» sería el nombre equivocado.
   const vocabulario = terminologia(filtro === 'infantil' ? 'infantil' : 'primaria')
 
+  const buscando = busqueda.trim().length > 0
+  const encontradas = buscarUnidades(visibles, busqueda)
+  // Las carpetas vacías se enseñan para poder llenarlas, salvo buscando o en
+  // archivadas: ahí solo estorbarían.
+  const secciones = agruparUnidades(encontradas, modo, carpetas).filter(
+    (sec) => sec.unidades.length > 0 || (!buscando && !verArchivadas),
+  )
+  const nombreCarpeta = new Map(carpetas.map((c) => [c.id, c.nombre]))
+
+  function tarjeta(u: UnidadDidactica, seccion: string) {
+    const totalPlan = u.sesiones?.length ?? 0
+    const colocadas = conteos?.[u.id] ?? 0
+    // Por curso, una unidad de dos cursos sale dos veces: se despliega la que
+    // se toca, no las dos.
+    const clave = `${seccion}:${u.id}`
+    const abierta = desplegada === clave
+    const carpeta = u.carpetaId ? nombreCarpeta.get(u.carpetaId) : undefined
+    return (
+      <li key={clave} className="tarjeta space-y-2 py-3">
+        <div className="flex items-start gap-2">
+          <button
+            className="min-w-0 flex-1 text-left"
+            onClick={() => setEditando(u)}
+            aria-label={`Editar ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
+          >
+            <div className="flex items-center gap-2">
+              <p className="truncate text-base font-bold">{u.titulo}</p>
+              {u.etapa === 'primaria' && !u.computa && (
+                <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
+                  No cuenta
+                </span>
+              )}
+              {u.etapa === 'infantil' && (
+                <span className="pildora shrink-0 bg-agua-claro px-2 py-0.5 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+                  Infantil
+                </span>
+              )}
+              {u.archivada && (
+                <span className="pildora shrink-0 px-2 py-0.5 text-xs font-semibold texto-suave">
+                  Archivada
+                </span>
+              )}
+              {/* Se copió o se movió y algún criterio no tenía equivalente
+                  en el ciclo destino: queda pendiente elegirlo a mano. */}
+              {u.criteriosSinMapear?.length && (
+                <span className="pildora shrink-0 border border-acento/40 bg-acento/10 px-2 py-0.5 text-xs font-semibold text-acento">
+                  Revisar criterios
+                </span>
+              )}
+            </div>
+            <p className="cifra mt-0.5 text-sm texto-suave">
+              {ambitoUnidad(u.etapa, u.niveles)} ·{' '}
+              {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
+              {/* Dos cifras distintas: lo que la unidad tiene escrito y lo
+                  que ya ocupa clases. Una sola las confundiría. */}
+              {totalPlan > 0 && `${totalPlan} planificadas · `}
+              {colocadas} colocadas ·{' '}
+              {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
+            </p>
+            {/* Fuera del modo carpeta, la carpeta se dice en la tarjeta: es
+                otra pista para reconocerla. */}
+            {carpeta && modo !== 'carpeta' && (
+              <p className="mt-0.5 flex items-center gap-1 text-xs texto-suave">
+                <Folder size={12} aria-hidden />
+                <span className="truncate">{carpeta}</span>
+              </p>
+            )}
+          </button>
+          {/* Un solo punto de entrada a lo que se hace CON la unidad
+              (duplicar, archivar, eliminar), en las dos etapas: el toque
+              en la tarjeta ya está ocupado por editar su contenido. */}
+          <button
+            className="btn-suave shrink-0 px-3"
+            onClick={() => setAcciones(u)}
+            aria-label={`Acciones de ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
+          >
+            <MoreVertical size={18} aria-hidden />
+          </button>
+        </div>
+
+        <PlanDeUnidad
+          unidad={u}
+          abierta={abierta}
+          onAlternar={() => setDesplegada(abierta ? null : clave)}
+          onLlevar={() => setLlevando(u)}
+          onEditarSesion={(nivel, sesionId) => setEditandoSesion({ udId: u.id, nivel, sesionId })}
+          onAnadirCurso={() => setAnadiendoCurso(u)}
+        />
+      </li>
+    )
+  }
+
   return (
     <>
       <button className="btn-primario w-full" onClick={() => setCreando(true)}>
@@ -413,6 +545,45 @@ function VistaUnidades() {
           </button>
         ))}
       </div>
+      )}
+
+      <div className="relative">
+        <Search
+          size={18}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tinta-tenue"
+          aria-hidden
+        />
+        <Campo
+          className="campo pl-10"
+          type="search"
+          valor={busqueda}
+          onValor={setBusqueda}
+          placeholder="Buscar por título o sesión"
+          aria-label="Buscar unidades"
+        />
+      </div>
+
+      <div>
+        <span className="etiqueta">Organizar por</span>
+        <div role="group" aria-label="Organizar por" className="flex gap-2">
+          {ORGANIZAR.map((o) => (
+            <button
+              key={o.valor}
+              onClick={() => fijarModo(o.valor)}
+              aria-pressed={modo === o.valor}
+              className={(modo === o.valor ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0 text-sm'}
+            >
+              {o.etiqueta}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {modo === 'carpeta' && !verArchivadas && (
+        <button className="btn-suave w-full text-sm" onClick={() => setNombrandoCarpeta('nueva')}>
+          <FolderPlus size={18} aria-hidden />
+          Nueva carpeta
+        </button>
       )}
 
       {(archivadas > 0 || verArchivadas) && (
@@ -447,80 +618,61 @@ function VistaUnidades() {
         </div>
       )}
 
-      <ul className="space-y-2">
-        {visibles.map((u) => {
-          const totalPlan = u.sesiones?.length ?? 0
-          const colocadas = conteos?.[u.id] ?? 0
-          const abierta = desplegada === u.id
-          return (
-            <li key={u.id} className="tarjeta space-y-2 py-3">
-              <div className="flex items-start gap-2">
-                <button
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => setEditando(u)}
-                  aria-label={`Editar ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-base font-bold">{u.titulo}</p>
-                    {u.etapa === 'primaria' && !u.computa && (
-                      <span className="pildora shrink-0 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
-                        No cuenta
-                      </span>
-                    )}
-                    {u.etapa === 'infantil' && (
-                      <span className="pildora shrink-0 bg-agua-claro px-2 py-0.5 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
-                        Infantil
-                      </span>
-                    )}
-                    {u.archivada && (
-                      <span className="pildora shrink-0 px-2 py-0.5 text-xs font-semibold texto-suave">
-                        Archivada
-                      </span>
-                    )}
-                    {/* Se copió o se movió y algún criterio no tenía equivalente
-                        en el ciclo destino: queda pendiente elegirlo a mano. */}
-                    {u.criteriosSinMapear?.length && (
-                      <span className="pildora shrink-0 border border-acento/40 bg-acento/10 px-2 py-0.5 text-xs font-semibold text-acento">
-                        Revisar criterios
-                      </span>
-                    )}
-                  </div>
-                  <p className="cifra mt-0.5 text-sm texto-suave">
-                    {ambitoUnidad(u.etapa, u.niveles)} ·{' '}
-                    {u.trimestre === null ? 'sin trimestre' : `${u.trimestre}.º trimestre`} ·{' '}
-                    {/* Dos cifras distintas: lo que la unidad tiene escrito y lo
-                        que ya ocupa clases. Una sola las confundiría. */}
-                    {totalPlan > 0 && `${totalPlan} planificadas · `}
-                    {colocadas} colocadas ·{' '}
-                    {u.criterios.length} {u.criterios.length === 1 ? 'criterio' : 'criterios'}
-                  </p>
-                </button>
-                {/* Un solo punto de entrada a lo que se hace CON la unidad
-                    (duplicar, archivar, eliminar), en las dos etapas: el toque
-                    en la tarjeta ya está ocupado por editar su contenido. */}
+      {buscando && encontradas.length === 0 && visibles.length > 0 && (
+        <p className="tarjeta text-center text-sm texto-suave">
+          Ninguna unidad coincide con «{busqueda.trim()}».
+        </p>
+      )}
+
+      {secciones.map((sec) => {
+        // Buscando se abre todo: plegar escondería justo lo encontrado.
+        const plegada = !buscando && plegadas.includes(sec.clave)
+        const carpeta = sec.carpetaId ? carpetas.find((c) => c.id === sec.carpetaId) : undefined
+        return (
+          <section key={sec.clave} className="space-y-2" aria-label={sec.titulo}>
+            <div className="flex items-center gap-2">
+              <button
+                className="flex min-h-tap min-w-0 flex-1 items-center gap-2 text-left"
+                onClick={() => alternarPlegada(sec.clave)}
+                aria-expanded={!plegada}
+              >
+                <ChevronDown
+                  size={18}
+                  className={
+                    'shrink-0 text-primario transition-transform dark:text-agua' +
+                    (plegada ? ' -rotate-90' : '')
+                  }
+                  aria-hidden
+                />
+                {sec.carpetaId !== undefined && (
+                  <Folder size={18} className="shrink-0 text-primario dark:text-agua" aria-hidden />
+                )}
+                <span className="truncate text-base font-bold text-primario dark:text-agua">
+                  {sec.titulo}
+                </span>
+                <span className="cifra shrink-0 text-sm texto-suave">{sec.unidades.length}</span>
+              </button>
+              {carpeta && (
                 <button
                   className="btn-suave shrink-0 px-3"
-                  onClick={() => setAcciones(u)}
-                  aria-label={`Acciones de ${terminologia(u.etapa).unidadEnFrase} ${u.titulo}`}
+                  onClick={() => setAccionesCarpeta(carpeta)}
+                  aria-label={`Acciones de la carpeta ${carpeta.nombre}`}
                 >
                   <MoreVertical size={18} aria-hidden />
                 </button>
-              </div>
-
-              <PlanDeUnidad
-                unidad={u}
-                abierta={abierta}
-                onAlternar={() => setDesplegada(abierta ? null : u.id)}
-                onLlevar={() => setLlevando(u)}
-                onEditarSesion={(nivel, sesionId) =>
-                  setEditandoSesion({ udId: u.id, nivel, sesionId })
-                }
-                onAnadirCurso={() => setAnadiendoCurso(u)}
-              />
-            </li>
-          )
-        })}
-      </ul>
+              )}
+            </div>
+            {!plegada &&
+              (sec.unidades.length === 0 ? (
+                <p className="px-1 text-sm texto-suave">
+                  Carpeta vacía. Guarda una unidad aquí desde su menú, con «Guardar en carpeta».
+                </p>
+              ) : (
+                <ul className="space-y-2">{sec.unidades.map((u) => tarjeta(u, sec.clave))}</ul>
+              ))}
+          </section>
+        )
+      })}
 
       <HojaNuevaUnidad abierta={creando} onCerrar={() => setCreando(false)} />
       <HojaEditarUnidad unidad={editando} onCerrar={() => setEditando(null)} />
@@ -542,6 +694,18 @@ function VistaUnidades() {
         onMover={setMoviendo}
         onQuitarCurso={setQuitandoCurso}
         onEliminar={setEliminando}
+        onGuardarEnCarpeta={setGuardandoEnCarpeta}
+      />
+      <HojaGuardarEnCarpeta
+        unidad={guardandoEnCarpeta}
+        carpetas={carpetas}
+        onCerrar={() => setGuardandoEnCarpeta(null)}
+      />
+      <HojaNombreCarpeta destino={nombrandoCarpeta} onCerrar={() => setNombrandoCarpeta(null)} />
+      <HojaAccionesCarpeta
+        carpeta={accionesCarpeta}
+        onCerrar={() => setAccionesCarpeta(null)}
+        onRenombrar={(c) => setNombrandoCarpeta(c)}
       />
       <HojaEliminarUnidad unidad={eliminando} onCerrar={() => setEliminando(null)} />
       <HojaSesionPlan destino={editandoSesion} onCerrar={() => setEditandoSesion(null)} />
@@ -937,11 +1101,14 @@ function PreviaDelVolcado({ previa }: { previa: PreviaVolcado }) {
 /**
  * El plan de sesiones de una unidad, editable sin salir del listado.
  *
- * Una unidad puede abarcar varios cursos del mismo ciclo, y las sesiones son
- * PROPIAS de cada curso: la misma unidad se desarrolla distinto en 3.º y en 4.º.
- * Por eso hay una pestaña por curso, y cada una enseña y edita solo sus
- * sesiones. Con un solo curso las pestañas no se dibujan: se ve igual que antes
- * del multi-curso.
+ * Una unidad puede abarcar varios cursos del mismo ciclo. En una unidad por
+ * curso las sesiones son PROPIAS de cada uno: hay una pestaña por curso, y cada
+ * una enseña y edita solo sus sesiones. Con un solo curso las pestañas no se
+ * dibujan: se ve igual que antes del multi-curso.
+ *
+ * En una unidad de ciclo las sesiones son COMUNES: las pestañas enseñan la
+ * versión que ve cada curso, editar una sesión común la cambia en los dos, y
+ * «Adaptar para Nº» crea la excepción de un curso.
  *
  * Las sesiones se numeran por POSICIÓN dentro de su curso, no por un campo que
  * se escriba: el número que se ve es el índice en la lista, y reordenar renumera
@@ -964,6 +1131,10 @@ function PlanDeUnidad({
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const [borrando, setBorrando] = useState<SesionPlan | null>(null)
+  const [desadaptando, setDesadaptando] = useState<SesionPlan | null>(null)
+  const [convirtiendo, setConvirtiendo] = useState(false)
+  const deCiclo = esUnidadDeCiclo(unidad)
+  const conversion = previaConversionCiclo(unidad)
   // Curso activo: el primero mientras no se elija otro. Si la pestaña activa deja
   // de existir (se quitó ese curso), se cae al primero.
   const [cursoActivo, setCursoActivo] = useState<number | null>(null)
@@ -985,6 +1156,29 @@ function PlanDeUnidad({
   async function duplicar(s: SesionPlan) {
     const { deshacer } = await duplicarSesionPlan(unidad.id, nivel, s.id)
     mostrarAviso(`«${s.titulo || 'Sesión sin título'}» duplicada`, deshacer)
+  }
+
+  async function adaptar(s: SesionPlan) {
+    const deshacer = await adaptarSesionPlan(unidad.id, nivel, s.id)
+    mostrarAviso(`«${s.titulo || 'Sesión sin título'}» adaptada para ${nivel}º`, deshacer)
+    onEditarSesion(nivel, s.id)
+  }
+
+  async function volverAComun() {
+    if (!desadaptando) return
+    const deshacer = await volverAVersionComun(unidad.id, nivel, desadaptando.id)
+    setDesadaptando(null)
+    mostrarAviso(`${nivel}º vuelve a la versión común`, deshacer)
+  }
+
+  async function convertir() {
+    try {
+      const deshacer = await convertirEnUnidadDeCiclo(unidad.id)
+      setConvirtiendo(false)
+      mostrarAviso(`«${unidad.titulo}» es ahora de ciclo`, deshacer)
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido convertir')
+    }
   }
 
   async function eliminar() {
@@ -1044,20 +1238,43 @@ function PlanDeUnidad({
                       {n}º
                     </button>
                   ))}
-              <button
-                className="btn-suave px-3 py-1.5 text-xs"
-                onClick={onAnadirCurso}
-                aria-label="Añadir un curso a la unidad"
-              >
-                <Plus size={14} aria-hidden />
-                {variosCursos ? 'Curso' : 'Añadir curso'}
-              </button>
+              {!deCiclo && (
+                <button
+                  className="btn-suave px-3 py-1.5 text-xs"
+                  onClick={onAnadirCurso}
+                  aria-label="Añadir un curso a la unidad"
+                >
+                  <Plus size={14} aria-hidden />
+                  {variosCursos ? 'Curso' : 'Añadir curso'}
+                </button>
+              )}
+              {conversion && (
+                <button
+                  className={
+                    (conversion.identicas && variosCursos ? 'btn-primario' : 'btn-suave') +
+                    ' px-3 py-1.5 text-xs'
+                  }
+                  onClick={() => setConvirtiendo(true)}
+                >
+                  <Layers size={14} aria-hidden />
+                  Convertir en unidad de ciclo
+                </button>
+              )}
             </div>
+          )}
+
+          {deCiclo && (
+            <p className="text-xs texto-suave">
+              Sesiones comunes a {unidad.niveles.join('º y ')}º. Ves la versión de {nivel}º; las
+              marcadas como adaptadas solo valen para este curso.
+            </p>
           )}
 
           {plan.length === 0 && (
             <p className="text-sm texto-suave">
-              {variosCursos
+              {deCiclo
+                ? 'Todavía no hay sesiones. Lo que escribas aquí vale para los dos cursos.'
+                : variosCursos
                 ? `${nivel}º todavía no tiene sesiones. Escribe aquí su secuencia.`
                 : 'Todavía no hay sesiones. Escribe aquí la secuencia y luego llévala a un grupo.'}
             </p>
@@ -1077,6 +1294,12 @@ function PlanDeUnidad({
                   <span className="block font-semibold">
                     {s.titulo || <span className="texto-suave">Sesión sin título</span>}
                   </span>
+                  {s.adaptada && (
+                    <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-agua px-2 text-xs font-semibold text-primario-oscuro dark:bg-agua/25 dark:text-agua">
+                      <GitBranch size={12} aria-hidden />
+                      Adaptada para {nivel}º
+                    </span>
+                  )}
                   {s.notas && (
                     <span className="block truncate texto-suave">
                       {s.notas.split('\n').find((l) => l.trim()) ?? ''}
@@ -1089,6 +1312,26 @@ function PlanDeUnidad({
                   )}
                 </button>
                 <span className="flex shrink-0 items-center">
+                  {deCiclo &&
+                    (s.adaptada ? (
+                      <button
+                        className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+                        onClick={() => setDesadaptando(s)}
+                        aria-label={`Volver a la versión común en la sesión ${i + 1}`}
+                        title="Volver a la versión común"
+                      >
+                        <Undo2 size={16} aria-hidden />
+                      </button>
+                    ) : (
+                      <button
+                        className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
+                        onClick={() => void adaptar(s)}
+                        aria-label={`Adaptar la sesión ${i + 1} para ${nivel}º`}
+                        title={`Adaptar para ${nivel}º`}
+                      >
+                        <GitBranch size={16} aria-hidden />
+                      </button>
+                    ))}
                   <button
                     className="flex min-h-tap min-w-tap items-center justify-center text-tinta-tenue"
                     onClick={() => void duplicar(s)}
@@ -1110,7 +1353,7 @@ function PlanDeUnidad({
 
           <button className="btn-suave w-full text-xs" onClick={() => void anadir()}>
             <Plus size={16} aria-hidden />
-            Añadir sesión{variosCursos ? ` a ${nivel}º` : ''}
+            Añadir sesión{variosCursos && !deCiclo ? ` a ${nivel}º` : ''}
           </button>
         </div>
       )}
@@ -1119,7 +1362,12 @@ function PlanDeUnidad({
         <div className="space-y-4">
           <p className="text-sm">
             «{borrando?.titulo || 'Sesión sin título'}» sale del plan de «{unidad.titulo}»
-            {variosCursos ? ` en ${nivel}º` : ''}.
+            {deCiclo
+              ? ` en ${unidad.niveles.join('º y ')}º`
+              : variosCursos
+                ? ` en ${nivel}º`
+                : ''}
+            .
           </p>
           {/* Una sesión del plan no lleva notas: las columnas del cuaderno
               cuelgan de la unidad, y las clases ya colocadas son copias con
@@ -1132,6 +1380,66 @@ function PlanDeUnidad({
             Quitar del plan
           </button>
         </div>
+      </Hoja>
+
+      <Hoja
+        abierta={!!desadaptando}
+        titulo="Volver a la versión común"
+        onCerrar={() => setDesadaptando(null)}
+      >
+        <div className="space-y-4">
+          <p className="text-sm">
+            «{desadaptando?.titulo || 'Sesión sin título'}» deja de ser propia de {nivel}º y vuelve a
+            ser la misma que en el otro curso.
+          </p>
+          <p className="aviso">Se descartan los cambios propios de {nivel}º en esta sesión.</p>
+          <button className="btn-peligro w-full" onClick={() => void volverAComun()}>
+            <Undo2 size={20} aria-hidden />
+            Volver a la versión común
+          </button>
+        </div>
+      </Hoja>
+
+      <Hoja
+        abierta={convirtiendo}
+        titulo="Convertir en unidad de ciclo"
+        onCerrar={() => setConvirtiendo(false)}
+      >
+        {conversion && (
+          <div className="space-y-4">
+            <p className="text-sm">
+              «{unidad.titulo}» pasará a valer para {conversion.cursos[0]}º y{' '}
+              {conversion.cursos[1]}º con las mismas sesiones: cada sesión se escribe una vez.
+            </p>
+            {conversion.motivo ? (
+              <p className="aviso">{conversion.motivo}</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-5 text-sm">
+                <li>
+                  {conversion.comunes} {conversion.comunes === 1 ? 'sesión común' : 'sesiones comunes'}
+                </li>
+                {conversion.adaptadas && (
+                  <li>
+                    {conversion.adaptadas.sesiones} quedarán adaptadas para{' '}
+                    {conversion.adaptadas.nivel}º: sus diferencias se conservan
+                  </li>
+                )}
+                {conversion.anadeCurso !== null && (
+                  <li>Se añade {conversion.anadeCurso}º, con las mismas sesiones y sin peso</li>
+                )}
+                <li>La ponderación, el cuaderno y lo ya colocado en cada grupo no cambian</li>
+              </ul>
+            )}
+            <button
+              className="btn-primario w-full"
+              onClick={() => void convertir()}
+              disabled={!!conversion.motivo}
+            >
+              <Layers size={20} aria-hidden />
+              Convertir
+            </button>
+          </div>
+        )}
       </Hoja>
     </>
   )
@@ -1164,9 +1472,13 @@ function HojaSesionPlan({
     async () => (destino ? db.unidades.get(destino.udId) : undefined),
     [destino?.udId],
   )
-  const sesion = destino
-    ? unidad?.sesiones?.find((s) => s.id === destino.sesionId)
-    : undefined
+  // La sesión tal como la ve SU curso: en una unidad de ciclo, la adaptación
+  // de ese curso si la tiene; la común si no.
+  const sesion =
+    destino && unidad
+      ? sesionesDe(unidad, destino.nivel).find((s) => s.id === destino.sesionId)
+      : undefined
+  const deCiclo = !!unidad && esUnidadDeCiclo(unidad)
 
   // Se carga una sola vez por sesión abierta: si siguiera al `useLiveQuery`,
   // guardar reescribiría el formulario encima de lo que se está escribiendo.
@@ -1174,7 +1486,7 @@ function HojaSesionPlan({
     setSucio(false)
     if (!destino) return
     void db.unidades.get(destino.udId).then((u) => {
-      const s = u?.sesiones?.find((x) => x.id === destino.sesionId)
+      const s = u ? sesionesDe(u, destino.nivel).find((x) => x.id === destino.sesionId) : undefined
       setTitulo(s?.titulo ?? '')
       setNotas(s?.notas ?? '')
       setMaterial(s?.recursosNecesarios ?? '')
@@ -1211,6 +1523,13 @@ function HojaSesionPlan({
       <div className="space-y-4">
         {destino && !sesion && unidad && (
           <p className="aviso">Esta sesión ya no está en el plan.</p>
+        )}
+        {deCiclo && sesion && destino && unidad && (
+          <p className="panel-agua text-sm">
+            {sesion.adaptada
+              ? `Versión propia de ${destino.nivel}º: los cambios solo valen para este curso.`
+              : `Sesión común: los cambios valen para ${unidad.niveles.join('º y ')}º.`}
+          </p>
         )}
 
         <div>
@@ -1277,6 +1596,7 @@ function HojaAccionesUnidad({
   onMover,
   onQuitarCurso,
   onEliminar,
+  onGuardarEnCarpeta,
 }: {
   unidad: UnidadDidactica | null
   onCerrar: () => void
@@ -1284,6 +1604,7 @@ function HojaAccionesUnidad({
   onMover: (u: UnidadDidactica) => void
   onQuitarCurso: (u: UnidadDidactica) => void
   onEliminar: (u: UnidadDidactica) => void
+  onGuardarEnCarpeta: (u: UnidadDidactica) => void
 }) {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const vocabulario = terminologia(unidad?.etapa ?? 'primaria')
@@ -1302,6 +1623,17 @@ function HojaAccionesUnidad({
   return (
     <Hoja abierta={!!unidad} titulo={unidad?.titulo ?? ''} onCerrar={onCerrar}>
       <div className="space-y-2">
+        <button
+          className="btn-suave w-full justify-start"
+          onClick={() => {
+            if (unidad) onGuardarEnCarpeta(unidad)
+            onCerrar()
+          }}
+        >
+          <Folder size={20} aria-hidden />
+          Guardar en carpeta
+        </button>
+
         {/* En Infantil no hay otro curso al que llevarla: la unidad ya es del
             2.º ciclo entero, y 3, 4 y 5 años comparten criterios. Por eso
             copiar y mover solo existen en Primaria. */}
@@ -2122,6 +2454,8 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
   const [trimestre, setTrimestre] = useState<1 | 2 | 3 | null>(1)
   const [computa, setComputa] = useState(true)
   const [criterios, setCriterios] = useState<string[]>([])
+  const [ambito, setAmbito] = useState<'curso' | 'ciclo'>('ciclo')
+  const [cursoA, cursoB] = cursosDelCiclo(cicloDeCurso(nivel))
 
   // Los criterios ofrecidos dependen de la etapa y, en Primaria, del ciclo del
   // nivel: al cambiar cualquiera de los dos, los ya elegidos apuntarían a otro
@@ -2137,7 +2471,7 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
     const id =
       etapa === 'infantil'
         ? await crearUnidad({ etapa: 'infantil', titulo, trimestre, criterios })
-        : await crearUnidad({ etapa: 'primaria', titulo, nivel, trimestre, computa, criterios })
+        : await crearUnidad({ etapa: 'primaria', titulo, nivel, trimestre, computa, criterios, ambito })
     setTitulo('')
     onCerrar()
     mostrarAviso(`${vocabulario.unidad} «${titulo.trim()}» creada`, async () => {
@@ -2197,6 +2531,28 @@ function HojaNuevaUnidad({ abierta, onCerrar }: { abierta: boolean; onCerrar: ()
                 </button>
               ))}
             </div>
+            <span className="etiqueta mt-3">Para</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAmbito('ciclo')}
+                aria-pressed={ambito === 'ciclo'}
+                className={(ambito === 'ciclo' ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
+              >
+                Ciclo {cursoA}º–{cursoB}º
+              </button>
+              <button
+                onClick={() => setAmbito('curso')}
+                aria-pressed={ambito === 'curso'}
+                className={(ambito === 'curso' ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
+              >
+                Solo {nivel}º
+              </button>
+            </div>
+            <p className="mt-1 text-xs texto-suave">
+              {ambito === 'ciclo'
+                ? `Las sesiones se escriben una vez y valen para ${cursoA}º y ${cursoB}º. El peso en el trimestre sigue siendo de cada curso.`
+                : 'Sesiones propias de este curso.'}
+            </p>
           </div>
         ) : (
           <div className="panel-agua text-sm">
@@ -2449,5 +2805,233 @@ function AvisoCoberturaInfantil({ unidades }: { unidades: UnidadDidactica[] }) {
         </ul>
       )}
     </div>
+  )
+}
+
+/**
+ * Elegir la carpeta de una unidad. Una unidad está en una carpeta o en
+ * ninguna; desde aquí también se crea una nueva y se guarda en ella de un paso.
+ */
+function HojaGuardarEnCarpeta({
+  unidad,
+  carpetas,
+  onCerrar,
+}: {
+  unidad: UnidadDidactica | null
+  carpetas: CarpetaUnidades[]
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [nueva, setNueva] = useState('')
+
+  useEffect(() => {
+    if (unidad) setNueva('')
+  }, [unidad])
+
+  async function guardarEn(carpetaId: string | null, nombre: string) {
+    if (!unidad) return
+    const deshacer = await moverUnidadACarpeta(unidad.id, carpetaId)
+    onCerrar()
+    mostrarAviso(
+      carpetaId ? `«${unidad.titulo}» en «${nombre}»` : `«${unidad.titulo}» sin carpeta`,
+      deshacer,
+    )
+  }
+
+  async function crearYGuardar() {
+    if (!unidad) return
+    try {
+      const { id, deshacer: quitarCarpeta } = await crearCarpeta(nueva)
+      const sacar = await moverUnidadACarpeta(unidad.id, id)
+      onCerrar()
+      mostrarAviso(`«${unidad.titulo}» en «${nueva.trim()}»`, async () => {
+        await sacar()
+        await quitarCarpeta()
+      })
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido crear la carpeta')
+    }
+  }
+
+  return (
+    <Hoja abierta={!!unidad} titulo="Guardar en carpeta" onCerrar={onCerrar}>
+      <div className="space-y-2">
+        {carpetas.map((c) => (
+          <button
+            key={c.id}
+            className={
+              (unidad?.carpetaId === c.id ? 'btn-primario' : 'btn-suave') + ' w-full justify-start'
+            }
+            aria-pressed={unidad?.carpetaId === c.id}
+            onClick={() => void guardarEn(c.id, c.nombre)}
+          >
+            <Folder size={20} aria-hidden />
+            <span className="truncate">{c.nombre}</span>
+          </button>
+        ))}
+        <button
+          className={(!unidad?.carpetaId ? 'btn-primario' : 'btn-suave') + ' w-full justify-start'}
+          aria-pressed={!unidad?.carpetaId}
+          onClick={() => void guardarEn(null, '')}
+        >
+          <MinusCircle size={20} aria-hidden />
+          Sin carpeta
+        </button>
+
+        <div className="pt-2">
+          <label className="etiqueta" htmlFor="carpeta-nueva">
+            O en una carpeta nueva
+          </label>
+          <div className="flex gap-2">
+            <Campo
+              id="carpeta-nueva"
+              className="campo min-w-0 flex-1"
+              valor={nueva}
+              onValor={setNueva}
+              placeholder="Juegos populares"
+            />
+            <button
+              className="btn-primario shrink-0 px-4"
+              onClick={() => void crearYGuardar()}
+              disabled={!nueva.trim()}
+            >
+              <FolderPlus size={18} aria-hidden />
+              Crear
+            </button>
+          </div>
+        </div>
+      </div>
+    </Hoja>
+  )
+}
+
+/** Crear una carpeta o cambiarle el nombre. */
+function HojaNombreCarpeta({
+  destino,
+  onCerrar,
+}: {
+  destino: CarpetaUnidades | 'nueva' | null
+  onCerrar: () => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+  const [nombre, setNombre] = useState('')
+  const renombrando = destino !== null && destino !== 'nueva'
+
+  useEffect(() => {
+    if (destino) setNombre(destino === 'nueva' ? '' : destino.nombre)
+  }, [destino])
+
+  async function guardar() {
+    try {
+      if (destino === 'nueva') {
+        const { deshacer } = await crearCarpeta(nombre)
+        onCerrar()
+        mostrarAviso(`Carpeta «${nombre.trim()}» creada`, deshacer)
+      } else if (destino) {
+        const deshacer = await renombrarCarpeta(destino.id, nombre)
+        onCerrar()
+        mostrarAviso(`Carpeta renombrada a «${nombre.trim()}»`, deshacer)
+      }
+    } catch (e) {
+      mostrarAviso(e instanceof Error ? e.message : 'No se ha podido guardar la carpeta')
+    }
+  }
+
+  return (
+    <Hoja
+      abierta={destino !== null}
+      titulo={renombrando ? 'Renombrar carpeta' : 'Nueva carpeta'}
+      onCerrar={onCerrar}
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="etiqueta" htmlFor="carpeta-nombre">
+            Nombre
+          </label>
+          <Campo
+            id="carpeta-nombre"
+            className="campo"
+            valor={nombre}
+            onValor={setNombre}
+            placeholder="Juegos populares"
+            autoFocus
+          />
+        </div>
+        <button
+          className="btn-primario w-full"
+          onClick={() => void guardar()}
+          disabled={!nombre.trim()}
+        >
+          {renombrando ? 'Guardar cambios' : 'Crear carpeta'}
+        </button>
+      </div>
+    </Hoja>
+  )
+}
+
+/**
+ * Lo que se hace con una carpeta. Eliminarla no toca sus unidades: se quedan
+ * sin carpeta, y el aviso permite deshacer.
+ */
+function HojaAccionesCarpeta({
+  carpeta,
+  onCerrar,
+  onRenombrar,
+}: {
+  carpeta: CarpetaUnidades | null
+  onCerrar: () => void
+  onRenombrar: (c: CarpetaUnidades) => void
+}) {
+  const mostrarAviso = useUI((s) => s.mostrarAviso)
+
+  async function mover(delta: 1 | -1) {
+    if (!carpeta) return
+    const deshacer = await moverCarpeta(carpeta.id, delta)
+    onCerrar()
+    if (deshacer) mostrarAviso(`«${carpeta.nombre}» movida`, deshacer)
+  }
+
+  async function eliminar() {
+    if (!carpeta) return
+    const { unidades, deshacer } = await eliminarCarpeta(carpeta.id)
+    onCerrar()
+    mostrarAviso(
+      unidades
+        ? `Carpeta «${carpeta.nombre}» eliminada; sus ${unidades} unidades quedan sin carpeta`
+        : `Carpeta «${carpeta.nombre}» eliminada`,
+      deshacer,
+    )
+  }
+
+  return (
+    <Hoja abierta={!!carpeta} titulo={carpeta?.nombre ?? ''} onCerrar={onCerrar}>
+      <div className="space-y-2">
+        <button
+          className="btn-suave w-full justify-start"
+          onClick={() => {
+            if (carpeta) onRenombrar(carpeta)
+            onCerrar()
+          }}
+        >
+          <Pencil size={20} aria-hidden />
+          Renombrar
+        </button>
+        <button className="btn-suave w-full justify-start" onClick={() => void mover(-1)}>
+          <ArrowUp size={20} aria-hidden />
+          Subir en la lista
+        </button>
+        <button className="btn-suave w-full justify-start" onClick={() => void mover(1)}>
+          <ArrowDown size={20} aria-hidden />
+          Bajar en la lista
+        </button>
+        <button className="btn-peligro w-full justify-start" onClick={() => void eliminar()}>
+          <Trash2 size={20} aria-hidden />
+          Eliminar carpeta
+        </button>
+        <p className="px-1 text-xs texto-suave">
+          Las unidades que tenga dentro no se borran: quedan sin carpeta.
+        </p>
+      </div>
+    </Hoja>
   )
 }

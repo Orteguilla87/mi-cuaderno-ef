@@ -1,4 +1,4 @@
-import { cicloDeCurso, cicloDeUnidad, idCriterioPrimaria, ordinalCiclo } from '../lib/ciclos'
+import { cicloDeCurso, cicloDeUnidad, cursosDelCiclo, idCriterioPrimaria, ordinalCiclo } from '../lib/ciclos'
 import { estadoDia, trimestreDe, type CursoFechas } from '../lib/calendarioEscolar'
 import { aISO, deISO, diaLectivo, formatoDiaCorto, sumarDias } from '../lib/fechas'
 import { esEnlace } from '../lib/importarTexto'
@@ -7,7 +7,9 @@ import { db, nuevoId } from './db'
 import { crearLote, deshacerLote, type LotePlan } from './lotes'
 import {
   NIVEL_CICLO_INFANTIL,
+  NIVEL_COMUN,
   type ClaseCancelada,
+  type ContenidoSesionPlan,
   type CursoEscolar,
   type Columna,
   type Etapa,
@@ -448,7 +450,17 @@ export async function crearUnidad(
     /** Plan de sesiones, cuando la unidad viene de una importación. */
     sesiones?: SesionPlan[]
   } & (
-    | { etapa: 'primaria'; nivel: number; computa?: boolean; pesoTrimestre?: number }
+    | {
+        etapa: 'primaria'
+        nivel: number
+        computa?: boolean
+        pesoTrimestre?: number
+        /**
+         * `'ciclo'`: la unidad nace con los dos cursos del ciclo de `nivel` y
+         * sesiones comunes. Por defecto, `'curso'`: solo `nivel`, como siempre.
+         */
+        ambito?: 'curso' | 'ciclo'
+      }
     | { etapa: 'infantil' }
   ),
 ): Promise<string> {
@@ -462,6 +474,17 @@ export async function crearUnidad(
     // guardarse como `[]`, para no distinguir «sin sesiones» de «vacía».
     ...(datos.sesiones?.length ? { sesiones: datos.sesiones } : {}),
   }
+  const deCiclo = datos.etapa === 'primaria' && datos.ambito === 'ciclo'
+  // Los cursos de una unidad de ciclo salen del ciclo, no se eligen: así no hay
+  // forma de crear una que mezcle ciclos.
+  const niveles =
+    datos.etapa === 'primaria'
+      ? deCiclo
+        ? cursosDelCiclo(cicloDeCurso(datos.nivel))
+        : [datos.nivel]
+      : [NIVEL_CICLO_INFANTIL]
+  if (deCiclo && comun.sesiones?.some((s) => s.nivel !== NIVEL_COMUN))
+    throw new Error('Las sesiones de una unidad de ciclo son comunes a sus dos cursos')
 
   // En Infantil no se escriben `computa` ni `pesosPorNivel`, ni siquiera vacíos:
   // no es que valgan cero, es que ahí no hay ponderación que valga.
@@ -471,11 +494,14 @@ export async function crearUnidad(
       : {
           ...comun,
           etapa: 'primaria',
-          // Se crea siempre con un solo curso: los demás se añaden luego, con
-          // la comprobación de ciclo delante.
-          niveles: [datos.nivel],
+          // Por curso nace con uno solo (los demás se añaden luego, con la
+          // comprobación de ciclo delante); de ciclo, con los dos del ciclo.
+          niveles,
           computa: datos.computa ?? true,
-          pesosPorNivel: { [datos.nivel]: datos.pesoTrimestre ?? 0 },
+          // El peso es de cada curso aunque las sesiones se compartan: el
+          // reparto de cada trimestre es suyo.
+          pesosPorNivel: Object.fromEntries(niveles.map((n) => [n, datos.pesoTrimestre ?? 0])),
+          ...(deCiclo ? { ambito: 'ciclo' as const } : {}),
         }
 
   await db.unidades.add(ud)
@@ -492,6 +518,10 @@ export async function crearUnidad(
 //
 // Es lo que mantiene el motor de `lib/notas.ts` sin enterarse del multi-curso:
 // sigue viendo una unidad de un curso con un peso, exactamente como antes.
+
+/** Motivo por el que una unidad de ciclo no gana ni pierde cursos. */
+const YA_ES_DE_CICLO =
+  'Es una unidad de ciclo: abarca siempre sus dos cursos, ni más ni menos.'
 
 /** Proyecta una unidad de Primaria sobre uno de sus cursos. */
 export function enCurso(unidad: UnidadPrimaria, nivel: number): UnidadEnCurso {
@@ -527,6 +557,8 @@ export function motivoNoAdmiteCurso(unidad: UnidadDidactica, nivel: number): str
   if (unidad.etapa === 'infantil')
     return 'En Infantil la unidad ya es del 2.º ciclo entero: 3, 4 y 5 años la comparten.'
   if (unidad.niveles.includes(nivel)) return `La unidad ya incluye ${nivel}º.`
+  if (esUnidadDeCiclo(unidad))
+    return `${nivel}º no es de este ciclo. ${YA_ES_DE_CICLO} Para llevarla a otro ciclo, cópiala.`
 
   const cicloUnidad = cicloDeUnidad(unidad.niveles)
   const cicloNuevo = cicloDeCurso(nivel)
@@ -554,6 +586,7 @@ export async function anadirCursoAUnidad(
   const motivo = motivoNoAdmiteCurso(unidad, nivel)
   if (motivo) throw new Error(motivo)
   if (unidad.etapa !== 'primaria') throw new Error(SOLO_PRIMARIA)
+  if (esUnidadDeCiclo(unidad)) throw new Error(YA_ES_DE_CICLO)
 
   const copiadas =
     origen === 'blanco'
@@ -636,6 +669,7 @@ export async function quitarCursoDeUnidad(
   const unidad = await db.unidades.get(udId)
   if (!unidad) throw new Error('La unidad ya no existe')
   if (!unidad.niveles.includes(nivel)) throw new Error('Ese curso no está en la unidad')
+  if (esUnidadDeCiclo(unidad)) throw new Error(YA_ES_DE_CICLO)
   if (unidad.niveles.length <= 1)
     throw new Error('Es el único curso de la unidad. Si ya no la usas, archívala o elimínala.')
 
@@ -831,6 +865,9 @@ export async function copiarUnidad(
     // tiene el suyo. Se pide al confirmar (§3.6).
     pesosPorNivel: { [nivelDestino]: opciones.pesoTrimestre ?? 0 },
     copiadaDe: udId,
+    // La copia va a UN curso: es una unidad por curso aunque el origen fuera
+    // de ciclo, y se lleva la versión que ve el curso de origen.
+    ambito: undefined,
     // Una copia nace visible aunque el original estuviera archivado: se copia
     // para usarla.
     archivada: false,
@@ -839,7 +876,7 @@ export async function copiarUnidad(
     // sería editar la otra en cuanto algo las buscara por id.
     ...(plan.length
       ? {
-          sesiones: plan.map((s, i) => ({
+          sesiones: plan.map(({ adaptada: _a, adaptaciones: _b, ...s }, i) => ({
             ...s,
             id: nuevoId(),
             nivel: nivelDestino,
@@ -965,20 +1002,60 @@ export async function marcarCriteriosRevisados(udId: string): Promise<() => Prom
 // mismo array porque el plan se guarda entero con la unidad; el `nivel` de cada
 // una es lo que las separa.
 
-/** Sesiones de un curso concreto de la unidad, ordenadas. */
-export function sesionesDe(unidad: UnidadDidactica, nivel: number): SesionPlan[] {
-  return (unidad.sesiones ?? []).filter((s) => s.nivel === nivel).sort((a, b) => a.orden - b.orden)
+/** Una sesión del plan vista desde un curso: `adaptada` si ese curso tiene versión propia. */
+export type SesionPlanEnCurso = SesionPlan & { adaptada: boolean }
+
+/** Unidad de ciclo: sesiones comunes a sus dos cursos, con adaptaciones como excepción. */
+export function esUnidadDeCiclo(unidad: UnidadDidactica): unidad is UnidadPrimaria & { ambito: 'ciclo' } {
+  return unidad.etapa === 'primaria' && unidad.ambito === 'ciclo'
 }
 
-/** Plan de UN curso de la unidad, listo para transformar. */
+/**
+ * Sesiones de un curso concreto de la unidad, ordenadas.
+ *
+ * Es el ÚNICO punto por el que se lee el plan desde un curso —el volcado, las
+ * copias, la UI y los recuentos pasan por aquí—, y por eso es donde vive la
+ * unidad de ciclo: devuelve las sesiones comunes con la adaptación de ese curso
+ * encima, con el `nivel` pedido y el MISMO id que la común. Quien consume no
+ * sabe si la unidad es de ciclo o por curso.
+ */
+export function sesionesDe(unidad: UnidadDidactica, nivel: number): SesionPlanEnCurso[] {
+  if (esUnidadDeCiclo(unidad)) {
+    if (!unidad.niveles.includes(nivel)) return []
+    return comunesDe(unidad).map((s) => {
+      const { adaptaciones, ...comun } = s
+      const propia = adaptaciones?.[nivel]
+      return { ...comun, ...(propia ?? {}), nivel, adaptada: !!propia }
+    })
+  }
+  return (unidad.sesiones ?? [])
+    .filter((s) => s.nivel === nivel)
+    .sort((a, b) => a.orden - b.orden)
+    .map((s) => ({ ...s, adaptada: false }))
+}
+
+/** Sesiones comunes de una unidad de ciclo, tal cual se guardan, ordenadas. */
+function comunesDe(unidad: UnidadDidactica): SesionPlan[] {
+  return (unidad.sesiones ?? [])
+    .filter((s) => s.nivel === NIVEL_COMUN)
+    .sort((a, b) => a.orden - b.orden)
+}
+
+/**
+ * Plan de UN curso de la unidad, listo para transformar, con la `clave` bajo la
+ * que se escribe. En una unidad de ciclo el plan son las sesiones COMUNES —con
+ * sus adaptaciones dentro— y la clave es `NIVEL_COMUN`: añadir, quitar, mover o
+ * duplicar desde cualquiera de los dos cursos cambia la secuencia de ambos.
+ */
 async function leerPlan(
   udId: string,
   nivel: number,
-): Promise<{ unidad: UnidadDidactica; plan: SesionPlan[] }> {
+): Promise<{ unidad: UnidadDidactica; plan: SesionPlan[]; clave: number }> {
   const unidad = await db.unidades.get(udId)
   if (!unidad) throw new Error('La unidad ya no existe')
   if (!unidad.niveles.includes(nivel)) throw new Error('Ese curso no está en la unidad')
-  return { unidad, plan: sesionesDe(unidad, nivel) }
+  if (esUnidadDeCiclo(unidad)) return { unidad, plan: comunesDe(unidad), clave: NIVEL_COMUN }
+  return { unidad, plan: (unidad.sesiones ?? []).filter((s) => s.nivel === nivel).sort((a, b) => a.orden - b.orden), clave: nivel }
 }
 
 /**
@@ -1016,51 +1093,287 @@ export async function anadirSesionPlan(
   nivel: number,
   datos: CambiosSesionPlan = {},
 ): Promise<{ id: string; deshacer: () => Promise<void> }> {
-  const { unidad, plan } = await leerPlan(udId, nivel)
+  const { unidad, plan, clave } = await leerPlan(udId, nivel)
   const nueva: SesionPlan = {
     id: nuevoId(),
-    nivel,
+    nivel: clave,
     orden: plan.length,
     titulo: datos.titulo?.trim() ?? '',
     notas: datos.notas ?? '',
     recursos: datos.recursos ?? [],
     ...(datos.recursosNecesarios ? { recursosNecesarios: datos.recursosNecesarios } : {}),
   }
-  const deshacer = await escribirPlan(unidad, nivel, [...plan, nueva])
+  const deshacer = await escribirPlan(unidad, clave, [...plan, nueva])
   return { id: nueva.id, deshacer }
 }
 
-/** Guarda los cambios de una sesión del plan, sin moverla de sitio. */
+/**
+ * Aplica los cambios del editor al contenido de una sesión. El material vacío
+ * quita el campo, para no distinguir «sin material» de «con la cadena vacía».
+ */
+function conCambios<T extends ContenidoSesionPlan>(s: T, cambios: CambiosSesionPlan): T {
+  const material = cambios.recursosNecesarios?.trim()
+  return {
+    ...s,
+    titulo: cambios.titulo?.trim() ?? s.titulo,
+    notas: cambios.notas ?? s.notas,
+    recursos: cambios.recursos ?? s.recursos,
+    ...(cambios.recursosNecesarios === undefined
+      ? {}
+      : material
+        ? { recursosNecesarios: material }
+        : { recursosNecesarios: undefined }),
+  }
+}
+
+/**
+ * Guarda los cambios de una sesión del plan, sin moverla de sitio.
+ *
+ * En una unidad de ciclo, si la sesión está adaptada para `nivel` se escribe en
+ * la adaptación y el otro curso no se entera; si no, se escribe en la común y
+ * cambia en los dos.
+ */
 export async function guardarSesionPlan(
   udId: string,
   nivel: number,
   sesionId: string,
   cambios: CambiosSesionPlan,
 ): Promise<() => Promise<void>> {
-  const { unidad, plan } = await leerPlan(udId, nivel)
+  const { unidad, plan, clave } = await leerPlan(udId, nivel)
   if (!plan.some((s) => s.id === sesionId)) throw new Error('Esa sesión ya no está en el plan')
 
   return escribirPlan(
     unidad,
-    nivel,
+    clave,
     plan.map((s) => {
       if (s.id !== sesionId) return s
-      const material = cambios.recursosNecesarios?.trim()
-      return {
-        ...s,
-        titulo: cambios.titulo?.trim() ?? s.titulo,
-        notas: cambios.notas ?? s.notas,
-        recursos: cambios.recursos ?? s.recursos,
-        // El material vacío quita el campo, para no distinguir «sin material»
-        // de «con la cadena vacía» al mostrarlo.
-        ...(cambios.recursosNecesarios === undefined
-          ? {}
-          : material
-            ? { recursosNecesarios: material }
-            : { recursosNecesarios: undefined }),
-      }
+      const propia = clave === NIVEL_COMUN ? s.adaptaciones?.[nivel] : undefined
+      if (propia)
+        return { ...s, adaptaciones: { ...s.adaptaciones, [nivel]: conCambios(propia, cambios) } }
+      return conCambios(s, cambios)
     }),
   )
+}
+
+/** Contenido de una sesión, sin identidad ni posición: lo que se adapta. */
+function contenidoPlan(s: ContenidoSesionPlan): ContenidoSesionPlan {
+  return {
+    titulo: s.titulo,
+    notas: s.notas,
+    recursos: s.recursos.map((r) => ({ ...r })),
+    ...(s.recursosNecesarios ? { recursosNecesarios: s.recursosNecesarios } : {}),
+  }
+}
+
+/** Lee una sesión común de una unidad de ciclo comprobando que el curso es suyo. */
+async function leerComun(udId: string, nivel: number, sesionId: string) {
+  const { unidad, plan, clave } = await leerPlan(udId, nivel)
+  if (clave !== NIVEL_COMUN) throw new Error('Solo las unidades de ciclo tienen sesiones comunes')
+  const sesion = plan.find((s) => s.id === sesionId)
+  if (!sesion) throw new Error('Esa sesión ya no está en el plan')
+  return { unidad, plan, sesion }
+}
+
+/**
+ * Crea la versión propia de `nivel` de una sesión común, partiendo de la común.
+ * Desde ese momento, editarla desde ese curso no toca al otro. El resto de
+ * sesiones sigue compartido.
+ */
+export async function adaptarSesionPlan(
+  udId: string,
+  nivel: number,
+  sesionId: string,
+): Promise<() => Promise<void>> {
+  const { unidad, plan, sesion } = await leerComun(udId, nivel, sesionId)
+  if (sesion.adaptaciones?.[nivel]) throw new Error(`Esa sesión ya está adaptada para ${nivel}º`)
+  return escribirPlan(
+    unidad,
+    NIVEL_COMUN,
+    plan.map((s) =>
+      s.id === sesionId ? { ...s, adaptaciones: { ...s.adaptaciones, [nivel]: contenidoPlan(s) } } : s,
+    ),
+  )
+}
+
+/**
+ * Descarta la versión propia de `nivel` y vuelve a la común. Destruye lo
+ * escrito en la adaptación: la UI confirma antes, y queda el deshacer.
+ */
+export async function volverAVersionComun(
+  udId: string,
+  nivel: number,
+  sesionId: string,
+): Promise<() => Promise<void>> {
+  const { unidad, plan, sesion } = await leerComun(udId, nivel, sesionId)
+  if (!sesion.adaptaciones?.[nivel]) throw new Error(`Esa sesión no está adaptada para ${nivel}º`)
+  return escribirPlan(
+    unidad,
+    NIVEL_COMUN,
+    plan.map((s) => {
+      if (s.id !== sesionId) return s
+      const resto = Object.fromEntries(
+        Object.entries(s.adaptaciones ?? {}).filter(([n]) => Number(n) !== nivel),
+      )
+      const { adaptaciones: _fuera, ...sin } = s
+      return Object.keys(resto).length ? { ...sin, adaptaciones: resto } : sin
+    }),
+  )
+}
+
+// ——— Convertir una unidad por curso en unidad de ciclo ———
+//
+// Se OFRECE, nunca se fuerza: las unidades por curso siguen funcionando igual.
+// La conversión no pierde contenido: las sesiones idénticas en los dos cursos
+// pasan a comunes y las que difieren conservan la diferencia como adaptación.
+
+/** Dos sesiones dicen lo mismo si su contenido coincide, sin contar espacios sobrantes. */
+function mismoContenido(a: ContenidoSesionPlan, b: ContenidoSesionPlan): boolean {
+  const norm = (s: ContenidoSesionPlan) =>
+    JSON.stringify([
+      s.titulo.trim(),
+      s.notas.trim(),
+      s.recursos.map((r) => [r.tipo, r.valor.trim()]),
+      (s.recursosNecesarios ?? '').trim(),
+    ])
+  return norm(a) === norm(b)
+}
+
+export interface PreviaConversionCiclo {
+  /** Por qué no se puede convertir, en lenguaje llano; `null` si se puede. */
+  motivo: string | null
+  /** Los dos cursos del ciclo. */
+  cursos: [number, number]
+  /** Curso que la unidad gana al convertirse, si solo tenía uno. */
+  anadeCurso: number | null
+  comunes: number
+  /** Sesiones que quedarán adaptadas, y para qué curso. */
+  adaptadas: { nivel: number; sesiones: number } | null
+  /** Todas las sesiones coinciden: la conversión es limpia y se destaca. */
+  identicas: boolean
+}
+
+/** Calcula, sin escribir nada, qué haría `convertirEnUnidadDeCiclo`. */
+export function previaConversionCiclo(unidad: UnidadDidactica): PreviaConversionCiclo | null {
+  if (unidad.etapa !== 'primaria' || esUnidadDeCiclo(unidad)) return null
+  const ciclo = cicloDeUnidad(unidad.niveles)
+  if (ciclo === null) return null
+  const cursos = cursosDelCiclo(ciclo)
+  const base = {
+    cursos,
+    anadeCurso: null,
+    comunes: 0,
+    adaptadas: null,
+    identicas: false,
+  }
+  if (unidad.niveles.some((n) => cicloDeCurso(n) !== ciclo))
+    return { ...base, motivo: 'La unidad mezcla cursos de ciclos distintos.' }
+
+  const [a, b] = cursos
+  const planA = sesionesDe(unidad, a)
+  const planB = sesionesDe(unidad, b)
+  const tieneA = unidad.niveles.includes(a)
+  const tieneB = unidad.niveles.includes(b)
+
+  // Con un solo curso no hay nada que reconciliar: su plan pasa a común.
+  if (!tieneA || !tieneB) {
+    const plan = tieneA ? planA : planB
+    return {
+      ...base,
+      motivo: null,
+      anadeCurso: tieneA ? b : a,
+      comunes: plan.length,
+      identicas: true,
+    }
+  }
+
+  if (planA.length !== planB.length)
+    return {
+      ...base,
+      motivo:
+        `${a}º tiene ${planA.length} sesiones y ${b}º ${planB.length}. En una unidad de ciclo los dos ` +
+        'cursos siguen la misma secuencia: iguala el número de sesiones antes de convertirla.',
+    }
+
+  const distintas = planA.filter((s, i) => !mismoContenido(s, planB[i])).length
+  return {
+    ...base,
+    motivo: null,
+    comunes: planA.length,
+    adaptadas: distintas ? { nivel: b, sesiones: distintas } : null,
+    identicas: distintas === 0,
+  }
+}
+
+/**
+ * Convierte una unidad por curso en unidad de ciclo.
+ *
+ * Las sesiones se emparejan por posición. La versión del curso menor pasa a
+ * común; si la del otro curso difiere, se guarda como su adaptación. Si la
+ * unidad solo tenía un curso, gana el otro del ciclo y su plan pasa a común.
+ *
+ * Las clases ya colocadas en grupos del curso mayor apuntaban a sesiones del
+ * plan que dejan de existir: su `sesionPlanId` se remapea a la común, en la
+ * misma transacción. Deshacer lo repone todo.
+ */
+export async function convertirEnUnidadDeCiclo(udId: string): Promise<() => Promise<void>> {
+  const unidad = await db.unidades.get(udId)
+  if (!unidad) throw new Error('La unidad ya no existe')
+  if (unidad.etapa !== 'primaria') throw new Error(SOLO_PRIMARIA)
+  const previa = previaConversionCiclo(unidad)
+  if (!previa) throw new Error('Esta unidad ya es de ciclo')
+  if (previa.motivo) throw new Error(previa.motivo)
+
+  const [a, b] = previa.cursos
+  const planA = sesionesDe(unidad, a)
+  const planB = sesionesDe(unidad, b)
+  const tieneA = unidad.niveles.includes(a)
+  const tieneB = unidad.niveles.includes(b)
+
+  // id viejo → id común, para las clases colocadas que apuntaban al viejo.
+  const remapeo = new Map<string, string>()
+  const limpia = ({ adaptada: _a, adaptaciones: _b, ...s }: SesionPlanEnCurso): SesionPlan => s
+
+  let comunes: SesionPlan[]
+  if (tieneA && tieneB) {
+    comunes = planA.map((sa, i) => {
+      const sb = planB[i]
+      remapeo.set(sb.id, sa.id)
+      return {
+        ...limpia(sa),
+        nivel: NIVEL_COMUN,
+        orden: i,
+        ...(mismoContenido(sa, sb) ? {} : { adaptaciones: { [b]: contenidoPlan(sb) } }),
+      }
+    })
+  } else {
+    comunes = (tieneA ? planA : planB).map((s, i) => ({ ...limpia(s), nivel: NIVEL_COMUN, orden: i }))
+  }
+
+  const convertida: UnidadPrimaria = {
+    ...unidad,
+    ambito: 'ciclo',
+    niveles: [a, b],
+    pesosPorNivel: { [a]: 0, [b]: 0, ...unidad.pesosPorNivel },
+    ...(comunes.length ? { sesiones: comunes } : { sesiones: undefined }),
+  }
+
+  let remapeadas: { id: string; previo: string }[] = []
+  await db.transaction('rw', [db.unidades, db.sesiones], async () => {
+    const colocadas = await db.sesiones.where('udId').equals(udId).toArray()
+    remapeadas = colocadas
+      .filter((s) => s.sesionPlanId && remapeo.has(s.sesionPlanId))
+      .map((s) => ({ id: s.id, previo: s.sesionPlanId! }))
+    for (const r of remapeadas)
+      await db.sesiones.update(r.id, { sesionPlanId: remapeo.get(r.previo) })
+    await db.unidades.put(convertida)
+  })
+
+  return async () => {
+    await db.transaction('rw', [db.unidades, db.sesiones], async () => {
+      await db.unidades.put(unidad)
+      for (const r of remapeadas) await db.sesiones.update(r.id, { sesionPlanId: r.previo })
+    })
+  }
 }
 
 /**
@@ -1072,12 +1385,24 @@ export async function duplicarSesionPlan(
   nivel: number,
   sesionId: string,
 ): Promise<{ id: string; deshacer: () => Promise<void> }> {
-  const { unidad, plan } = await leerPlan(udId, nivel)
+  const { unidad, plan, clave } = await leerPlan(udId, nivel)
   const i = plan.findIndex((s) => s.id === sesionId)
   if (i < 0) throw new Error('Esa sesión ya no está en el plan')
 
-  const copia: SesionPlan = { ...plan[i], id: nuevoId(), recursos: [...plan[i].recursos] }
-  const deshacer = await escribirPlan(unidad, nivel, [
+  const copia: SesionPlan = {
+    ...plan[i],
+    id: nuevoId(),
+    recursos: [...plan[i].recursos],
+    // Las adaptaciones se duplican con la sesión, cada una con su copia.
+    ...(plan[i].adaptaciones
+      ? {
+          adaptaciones: Object.fromEntries(
+            Object.entries(plan[i].adaptaciones!).map(([n, c]) => [n, contenidoPlan(c)]),
+          ),
+        }
+      : {}),
+  }
+  const deshacer = await escribirPlan(unidad, clave, [
     ...plan.slice(0, i + 1),
     copia,
     ...plan.slice(i + 1),
@@ -1098,11 +1423,11 @@ export async function eliminarSesionPlan(
   nivel: number,
   sesionId: string,
 ): Promise<() => Promise<void>> {
-  const { unidad, plan } = await leerPlan(udId, nivel)
+  const { unidad, plan, clave } = await leerPlan(udId, nivel)
   if (!plan.some((s) => s.id === sesionId)) throw new Error('Esa sesión ya no está en el plan')
   return escribirPlan(
     unidad,
-    nivel,
+    clave,
     plan.filter((s) => s.id !== sesionId),
   )
 }
@@ -1117,7 +1442,7 @@ export async function moverSesionPlan(
   sesionId: string,
   delta: 1 | -1,
 ): Promise<(() => Promise<void>) | null> {
-  const { unidad, plan } = await leerPlan(udId, nivel)
+  const { unidad, plan, clave } = await leerPlan(udId, nivel)
   const i = plan.findIndex((s) => s.id === sesionId)
   if (i < 0) throw new Error('Esa sesión ya no está en el plan')
 
@@ -1127,7 +1452,7 @@ export async function moverSesionPlan(
 
   const movido = [...plan]
   ;[movido[i], movido[j]] = [movido[j], movido[i]]
-  return escribirPlan(unidad, nivel, movido)
+  return escribirPlan(unidad, clave, movido)
 }
 
 /**
@@ -1754,11 +2079,19 @@ export async function importarUnidad(
   datos: {
     titulo: string
     sesiones: SesionImportada[]
-  } & ({ etapa: 'primaria'; nivel: number } | { etapa: 'infantil' }),
+  } & (
+    | { etapa: 'primaria'; nivel: number; ambito?: 'curso' | 'ciclo' }
+    | { etapa: 'infantil' }
+  ),
 ): Promise<{ id: string; deshacer: () => Promise<void> }> {
-  // Una importación trae UN curso: el plan nace entero en él, y los demás
-  // cursos se añaden después con `anadirCursoAUnidad`.
-  const nivelUnico = datos.etapa === 'infantil' ? NIVEL_CICLO_INFANTIL : datos.nivel
+  // Por curso, el plan nace entero en ese curso y los demás se añaden después
+  // con `anadirCursoAUnidad`. De ciclo, nace común a los dos cursos del ciclo.
+  const nivelUnico =
+    datos.etapa === 'infantil'
+      ? NIVEL_CICLO_INFANTIL
+      : datos.ambito === 'ciclo'
+        ? NIVEL_COMUN
+        : datos.nivel
   const plan: SesionPlan[] = datos.sesiones.map((s, i) => {
     const material = s.recursos.map((r) => r.trim()).filter(Boolean).join(', ')
     const enlaces: Recurso[] = s.enlacesYNotas
@@ -1790,6 +2123,7 @@ export async function importarUnidad(
           etapa: 'primaria',
           titulo: datos.titulo,
           nivel: datos.nivel,
+          ambito: datos.ambito,
           trimestre: null,
           sesiones: plan,
         })

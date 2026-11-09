@@ -422,6 +422,18 @@ export interface Observacion {
 // ——— UNIDADES ———
 
 /**
+ * Carpeta para ordenar el listado de unidades a gusto del docente («Juegos
+ * populares», «Para el día de lluvia»…). Es pura organización: borrar una
+ * carpeta deja sus unidades sin carpeta, nunca las borra.
+ */
+export interface CarpetaUnidades {
+  id: Id
+  nombre: string
+  /** Posición en el listado; las carpetas se enseñan por este orden. */
+  orden: number
+}
+
+/**
  * El único «curso» de una unidad de Infantil. Los criterios del Decreto 36/2022
  * se fijan por ciclo completo —3, 4 y 5 años comparten los 56—, así que la
  * unidad es del ciclo y no de una edad: hay una sola bolsa de unidades para toda
@@ -482,6 +494,12 @@ interface UnidadBase {
    */
   archivada?: boolean
   /**
+   * Carpeta del listado de unidades en la que el docente la ha guardado. Solo
+   * organiza el listado: nada del cálculo, del volcado ni de la cobertura
+   * depende de ella. Ausente = sin carpeta. No indexado: se filtra en memoria.
+   */
+  carpetaId?: Id
+  /**
    * Plan de sesiones de la unidad, en orden y todavía sin grupo ni fecha.
    *
    * Existe porque una `Sesion` no puede existir sin `grupoId` y `fecha` (el
@@ -504,11 +522,16 @@ interface UnidadBase {
 export interface SesionPlan {
   id: Id
   /**
-   * Curso de la unidad al que pertenece esta sesión. Las sesiones son PROPIAS de
-   * cada curso: la misma unidad se desarrolla distinto en 3.º y en 4.º.
+   * Curso de la unidad al que pertenece esta sesión. En una unidad por curso las
+   * sesiones son PROPIAS de cada curso: la misma unidad se desarrolla distinto
+   * en 3.º y en 4.º.
+   *
+   * En una unidad de ciclo (`ambito: 'ciclo'`) vale siempre `NIVEL_COMUN`: la
+   * sesión se escribe una vez y vale para los dos cursos. Lo propio de un curso
+   * va en `adaptaciones`.
    */
   nivel: number
-  /** Posición dentro de las sesiones de SU curso, no del plan entero. */
+  /** Posición dentro de las sesiones de SU curso (o de las comunes), no del plan entero. */
   orden: number
   titulo: string
   /** Descripción de la sesión. Mismo campo que `Sesion.notas`. */
@@ -517,7 +540,29 @@ export interface SesionPlan {
   recursos: Recurso[]
   /** Material necesario, en texto libre. Mismo campo que `Sesion.recursosNecesarios`. */
   recursosNecesarios?: string
+  /**
+   * Solo en unidades de ciclo: versión propia de un curso, por número de curso.
+   *
+   * Vive DENTRO de la sesión común a propósito: la adaptación conserva su sitio
+   * en el orden, y «volver a la versión común» es borrar la clave. Un curso sin
+   * clave usa la versión común.
+   */
+  adaptaciones?: Record<number, ContenidoSesionPlan>
 }
+
+/** Lo que se puede adaptar de una sesión para un curso: su contenido, no su posición. */
+export interface ContenidoSesionPlan {
+  titulo: string
+  notas: string
+  recursos: Recurso[]
+  recursosNecesarios?: string
+}
+
+/**
+ * `SesionPlan.nivel` de las sesiones de una unidad de ciclo. No es un curso
+ * real: el curso lo pone `sesionesDe` al leer la sesión desde uno de ellos.
+ */
+export const NIVEL_COMUN = -1
 
 /**
  * Unidad didáctica de Primaria. Es la unidad de calificación de la Orden
@@ -541,6 +586,14 @@ export interface UnidadPrimaria extends UnidadBase {
    * Un curso ausente del mapa pesa 0, que es lo mismo que no haberlo repartido.
    */
   pesosPorNivel: Record<number, number>
+  /**
+   * `'ciclo'`: la unidad abarca SIEMPRE los dos cursos de su ciclo y sus
+   * sesiones son comunes a ambos, con adaptaciones por curso como excepción.
+   * Ausente: unidad por curso, con sesiones propias de cada uno (lo de siempre).
+   *
+   * Opcional y no indexado: las unidades que ya existían no cambian.
+   */
+  ambito?: 'ciclo'
 }
 
 /**

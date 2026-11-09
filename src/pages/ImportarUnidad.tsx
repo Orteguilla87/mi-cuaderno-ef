@@ -15,6 +15,7 @@ import {
   type ImportacionParseada,
   type SesionParseada,
 } from '../lib/importarTexto'
+import { cicloDeCurso, cursosDelCiclo } from '../lib/ciclos'
 import { ETAPA_POR_DEFECTO, ETAPA_UNICA, ETAPAS_DISPONIBLES, nivelesDe } from '../lib/etapas'
 import { terminologia } from '../lib/literales'
 import { htmlConListas, textoConMarcas } from '../lib/pegadoHtml'
@@ -72,6 +73,10 @@ export function ImportarUnidad() {
   const [tituloUnidad, setTituloUnidad] = useState('')
   const [etapa, setEtapa] = useState<Etapa>(ETAPA_POR_DEFECTO)
   const [nivel, setNivel] = useState(nivelesDe(ETAPA_POR_DEFECTO)[0])
+  // Por defecto, la unidad es del ciclo: los criterios lo son, y así se lleva a
+  // cualquier grupo de los dos cursos sin duplicarla.
+  const [ambito, setAmbito] = useState<'curso' | 'ciclo'>('ciclo')
+  const [cursoA, cursoB] = cursosDelCiclo(cicloDeCurso(nivel))
   const [guardando, setGuardando] = useState(false)
 
   const materiales = useLiveQuery(() => db.materiales.toArray(), [])
@@ -146,7 +151,7 @@ export function ImportarUnidad() {
       const { deshacer } = await importarUnidad(
         etapa === 'infantil'
           ? { ...comunes, etapa: 'infantil' }
-          : { ...comunes, etapa: 'primaria', nivel },
+          : { ...comunes, etapa: 'primaria', nivel, ambito },
       )
 
       const cuantas = sesiones.length
@@ -293,9 +298,27 @@ export function ImportarUnidad() {
                         </button>
                       ))}
                     </div>
+                    <span className="etiqueta mt-3">Para</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setAmbito('ciclo')}
+                        aria-pressed={ambito === 'ciclo'}
+                        className={(ambito === 'ciclo' ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
+                      >
+                        Ciclo {cursoA}º–{cursoB}º
+                      </button>
+                      <button
+                        onClick={() => setAmbito('curso')}
+                        aria-pressed={ambito === 'curso'}
+                        className={(ambito === 'curso' ? 'btn-primario' : 'btn-suave') + ' flex-1 px-0'}
+                      >
+                        Solo {nivel}º
+                      </button>
+                    </div>
                     <p className="mt-1 text-xs texto-suave">
-                      Una importación es una sola unidad de un solo curso. Si el texto trae sesiones
-                      de varios cursos, impórtalo una vez por curso.
+                      {ambito === 'ciclo'
+                        ? `Las sesiones valen para ${cursoA}º y ${cursoB}º: podrás llevarla a cualquier grupo de los dos y adaptar una sesión concreta a un curso.`
+                        : 'Una sola unidad de un solo curso. Si el texto trae sesiones de varios cursos, impórtalo una vez por curso.'}
                     </p>
                   </div>
                 ) : (

@@ -13,6 +13,11 @@ export function cicloDeCurso(curso: number): 1 | 2 | 3 {
   return 3
 }
 
+/** Los dos cursos de un ciclo de Primaria, en orden. */
+export function cursosDelCiclo(ciclo: 1 | 2 | 3): [number, number] {
+  return [ciclo * 2 - 1, ciclo * 2]
+}
+
 /**
  * Ciclo de una unidad a partir de los cursos que abarca.
  *

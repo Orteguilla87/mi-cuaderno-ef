@@ -4,6 +4,7 @@ import { DURACION_SESION_MIN, sumarMinutos } from '../lib/horas'
 import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/migracion15'
 import { normalizarColor } from '../lib/paleta'
 import type {
+  CarpetaUnidades,
   AccionAgente,
   Alumno,
   Asistencia,
@@ -56,6 +57,7 @@ class CuadernoDB extends Dexie {
    * recibe el tipo tal cual, así que la unión se comprueba entera.
    */
   unidades!: Table<UnidadDidactica, string>
+  carpetas!: EntityTable<CarpetaUnidades, 'id'>
   instrumentos!: EntityTable<InstrumentoEval, 'id'>
   calificaciones!: EntityTable<Calificacion, 'id'>
   evalTrimestrales!: EntityTable<EvalTrimestral, 'id'>
@@ -583,6 +585,19 @@ class CuadernoDB extends Dexie {
     this.version(26).stores({
       notasCelda: '[columnaId+alumnoId], columnaId, alumnoId',
     })
+
+    /**
+     * v27 — `carpetas`: carpetas del listado de unidades (`CarpetaUnidades`), y
+     * `UnidadBase.carpetaId`, que NO se indexa (son decenas de unidades).
+     *
+     * ADITIVA, sin `upgrade()`: tabla nueva y vacía; una unidad sin `carpetaId`
+     * es una unidad sin carpeta, que es lo que eran todas. Sin espejo en
+     * `backup.ts`: una copia anterior se restaura sin carpetas, y
+     * `volcarTablas()` mete la tabla sola en la copia cifrada.
+     */
+    this.version(27).stores({
+      carpetas: 'id, orden',
+    })
   }
 }
 
@@ -603,7 +618,7 @@ function diaDeLaSemana(iso: string): number {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 26
+export const ESQUEMA_ACTUAL = 27
 
 export const db = new CuadernoDB()
 
