@@ -3,6 +3,7 @@ import { Minus, Plus, Circle, Search, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Campo } from '../components/Campo'
+import { TIPOS } from '../components/HojaObservacion'
 import { db } from '../db/db'
 import { gruposVisibles } from '../db/grupos'
 import { buscarObservaciones } from '../db/observaciones'
@@ -11,14 +12,13 @@ import { etiquetaDia } from '../lib/fechas'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
 
-const TIPOS: (TipoObservacion | 'todos')[] = [
-  'todos',
-  'conducta',
-  'aprendizaje',
-  'salud',
-  'lesion',
-  'otro',
+// Etiquetas visibles con tilde (Bloque F1: el chip decía «LESION»). El filtro
+// sigue trabajando con el identificador guardado, que no cambia.
+const FILTROS_TIPO: { valor: TipoObservacion | 'todos'; etiqueta: string }[] = [
+  { valor: 'todos', etiqueta: 'Todos' },
+  ...TIPOS,
 ]
+const etiquetaTipo = (t: TipoObservacion) => TIPOS.find((x) => x.valor === t)?.etiqueta ?? t
 
 const ASPECTO_SIGNO: Record<SignoObservacion, { Icono: typeof Plus; clase: string }> = {
   '+': { Icono: Plus, clase: 'bg-lima-oscuro text-white' },
@@ -91,19 +91,19 @@ export function Observaciones({ grupoId, alumnoId }: { grupoId?: string; alumnoI
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {TIPOS.map((t) => (
+            {FILTROS_TIPO.map(({ valor: t, etiqueta }) => (
               <button
                 key={t}
                 onClick={() => setTipo(t)}
                 aria-pressed={tipo === t}
                 className={
-                  'pildora min-h-[40px] px-3 ' +
+                  'pildora min-h-[40px] px-3 normal-case tracking-normal ' +
                   (tipo === t
                     ? 'bg-primario text-white'
                     : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
                 }
               >
-                {t === 'todos' ? 'Todos' : t}
+                {etiqueta}
               </button>
             ))}
           </div>
@@ -154,7 +154,7 @@ export function Observaciones({ grupoId, alumnoId }: { grupoId?: string; alumnoI
                       {nombreAlumno(o.alumnoId)}
                     </button>
                     <div className="cifra text-xs texto-suave">
-                      {etiquetaDia(o.fecha)} · {nombreGrupo(o.grupoId)} · {o.tipo}
+                      {etiquetaDia(o.fecha)} · {nombreGrupo(o.grupoId)} · {etiquetaTipo(o.tipo)}
                     </div>
                     {o.texto && <p className="mt-1 text-sm">{o.texto}</p>}
                     {o.tags.length > 0 && (

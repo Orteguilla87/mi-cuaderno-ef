@@ -44,12 +44,17 @@ const PINTA = {
  * ver ni rastro de ella.
  */
 export function IndicadorSincro() {
-  const { estado, detalle } = useSincro()
+  const { estado, detalle, ultimaSincro } = useSincro()
   const [hoja, setHoja] = useState(false)
 
   if (estado === 'apagado') return null
 
   const { Icono, texto } = PINTA[estado]
+  // El estado en texto para lector y tooltip, con la hora de la última
+  // sincronización buena si se conoce (Bloque F1). No se inventa si no la hay.
+  const etiqueta =
+    (detalle ?? texto) +
+    (ultimaSincro ? ` · Última sincronización: ${new Date(ultimaSincro).toLocaleString('es-ES')}` : '')
   // Conflicto, contraseña que no abre y error son los estados donde hay algo
   // que decidir; en el resto, tocar significa «mira el servidor ya, no esperes
   // al debounce».
@@ -62,8 +67,8 @@ export function IndicadorSincro() {
     <>
       <button
         onClick={() => (problema ? setHoja(true) : void ejecutar())}
-        aria-label={detalle ?? texto}
-        title={detalle ?? texto}
+        aria-label={etiqueta}
+        title={etiqueta}
         className={
           'flex min-h-tap min-w-tap items-center justify-center rounded-full transition ' +
           'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50 active:bg-white/15 ' +

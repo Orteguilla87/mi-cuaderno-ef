@@ -10,7 +10,8 @@ import { CampoArea } from './Campo'
 import { Hoja } from './Hoja'
 import { HojaConfirmar } from './HojaConfirmar'
 
-const TIPOS: { valor: TipoObservacion; etiqueta: string }[] = [
+/** Etiqueta visible de cada tipo. El `valor` es lo que se guarda: no se toca. */
+export const TIPOS: { valor: TipoObservacion; etiqueta: string }[] = [
   { valor: 'conducta', etiqueta: 'Conducta' },
   { valor: 'aprendizaje', etiqueta: 'Aprendizaje' },
   { valor: 'salud', etiqueta: 'Salud' },

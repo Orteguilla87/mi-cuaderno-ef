@@ -1,5 +1,5 @@
 import { MoreHorizontal } from 'lucide-react'
-import { PESTANAS, type Pestana } from '../lib/navegacion'
+import { masActivo, pestanaDe, PESTANAS, raizDe, type Pestana } from '../lib/navegacion'
 import { navegar } from '../lib/router'
 
 /**
@@ -14,13 +14,13 @@ const PESTANA_MAS: Pestana = {
   ruta: '/mas',
   etiqueta: 'Más',
   Icono: MoreHorizontal,
-  // Todo lo que cuelga de «Más» deja la pestaña marcada, para que el usuario
-  // sepa de dónde ha salido la pantalla en la que está.
-  incluye: ['evaluacion', 'informes', 'calendario', 'herramientas', 'equipos', 'ajustes'],
+  // «Más» se marca cuando la ruta no es de ninguna pestaña (`masActivo`): no
+  // hay lista a mano que se quede corta al añadir una pantalla nueva.
 }
 
 export function BottomNav({ ruta }: { ruta: string }) {
-  const raiz = ruta.split('/')[1] || 'hoy'
+  const raiz = raizDe(ruta)
+  const pestana = pestanaDe(raiz)
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-nav border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] dark:border-noche-borde dark:bg-noche-superficie lg:hidden">
@@ -28,12 +28,12 @@ export function BottomNav({ ruta }: { ruta: string }) {
           isla de 512 px centrada: los cinco destinos caen bajo los pulgares,
           que en apaisado están en los extremos, no en el centro. */}
       <ul className="mx-auto flex max-w-lg px-1 apaisado:max-w-none">
-        {[...PESTANAS, PESTANA_MAS].map(({ ruta: r, etiqueta, Icono, incluye }) => {
-          const activa = r === `/${raiz}` || !!incluye?.includes(raiz)
+        {[...PESTANAS, PESTANA_MAS].map(({ ruta: r, etiqueta, Icono }) => {
+          const activa = r === PESTANA_MAS.ruta ? masActivo(raiz) : pestana?.ruta === r
           return (
             <li key={r} className="flex-1">
               <button
-                onClick={() => navegar(r)}
+                onClick={() => navegar(r, { raiz: true })}
                 aria-current={activa ? 'page' : undefined}
                 className="flex min-h-tap w-full flex-col items-center gap-1 py-1.5 apaisado:py-1
                            focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 focus-visible:ring-inset"

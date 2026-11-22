@@ -40,6 +40,13 @@
     :root {
       --alto-nav: 0px;
     }
+    /* Bloque F1: el scroll principal es el del documento. Sin reservar el hueco
+       de su barra, las vistas cortas (sin barra) y las largas (con ella) se
+       desplazaban 8 px en horizontal al pasar de una a otra. Solo escritorio:
+       en móvil la barra flota y no ocupa ancho. */
+    html {
+      scrollbar-gutter: stable;
+    }
   }
   /* Móvil en horizontal: al girar, lo escaso es la altura y lo que sobra es
      el ancho, así que TODO lo que reserva hueco fijo encoge. `BottomNav` se

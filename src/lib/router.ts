@@ -17,8 +17,32 @@ export function rutaActual(): string {
   return h.startsWith('/') ? h : '/hoy'
 }
 
-export function navegar(ruta: string): void {
+/**
+ * Navega apilando una entrada nueva. Esa entrada guarda en `history.state` de
+ * dónde se vino (`origen`), y la flecha «Atrás» de la Cabecera solo aparece si
+ * lo hay: un enlace interno lo deja; el menú (`raiz: true`), la URL directa y la
+ * recarga, no. Al vivir en la propia entrada, sobrevive a atrás/adelante del
+ * navegador.
+ */
+export function navegar(ruta: string, { raiz = false }: { raiz?: boolean } = {}): void {
+  const anterior = rutaActual()
+  if (anterior === ruta) return
   window.location.hash = ruta
+  window.history.replaceState({ origen: raiz ? null : anterior }, '')
+}
+
+/** Ruta desde la que se llegó a la actual por un enlace interno, o null. */
+export function origenActual(): string | null {
+  const s = window.history.state as { origen?: string | null } | null
+  return s?.origen ?? null
+}
+
+/** `origenActual()` reactivo al cambio de ruta. */
+export function useOrigen(): string | null {
+  // `useRuta` solo está para volver a renderizar al cambiar de ruta: el origen
+  // se relee de `history.state` en cada render.
+  useRuta()
+  return origenActual()
 }
 
 /**

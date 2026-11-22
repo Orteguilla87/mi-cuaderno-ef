@@ -1,7 +1,7 @@
 import { ChevronLeft } from 'lucide-react'
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { IndicadorSincro } from './IndicadorSincro'
-import { volver } from '../lib/router'
+import { useOrigen, volver } from '../lib/router'
 
 /**
  * Barra sólida en primario: es lo primero que se ve y lo que da identidad a la
@@ -27,6 +27,11 @@ export function Cabecera({
   acciones?: ReactNode
 }) {
   const ref = useRef<HTMLElement>(null)
+  // `atras` dice que la pantalla ADMITE volver; la flecha solo sale si de verdad
+  // se llegó desde otra vista de la app (Bloque F1). Desde el menú, la URL
+  // directa o una recarga, `history.back()` no llevaría a ningún sitio de la app.
+  const origen = useOrigen()
+  const conAtras = atras && origen !== null
 
   // Publica su alto como `--alto-cabecera`: lo que hace scroll por debajo de
   // esta barra fija (la rejilla del Cuaderno) necesita saber cuánto le tapa.
@@ -51,7 +56,7 @@ export function Cabecera({
     // la lista de debajo.
     <header ref={ref} className="sticky top-0 z-20 bg-primario px-4 pb-4 pt-3 text-white shadow-lg shadow-primario/20 dark:bg-primario-oscuro apaisado:pb-2 apaisado:pt-2">
       <div className="flex items-center gap-2">
-        {atras && (
+        {conAtras && (
           <button
             onClick={volver}
             className="-ml-3 flex min-h-tap min-w-tap items-center justify-center rounded-full text-white/90 transition active:bg-white/15

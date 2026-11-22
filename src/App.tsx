@@ -15,6 +15,7 @@ import { sembrarInventario } from './db/inventario'
 import { arrancar as arrancarSincro } from './db/sincro'
 import { MS_INACTIVIDAD } from './lib/pin'
 import { INFANTIL_HABILITADO } from './lib/etapas'
+import { tituloDeRuta } from './lib/navegacion'
 import { segmentos, useRuta } from './lib/router'
 import { useBloqueo } from './store/bloqueo'
 import { useMarcador } from './store/marcador'
@@ -181,6 +182,12 @@ export default function App() {
       document.body.style.overflow = ''
     }
   }, [capasAbiertas])
+
+  // Título de la pestaña por vista (Bloque F1): con varias pestañas abiertas,
+  // «Cuaderno EF/Psico» en todas no decía cuál era cuál.
+  useEffect(() => {
+    document.title = tituloDeRuta(ruta)
+  }, [ruta])
 
   // Tema y modo pista se aplican en <html> para que alcancen también a los portales.
   useEffect(() => {

@@ -15,6 +15,7 @@ export function SelectorGrupo({
   valor,
   onCambio,
   tono = 'claro',
+  sinSeleccion = false,
 }: {
   grupos: Grupo[]
   valor: string | null
@@ -30,10 +31,15 @@ export function SelectorGrupo({
    * dos copias se separarían a la primera.
    */
   tono?: 'claro' | 'cabecera'
+  /**
+   * Sin valor, empieza en «Elige un grupo» en vez de pintar el primero de la
+   * lista: lo que se ve tiene que ser lo que hay elegido (Vincular alumnado).
+   */
+  sinSeleccion?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
   const contenedorRef = useRef<HTMLDivElement>(null)
-  const grupo = grupos.find((g) => g.id === valor) ?? grupos[0]
+  const grupo = grupos.find((g) => g.id === valor) ?? (sinSeleccion ? undefined : grupos[0])
 
   useEffect(() => {
     if (!abierto) return

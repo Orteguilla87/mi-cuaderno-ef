@@ -21,6 +21,9 @@ export default {
       // sin depender del orden en que estén escritas las clases.
       screens: {
         apaisado: { raw: '(max-width: 1023px) and (orientation: landscape)' },
+        // Escritorio con poca altura (portátil a 1536×695, Bloque F1): la
+        // barra lateral compacta sus entradas para que todas quepan sin scroll.
+        bajo: { raw: '(min-width: 1024px) and (max-height: 759px)' },
       },
       colors: {
         primario: {

@@ -34,13 +34,22 @@ import { useUI } from '../store/ui'
  */
 export function VincularAlumnado() {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
-  const [idA, setIdA] = useState<string | null>(null)
+  const [elegidoA, setIdA] = useState<string | null>(null)
   const [idB, setIdB] = useState<string | null>(null)
 
   const grupos = useLiveQuery(
     async () => (await db.grupos.toArray()).sort((x, y) => x.orden - y.orden),
     [],
   )
+  // El primer selector enseña el primer grupo mientras no se elija otro: el
+  // estado tiene que ser lo que se ve. El segundo empieza vacío y nunca ofrece
+  // el grupo del primero (Bloque F1).
+  const idA = elegidoA ?? grupos?.[0]?.id ?? null
+  const gruposB = grupos?.filter((g) => g.id !== idA) ?? []
+  function elegirA(id: string) {
+    setIdA(id)
+    if (id === idB) setIdB(null)
+  }
 
   const alumnosA = useLiveQuery(async () => (idA ? activos(idA) : []), [idA]) ?? []
   const alumnosB = useLiveQuery(async () => (idB ? activos(idB) : []), [idB]) ?? []
@@ -104,8 +113,8 @@ export function VincularAlumnado() {
             <section>
               <TituloSeccion>Qué dos grupos comparar</TituloSeccion>
               <div className="space-y-2">
-                <SelectorGrupo grupos={grupos} valor={idA} onCambio={setIdA} />
-                <SelectorGrupo grupos={grupos} valor={idB} onCambio={setIdB} />
+                <SelectorGrupo grupos={grupos} valor={idA} onCambio={elegirA} />
+                <SelectorGrupo grupos={gruposB} valor={idB} onCambio={setIdB} sinSeleccion />
               </div>
               {idA !== null && idA === idB && (
                 <p className="mt-2 text-sm text-acento">Elige dos grupos distintos.</p>

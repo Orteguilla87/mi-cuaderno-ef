@@ -33,7 +33,10 @@ export interface Pestana {
 
 export const PESTANAS: Pestana[] = [
   { ruta: '/hoy', etiqueta: 'Hoy', Icono: CalendarDays },
-  { ruta: '/cuaderno', etiqueta: 'Cuaderno', Icono: Table2, incluye: ['rubricas'] },
+  // Rúbricas y Observaciones NO van en `incluye`: tienen entrada propia en
+  // `ENTRADAS_MAS`, y meterlas aquí marcaba dos entradas a la vez en la barra
+  // lateral (Bloque F1).
+  { ruta: '/cuaderno', etiqueta: 'Cuaderno', Icono: Table2 },
   {
     ruta: '/grupos',
     etiqueta: 'Grupos',
@@ -41,7 +44,7 @@ export const PESTANAS: Pestana[] = [
     // 'infantil' sale de la lista mientras la etapa esté apagada (lib/etapas.ts).
     // Devolverlo aquí es todo lo que hace falta para que la pestaña vuelva a
     // marcarse activa en el registro de Infantil.
-    incluye: ['alumnos', 'asistencia', 'observaciones'],
+    incluye: ['alumnos', 'asistencia'],
   },
   {
     ruta: '/planificador',
@@ -147,3 +150,81 @@ export const ENTRADAS_MAS: EntradaMas[] = [
     disponible: true,
   },
 ]
+
+// ——— Sección activa, grupos de la barra lateral y título (Bloque F1) ———
+
+/** Primer segmento de la ruta: '/grupos/abc' → 'grupos'. Vacía → 'hoy'. */
+export function raizDe(ruta: string): string {
+  return ruta.split('/')[1] || 'hoy'
+}
+
+/** Pestaña de la barra (móvil) o de la lista lateral a la que pertenece `raiz`, si alguna. */
+export function pestanaDe(raiz: string): Pestana | undefined {
+  return PESTANAS.find((p) => p.ruta === `/${raiz}` || !!p.incluye?.includes(raiz))
+}
+
+/** Secciones que, sin entrada propia, cuelgan de una entrada de `ENTRADAS_MAS`. */
+const INCLUYE_MAS: Record<string, string[]> = {
+  '/herramientas': ['equipos'],
+}
+
+/**
+ * Ruta de la ÚNICA entrada del menú de escritorio que corresponde a `raiz`, o
+ * `undefined` si ninguna (p. ej. /mas). Primero las pestañas, luego «Más»:
+ * nunca dos a la vez.
+ */
+export function entradaActiva(raiz: string): string | undefined {
+  const p = pestanaDe(raiz)
+  if (p) return p.ruta
+  const e = ENTRADAS_MAS.find(
+    (x) => x.ruta === `/${raiz}` || !!INCLUYE_MAS[x.ruta]?.includes(raiz),
+  )
+  return e?.ruta
+}
+
+/** En la barra inferior, «Más» va activo solo si la ruta no es de una pestaña. */
+export function masActivo(raiz: string): boolean {
+  return !pestanaDe(raiz)
+}
+
+/** Grupos de la barra lateral de escritorio. Ajustes va aparte, fijo abajo. */
+export const GRUPOS_LATERAL: { titulo: string; rutas: string[] }[] = [
+  { titulo: 'Día a día', rutas: ['/hoy', '/cuaderno', '/grupos', '/planificador'] },
+  { titulo: 'Evaluación', rutas: ['/rubricas', '/observaciones', '/cobertura', '/informes'] },
+  { titulo: 'Alumnado', rutas: ['/etiquetas-alumnado', '/vincular-alumnado'] },
+  { titulo: 'Aula', rutas: ['/inventario', '/calendario', '/herramientas'] },
+]
+export const RUTA_AJUSTES = '/ajustes'
+
+/** Icono y etiqueta de cualquier ruta del menú, venga de PESTANAS o de ENTRADAS_MAS. */
+export function entradaMenu(ruta: string): { etiqueta: string; Icono: LucideIcon } | undefined {
+  const p = PESTANAS.find((x) => x.ruta === ruta)
+  if (p) return { etiqueta: p.etiqueta, Icono: p.Icono }
+  const e = ENTRADAS_MAS.find((x) => x.ruta === ruta)
+  return e && { etiqueta: e.titulo, Icono: e.Icono }
+}
+
+/** Vistas sin entrada en el menú que también merecen su título de pestaña. */
+const TITULOS_SUELTOS: Record<string, string> = {
+  mas: 'Más',
+  alumnos: 'Alumno',
+  asistencia: 'Pase de lista',
+  sesiones: 'Sesión',
+  juegos: 'Banco de juegos',
+  equipos: 'Equipos',
+  infantil: 'Infantil',
+  evaluacion: 'Evaluación final',
+}
+
+/** Título de la pestaña del navegador: «<Vista> · Cuaderno EF». */
+export function tituloDeRuta(ruta: string): string {
+  const raiz = raizDe(ruta)
+  const segundo = ruta.split('/')[2]
+  let vista: string | undefined
+  if (raiz === 'grupos' && segundo) vista = 'Grupo'
+  else if (raiz === 'planificador' && segundo === 'importar') vista = 'Importar unidad'
+  else if (raiz === 'inventario' && segundo === 'etiquetas') vista = 'Etiquetas de material'
+  else if (raiz === 'inventario' && segundo === 'importar') vista = 'Importar inventario'
+  else vista = TITULOS_SUELTOS[raiz] ?? entradaMenu(`/${raiz}`)?.etiqueta
+  return vista ? `${vista} · Cuaderno EF` : 'Cuaderno EF'
+}
