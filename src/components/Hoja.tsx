@@ -11,11 +11,14 @@ export function Hoja({
   titulo,
   onCerrar,
   children,
+  ancho,
 }: {
   abierta: boolean
   titulo: string
   onCerrar: () => void
   children: ReactNode
+  /** Clases extra de ancho del panel, solo con prefijo `lg:` (de `DISPOSICION`). */
+  ancho?: string
 }) {
   useCapaAbierta(abierta)
   const idTitulo = useId()
@@ -80,7 +83,7 @@ export function Hoja({
       />
       <div
         ref={refPanel}
-        className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-xl2 bg-hueso p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo apaisado:max-w-3xl apaisado:rounded-xl2 apaisado:pb-4 lg:rounded-xl2 lg:pb-4"
+        className={`relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-xl2 bg-hueso p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-noche-fondo apaisado:max-w-3xl apaisado:rounded-xl2 apaisado:pb-4 lg:rounded-xl2 lg:pb-4${ancho ? ` ${ancho}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={idTitulo}

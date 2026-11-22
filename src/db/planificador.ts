@@ -253,8 +253,56 @@ function franjaDe(s: Sesion, grupo: Grupo): string {
   return delDia[0] ?? ''
 }
 
+/** Resultado de correr contenido hacia delante (`desplazarContenido`). */
+export interface Desplazamiento {
+  movimientos: MovimientoContenido[]
+  /** Filas destino, tal como estaban. */
+  tocadas: Sesion[]
+  /** Las mismas filas, con el contenido que reciben. */
+  despues: Sesion[]
+  /** Sesiones vacías que absorbieron una posición, en orden. */
+  seDetieneEn: ClaseEnPrevia[]
+  /** Contenido que no encontró sitio: nunca se crea una sesión para él. */
+  sinUbicacion: { sesion: Sesion; de: ClaseEnPrevia }[]
+}
+
+/**
+ * EL desplazamiento de «Mover a la derecha», para k contenidos a la vez.
+ *
+ * `enMano` es una cola: el contenido que busca sitio, en orden. Cada destino
+ * recibe la cabeza de la cola; si tenía contenido, ese pasa al final de la cola
+ * a buscar el siguiente; si estaba vacío, absorbe una posición. Se para cuando
+ * la cola se vacía. Con un solo contenido en mano es exactamente el bucle de
+ * siempre: se para en la primera sesión vacía.
+ *
+ * Puro: no lee ni escribe la base. Los contenidos vacíos de `enMano` se
+ * ignoran: una sesión vacía ya es un hueco, no hay nada que correr.
+ */
+export function desplazarContenido(
+  enMano: { sesion: Sesion; franja: string }[],
+  posteriores: SesionEnOrden[],
+  unidadDe: (s: Sesion) => string | null,
+): Desplazamiento {
+  const r: Desplazamiento = { movimientos: [], tocadas: [], despues: [], seDetieneEn: [], sinUbicacion: [] }
+  const cola = enMano
+    .filter((x) => !sesionVacia(x.sesion))
+    .map((x) => ({ sesion: x.sesion, de: { fecha: x.sesion.fecha, franja: x.franja } }))
+  for (const { sesion: destino, franja: franjaDestino } of posteriores) {
+    const cabeza = cola.shift()
+    if (!cabeza) break
+    const a = { fecha: destino.fecha, franja: franjaDestino }
+    r.movimientos.push({ titulo: tituloVisible(cabeza.sesion), unidad: unidadDe(cabeza.sesion), de: cabeza.de, a })
+    r.tocadas.push(destino)
+    r.despues.push({ ...sinContenido(destino), ...contenidoDe(cabeza.sesion) })
+    if (sesionVacia(destino)) r.seDetieneEn.push(a)
+    else cola.push({ sesion: destino, de: a })
+  }
+  r.sinUbicacion = cola
+  return r
+}
+
 /** Lo que se mueve de una sesión a otra: todo menos lo que la hace ser esa clase. */
-function contenidoDe(s: Sesion): Partial<Sesion> {
+export function contenidoDe(s: Sesion): Partial<Sesion> {
   const { id, grupoId, fecha, franjaInicio, horaInicio, horaFin, ...contenido } = s
   void [id, grupoId, fecha, franjaInicio, horaInicio, horaFin]
   return contenido
@@ -289,25 +337,13 @@ async function calcularEliminacion(sesionId: string, modo: ModoEliminarClase) {
       franja,
     ).filter((x) => x.sesion.id !== sesion.id && (x.sesion.fecha > sesion.fecha || x.franja > franja))
 
-    // `enMano` es el contenido que busca sitio: primero el de la eliminada; al
-    // caer sobre una sesión con contenido, el de esa pasa a buscar la siguiente.
-    let enMano: Sesion | null = sesion
-    let desde: ClaseEnPrevia = { fecha: sesion.fecha, franja }
-    for (const { sesion: destino, franja: franjaDestino } of posteriores) {
-      if (!enMano) break
-      const a = { fecha: destino.fecha, franja: franjaDestino }
-      movimientos.push({ titulo: tituloVisible(enMano), unidad: unidadDe(enMano), de: desde, a })
-      tocadas.push(destino)
-      despues.push({ ...sinContenido(destino), ...contenidoDe(enMano) })
-      if (sesionVacia(destino)) {
-        seDetieneEn = a
-        enMano = null
-      } else {
-        enMano = destino
-        desde = a
-      }
-    }
-    if (enMano) sinUbicacion = { titulo: tituloVisible(enMano), unidad: unidadDe(enMano) }
+    const r = desplazarContenido([{ sesion, franja }], posteriores, unidadDe)
+    movimientos.push(...r.movimientos)
+    tocadas.push(...r.tocadas)
+    despues.push(...r.despues)
+    seDetieneEn = r.seDetieneEn[0] ?? null
+    const sobra = r.sinUbicacion[0]
+    if (sobra) sinUbicacion = { titulo: tituloVisible(sobra.sesion), unidad: unidadDe(sobra.sesion) }
   }
 
   // La clase del día queda cancelada, salvo que no salga del horario (sesión

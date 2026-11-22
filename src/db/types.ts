@@ -305,6 +305,22 @@ export interface Recurso {
   valor: string
 }
 
+/**
+ * Contenido de una sesión que se quedó sin clase donde ir (bandeja «Sin clase
+ * asignada», v28). Lo deja «Pasar programación al siguiente día» cuando el
+ * desplazamiento llega a fin de curso: nada se borra, se aparca.
+ */
+export interface ContenidoSinClase {
+  id: Id
+  grupoId: Id
+  /** El contenido tal cual (`contenidoDe`): sin id, grupo, fecha ni franja. */
+  contenido: Partial<Sesion>
+  /** Clase de la que salió en último lugar. */
+  origen: { fecha: string; franja: string }
+  /** ISO de cuándo se aparcó. */
+  creado: string
+}
+
 export interface Sesion {
   id: Id
   grupoId: Id

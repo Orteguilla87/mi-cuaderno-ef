@@ -49,4 +49,16 @@ export const DISPOSICION = {
   calendario: { rejilla: 'grid grid-cols-1 gap-2 apaisado:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3' },
   /** Calendario: clases quitadas del día elegido. */
   calendarioCanceladas: { rejilla: 'grid grid-cols-1 gap-2 apaisado:grid-cols-2 lg:grid-cols-2' },
+
+  /**
+   * Hoja «Pasar programación al siguiente día».
+   * - movil: una columna; cada movimiento salta de línea, sin scroll lateral.
+   * - escritorio: panel ancho, grupos a la izquierda y previa a la derecha,
+   *   movimientos en dos columnas.
+   */
+  pasarDia: {
+    panelEscritorio: 'lg:max-w-5xl',
+    cuerpo: 'grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]',
+    movimientos: 'grid grid-cols-1 gap-1 lg:grid-cols-2 lg:gap-x-6',
+  },
 } as const

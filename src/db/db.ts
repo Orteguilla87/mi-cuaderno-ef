@@ -5,6 +5,7 @@ import { crearFilasDeColumnas, migrarColumnas, migrarUnidades } from '../lib/mig
 import { normalizarColor } from '../lib/paleta'
 import type {
   CarpetaUnidades,
+  ContenidoSinClase,
   AccionAgente,
   Alumno,
   Asistencia,
@@ -58,6 +59,7 @@ class CuadernoDB extends Dexie {
    */
   unidades!: Table<UnidadDidactica, string>
   carpetas!: EntityTable<CarpetaUnidades, 'id'>
+  contenidoSinClase!: EntityTable<ContenidoSinClase, 'id'>
   instrumentos!: EntityTable<InstrumentoEval, 'id'>
   calificaciones!: EntityTable<Calificacion, 'id'>
   evalTrimestrales!: EntityTable<EvalTrimestral, 'id'>
@@ -598,6 +600,19 @@ class CuadernoDB extends Dexie {
     this.version(27).stores({
       carpetas: 'id, orden',
     })
+
+    /**
+     * v28 — `contenidoSinClase`: la bandeja «Sin clase asignada» de cada grupo.
+     * Recoge el contenido que «Pasar programación al siguiente día» no puede
+     * colocar porque el curso se acaba antes: no se borra ni se crea una sesión
+     * para él, se aparca aquí hasta que el maestro lo coloque o lo descarte.
+     *
+     * ADITIVA, sin `upgrade()`: tabla nueva y vacía. `volcarTablas()` la mete
+     * sola en la copia cifrada y en la sincronización.
+     */
+    this.version(28).stores({
+      contenidoSinClase: 'id, grupoId',
+    })
   }
 }
 
@@ -618,7 +633,7 @@ function diaDeLaSemana(iso: string): number {
  * con el último `version()` de arriba: al añadir uno nuevo, súbela y añade su
  * migración en `src/db/backup.ts` si el cambio afecta a los datos.
  */
-export const ESQUEMA_ACTUAL = 27
+export const ESQUEMA_ACTUAL = 28
 
 export const db = new CuadernoDB()
 

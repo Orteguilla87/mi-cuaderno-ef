@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  CalendarClock,
   Archive,
   ArchiveRestore,
   CalendarOff,
@@ -29,6 +30,7 @@ import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
 import { Campo, CampoArea } from '../components/Campo'
 import { Hoja } from '../components/Hoja'
+import { HojaPasarDia } from '../components/HojaPasarDia'
 import { NavegadorFecha } from '../components/NavegadorFecha'
 import { Recursos } from '../components/Recursos'
 import { SelectorCriterios } from '../components/SelectorCriterios'
@@ -139,6 +141,7 @@ export function Planificador() {
   const setVista = useVistaPlanificador((s) => s.fijarVista)
   const lunes = useVistaPlanificador((s) => s.lunes)
   const setLunes = useVistaPlanificador((s) => s.fijarLunes)
+  const [pasandoDia, setPasandoDia] = useState(false)
 
   return (
     <>
@@ -176,10 +179,19 @@ export function Planificador() {
           </button>
         </div>
 
+        {(vista === 'grupo' || vista === 'semana') && (
+          <button className="btn-suave w-full lg:w-auto" onClick={() => setPasandoDia(true)}>
+            <CalendarClock size={18} aria-hidden />
+            Pasar programación al siguiente día
+          </button>
+        )}
+
         {vista === 'grupo' && <PlanGrupo />}
         {vista === 'semana' && <VistaSemana lunes={lunes} onCambiarSemana={setLunes} />}
         {vista === 'unidades' && <VistaUnidades />}
       </div>
+
+      <HojaPasarDia abierta={pasandoDia} fechaInicial={aISO()} onCerrar={() => setPasandoDia(false)} />
     </>
   )
 }

@@ -177,6 +177,13 @@ const PROHIBIDAS: { patron: RegExp; motivo: string }[] = [
       'Volcar una unidad a la planificación no se hace por voz: ocupa clases del calendario y hay que ver la previa antes. Está en Planificador → Unidades.',
   },
   {
+    // «Pasar programación al siguiente día» corre el plan de TODOS los grupos.
+    patron:
+      /\b(pasa[rn]?|pasame|corre[rn]?|retrasa[rn]?|aplaza[rn]?|adelanta[rn]?|mueve|mover)\b.{0,25}\b(programacion|planificacion|siguiente dia|dia siguiente)\b/,
+    motivo:
+      'Pasar la programación al siguiente día no se hace por voz: corre el plan de todos los grupos. Está en el Planificador y en Hoy, con su previa y su deshacer.',
+  },
+  {
     patron: /\b(mover|mueve|elimina[rn]?|borra[rn]?|quita[rn]?)\b.{0,20}\bsesion(es)?\b/,
     motivo:
       'Mover o eliminar sesiones no se hace por voz: cambia la planificación del curso. Está en el Planificador, con su previa y su deshacer.',

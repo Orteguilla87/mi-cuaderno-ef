@@ -222,6 +222,12 @@ describe('prohibidas por voz', () => {
     expect(rechaza('exporta los datos')).toMatch(/Ajustes/)
     expect(rechaza('sincroniza ahora')).toMatch(/Ajustes/)
   })
+
+  it('pasar la programación al siguiente día, tampoco', () => {
+    expect(rechaza('pasa la programación al siguiente día')).toMatch(/todos los grupos/)
+    expect(rechaza('retrasa la programación de hoy')).toMatch(/todos los grupos/)
+    expect(rechaza('corre la planificación un día')).toMatch(/todos los grupos/)
+  })
 })
 
 describe('órdenes encadenadas', () => {

@@ -54,6 +54,22 @@ describe('exportarBackup / restaurarBackup — ida y vuelta contra Dexie real', 
     expect(alumna?.nivelMotriz).toBe(4)
     expect(await db.cursos.get(ID_CURSO)).toMatchObject({ nombre: '2026-2027' })
   })
+
+  it('la bandeja «Sin clase asignada» (v28) viaja en la copia', async () => {
+    const aparcado = {
+      id: 'sc1',
+      grupoId: ID_GRUPO,
+      contenido: { titulo: 'Circuito', juegos: [], notas: '', recursos: [] },
+      origen: { fecha: '2027-06-14', franja: '09:00' },
+      creado: '2026-11-22T10:00:00.000Z',
+    }
+    await db.contenidoSinClase.add(aparcado)
+    const { fichero, cabecera } = await exportarBackup(CLAVE)
+    expect(cabecera.registros.contenidoSinClase).toBe(1)
+    await vaciarBase()
+    await restaurarBackup(fichero, CLAVE)
+    expect(await db.contenidoSinClase.get('sc1')).toEqual(aparcado)
+  })
 })
 
 describe('opción `conservar` — lo que no debe viajar entre dispositivos', () => {

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock,
+  CalendarClock,
   Package,
   Share2,
   Table2,
@@ -12,6 +13,7 @@ import {
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
 import { Cabecera } from '../components/Cabecera'
+import { HojaPasarDia } from '../components/HojaPasarDia'
 import { NavegadorFecha } from '../components/NavegadorFecha'
 import { TextoLargo } from '../components/TextoLargo'
 import { TextoMarkdown } from '../components/TextoMarkdown'
@@ -93,6 +95,7 @@ interface Clase {
 
 export function Hoy() {
   const [vista, setVista] = useState<'dia' | 'semana'>('dia')
+  const [pasandoDia, setPasandoDia] = useState(false)
   const hoy = aISO()
   // Fecha que se está consultando: compartida con Pasar lista (§ Bloque 3),
   // así que entrar a un grupo o a pasar lista y volver con «Atrás» la
@@ -319,10 +322,19 @@ export function Hoy() {
                 Compartir el día (PDF)
               </button>
             )}
+
+            {clases?.some((c) => c.sesion) && (
+              <button className="btn-suave w-full" onClick={() => setPasandoDia(true)}>
+                <CalendarClock size={18} aria-hidden />
+                Pasar programación al siguiente día
+              </button>
+            )}
           </>
         )}
       </div>
       )}
+
+      <HojaPasarDia abierta={pasandoDia} fechaInicial={fecha} onCerrar={() => setPasandoDia(false)} />
     </>
   )
 }

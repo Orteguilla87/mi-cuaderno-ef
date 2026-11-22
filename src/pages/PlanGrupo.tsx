@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { CalendarPlus, Clipboard, ClipboardX, Clock, Copy, Trash2, Undo2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BadgeEtapa } from '../components/Badge'
+import { BandejaSinClase } from '../components/BandejaSinClase'
 import { Hoja } from '../components/Hoja'
 import { HojaConfirmar } from '../components/HojaConfirmar'
 import { SelectorGrupo } from '../components/SelectorGrupo'
@@ -25,7 +26,7 @@ import { DISPOSICION } from '../lib/disposicion'
 import { aISO, diaLectivo, formatoDiaCorto } from '../lib/fechas'
 import { rotuloOrdinal } from '../lib/clasesDelDia'
 import { navegar } from '../lib/router'
-import { cambiosPosteriores, deshacerLote, type LotePlan } from '../db/lotes'
+import { cambiosPosteriores, deshacerLote, loteDelGrupo, type LotePlan } from '../db/lotes'
 import { useGrupoActivo } from '../store/grupoActivo'
 import { MAX_LOTES, useLotesPlan } from '../store/lotesPlan'
 import { usePortapapeles } from '../store/portapapeles'
@@ -191,7 +192,7 @@ function ColumnaGrupo({
   // Se lee la lista entera y se filtra aquí: filtrar dentro del selector daría
   // un array nuevo en cada lectura y el store volvería a pintar sin parar.
   const todosLosLotes = useLotesPlan((s) => s.lotes)
-  const lotes = todosLosLotes.filter((l) => l.grupoId === grupo.id)
+  const lotes = todosLosLotes.filter((l) => loteDelGrupo(l, grupo.id))
 
   const sesiones = useLiveQuery(async () => sesionesDeGrupo(grupo.id), [grupo.id])
   const unidades = useLiveQuery(() => db.unidades.toArray(), [])
@@ -290,6 +291,8 @@ function ColumnaGrupo({
           )}
         </div>
       </div>
+
+      <BandejaSinClase grupo={grupo} />
 
       {grupo.horario.length === 0 ? (
         <div className="tarjeta text-center">
@@ -506,6 +509,11 @@ function HojaDeshacer({
                 className={'tarjeta py-2 text-sm ' + (i === 0 ? 'border-l-4 border-primario' : 'opacity-60')}
               >
                 <p className="font-semibold">{l.descripcion}</p>
+                {(l.grupoIds?.length ?? 0) > 1 && (
+                  <p className="text-xs texto-suave">
+                    Afecta a {l.grupoIds!.length} grupos: deshacerla los repone todos.
+                  </p>
+                )}
                 <p className="cifra text-xs texto-suave">{cuando(l.creado)}</p>
               </li>
             ))}

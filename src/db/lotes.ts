@@ -1,5 +1,5 @@
 import { db, nuevoId } from './db'
-import type { ClaseCancelada, Sesion } from './types'
+import type { ClaseCancelada, ContenidoSinClase, Sesion } from './types'
 
 /**
  * Lotes de cambios en la planificación (§ petición: deshacer transversal).
@@ -16,16 +16,27 @@ import type { ClaseCancelada, Sesion } from './types'
  * viajar en la copia cifrada ni en la sincronización.
  */
 
-export type TipoLote = 'volcado' | 'vaciar-mover' | 'eliminar-mover' | 'eliminar'
+export type TipoLote = 'volcado' | 'vaciar-mover' | 'eliminar-mover' | 'eliminar' | 'pasar-dia'
 
 export interface EstadoLote {
   sesiones: Sesion[]
   cancelaciones: ClaseCancelada[]
+  /**
+   * Bandeja «Sin clase asignada» (v28). Ausente en los lotes que no la tocan,
+   * también en los guardados antes de que existiera.
+   */
+  sinClase?: ContenidoSinClase[]
 }
 
 export interface LotePlan {
   id: string
   grupoId: string
+  /**
+   * Todos los grupos que toca, cuando son varios («Pasar programación al
+   * siguiente día»). Ausente en los lotes de un solo grupo. Deshacer repone
+   * TODOS a la vez, se pulse desde el grupo que se pulse.
+   */
+  grupoIds?: string[]
   tipo: TipoLote
   /** Frase para el historial: qué se hizo y sobre qué. */
   descripcion: string
@@ -83,7 +94,9 @@ export async function deshacerLote(lote: LotePlan): Promise<void> {
   const sesionesAntes = new Set(lote.antes.sesiones.map((s) => s.id))
   const cancelacionesAntes = new Set(lote.antes.cancelaciones.map((c) => c.id))
 
-  await db.transaction('rw', db.sesiones, db.clasesCanceladas, async () => {
+  const sinClaseAntes = new Set((lote.antes.sinClase ?? []).map((c) => c.id))
+
+  await db.transaction('rw', db.sesiones, db.clasesCanceladas, db.contenidoSinClase, async () => {
     const sesionesNuevas = lote.despues.sesiones.filter((s) => !sesionesAntes.has(s.id))
     if (sesionesNuevas.length) await db.sesiones.bulkDelete(sesionesNuevas.map((s) => s.id))
     if (lote.antes.sesiones.length) await db.sesiones.bulkPut(lote.antes.sesiones)
@@ -94,5 +107,14 @@ export async function deshacerLote(lote: LotePlan): Promise<void> {
     if (cancelacionesNuevas.length)
       await db.clasesCanceladas.bulkDelete(cancelacionesNuevas.map((c) => c.id))
     if (lote.antes.cancelaciones.length) await db.clasesCanceladas.bulkPut(lote.antes.cancelaciones)
+
+    const sinClaseNuevas = (lote.despues.sinClase ?? []).filter((c) => !sinClaseAntes.has(c.id))
+    if (sinClaseNuevas.length) await db.contenidoSinClase.bulkDelete(sinClaseNuevas.map((c) => c.id))
+    if (lote.antes.sinClase?.length) await db.contenidoSinClase.bulkPut(lote.antes.sinClase)
   })
+}
+
+/** ¿Toca este lote al grupo? Los de varios grupos salen en el historial de cada uno. */
+export function loteDelGrupo(lote: LotePlan, grupoId: string): boolean {
+  return lote.grupoId === grupoId || (lote.grupoIds?.includes(grupoId) ?? false)
 }
