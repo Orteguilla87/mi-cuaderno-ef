@@ -16,6 +16,7 @@ export function LineaPlegable({
   textoClassName = '',
   etiquetaContraer = 'Contraer texto',
   etiquetaExpandir = 'Ver texto completo',
+  dosLineasEscritorio = false,
 }: {
   texto: string
   /** Modo controlado: si se pasa junto con `onCambio`, el estado vive fuera. */
@@ -25,6 +26,11 @@ export function LineaPlegable({
   textoClassName?: string
   etiquetaContraer?: string
   etiquetaExpandir?: string
+  /**
+   * Solo escritorio (`lg:`): cerrado, el texto ocupa hasta 2 líneas en vez de
+   * una, con el texto completo en `title`. En móvil no cambia nada.
+   */
+  dosLineasEscritorio?: boolean
 }) {
   const [abiertoLocal, setAbiertoLocal] = useState(false)
   const abierto = abiertoControlado ?? abiertoLocal
@@ -37,7 +43,17 @@ export function LineaPlegable({
 
   return (
     <div className={'flex min-w-0 items-start gap-1 ' + className}>
-      <span className={'min-w-0 flex-1 ' + (abierto ? 'whitespace-pre-wrap' : 'truncate') + ' ' + textoClassName}>
+      <span
+        title={dosLineasEscritorio && !abierto ? texto : undefined}
+        className={
+          'min-w-0 flex-1 ' +
+          (abierto
+            ? 'whitespace-pre-wrap'
+            : 'truncate' + (dosLineasEscritorio ? ' lg:line-clamp-2 lg:whitespace-normal' : '')) +
+          ' ' +
+          textoClassName
+        }
+      >
         {texto}
       </span>
       <button

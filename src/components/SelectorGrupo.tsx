@@ -81,7 +81,7 @@ export function SelectorGrupo({
         <span
           className={
             'min-w-0 flex-1 truncate text-left font-bold ' +
-            (tono === 'cabecera' ? 'text-2xl tracking-tight apaisado:text-xl' : 'text-sm')
+            (tono === 'cabecera' ? 'text-2xl tracking-tight apaisado:text-xl lg:text-xl lg:leading-7' : 'text-sm')
           }
         >
           {grupo?.nombre ?? 'Elige un grupo'}

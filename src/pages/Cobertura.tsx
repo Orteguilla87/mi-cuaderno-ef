@@ -139,6 +139,7 @@ function FichaCriterio({ cobertura }: { cobertura: CoberturaCriterio }) {
             abierto={abierto}
             onCambio={setAbierto}
             textoClassName="text-sm font-semibold"
+            dosLineasEscritorio
             etiquetaExpandir={`Ver texto completo del criterio ${criterio.codigo}`}
             etiquetaContraer={`Contraer texto del criterio ${criterio.codigo}`}
           />
