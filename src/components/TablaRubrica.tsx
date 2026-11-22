@@ -166,7 +166,7 @@ export function TablaRubrica({
                   // Ajustes. Aquí solo hay un nombre truncado —los botones
                   // +/− son cosa del Cuaderno—, así que esos ~76 px de más
                   // solo servían para esconder un criterio.
-                  className="sticky left-0 top-0 z-[3] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:!w-[120px] apaisado:!min-w-[120px]"
+                  className="sticky left-0 top-0 z-[3] border-b-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:!w-[120px] apaisado:!min-w-[120px]"
                   style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
                 >
                   Alumno
@@ -185,7 +185,7 @@ export function TablaRubrica({
                 ))}
                 <th
                   scope="col"
-                  className="min-w-[72px] border-b-2 border-borde bg-agua-claro px-2 py-2 text-center text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua sticky top-0 z-[2]"
+                  className="min-w-[72px] border-b-2 border-borde bg-agua-claro px-2 py-2 text-center text-xs font-bold text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua sticky top-0 z-[2]"
                 >
                   Nota
                 </th>
@@ -253,7 +253,7 @@ export function TablaRubrica({
               <tr>
                 <th
                   scope="row"
-                  className="sticky left-0 z-[1] border-t-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold uppercase text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
+                  className="sticky left-0 z-[1] border-t-2 border-r border-borde bg-agua-claro px-2 py-2 text-left text-xs font-bold text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
                 >
                   Media
                 </th>
@@ -376,7 +376,7 @@ function SelectorNivel({
             onClick={onAnterior}
             disabled={!onAnterior}
             aria-label="Anterior"
-            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl text-primario disabled:opacity-30 dark:text-agua"
+            className="flex min-h-11 min-w-[40px] items-center justify-center rounded-xl text-primario disabled:opacity-30 dark:text-agua"
           >
             <ChevronLeft size={20} aria-hidden />
           </button>
@@ -390,7 +390,7 @@ function SelectorNivel({
             onClick={onSaltar}
             disabled={!onSaltar}
             aria-label="Saltar sin valorar"
-            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl text-primario disabled:opacity-30 dark:text-agua"
+            className="flex min-h-11 min-w-[40px] items-center justify-center rounded-xl text-primario disabled:opacity-30 dark:text-agua"
           >
             <ChevronRight size={20} aria-hidden />
           </button>

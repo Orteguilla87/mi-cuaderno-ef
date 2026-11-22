@@ -327,7 +327,7 @@ function BarraFiltros({
                   onClick={() => onOrden(o)}
                   aria-pressed={orden === o}
                   className={
-                    'pildora min-h-[40px] gap-1 px-3 ' +
+                    'pildora min-h-11 gap-1 px-3 ' +
                     (orden === o
                       ? 'bg-primario text-white'
                       : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
@@ -349,7 +349,7 @@ function BarraFiltros({
                   onClick={() => alternarEstado(e)}
                   aria-pressed={filtro.estados.includes(e)}
                   className={
-                    'pildora min-h-[40px] px-3 ' +
+                    'pildora min-h-11 px-3 ' +
                     (filtro.estados.includes(e)
                       ? 'bg-primario text-white'
                       : COLOR_ESTADO[e])
@@ -371,7 +371,7 @@ function BarraFiltros({
                     onClick={() => alternarEtiqueta(e.id)}
                     aria-pressed={filtro.etiquetaIds.includes(e.id)}
                     className={
-                      'pildora min-h-[40px] px-3 ' +
+                      'pildora min-h-11 px-3 ' +
                       (filtro.etiquetaIds.includes(e.id)
                         ? 'bg-primario text-white'
                         : clasesEtiqueta(e))
@@ -401,7 +401,7 @@ function BarraFiltros({
               onQuitar={() => alternarEtiqueta(id)}
             />
           ))}
-          <button className="btn-fantasma min-h-[40px] px-2 text-sm" onClick={() => onFiltro(FILTRO_VACIO)}>
+          <button className="btn-fantasma min-h-11 px-2 text-sm" onClick={() => onFiltro(FILTRO_VACIO)}>
             Limpiar todo
           </button>
         </div>
@@ -414,7 +414,7 @@ function PildoraActiva({ texto, onQuitar }: { texto: string; onQuitar: () => voi
   return (
     <button
       onClick={onQuitar}
-      className="pildora min-h-[40px] gap-1 bg-primario px-3 text-white"
+      className="pildora min-h-11 gap-1 bg-primario px-3 text-white"
       aria-label={`Quitar el filtro ${texto}`}
     >
       {texto}
@@ -742,7 +742,7 @@ function SelectorEtiquetas({
             }
             aria-pressed={elegidas.includes(e.id)}
             className={
-              'pildora min-h-[40px] px-3 ' +
+              'pildora min-h-11 px-3 ' +
               (elegidas.includes(e.id) ? 'bg-primario text-white' : clasesEtiqueta(e))
             }
           >
@@ -750,7 +750,7 @@ function SelectorEtiquetas({
           </button>
         ))}
         {puedeCrear && (
-          <button className="btn-suave min-h-[40px] px-3 text-sm" onClick={() => void crearYElegir()}>
+          <button className="btn-suave min-h-11 px-3 text-sm" onClick={() => void crearYElegir()}>
             <Plus size={14} aria-hidden />
             Crear «{consulta.trim()}»
           </button>

@@ -29,7 +29,8 @@ function etiquetaNoLectivo(estado: Exclude<EstadoDia, { tipo: 'lectivo' }>): str
     case 'finDeSemana':
       return 'Fin de semana'
     case 'festivo':
-      return 'Día festivo'
+      // Los festivos del curso son solo fechas: no hay nombre que añadir.
+      return 'Festivo'
     case 'periodo':
       return estado.nombre
     case 'vacaciones':
@@ -208,11 +209,19 @@ function CeldaDia({
 }) {
   const dia = deISO(fecha).getDate()
   const noLectivo = estado && estado.tipo !== 'lectivo'
+  // Bloque F6b: festivos y periodos no lectivos llevan icono + texto, no solo
+  // un tono de fondo. El fin de semana y lo que cae fuera del curso no: son la
+  // mayoría de celdas no lectivas y marcarlas todas sería ruido.
+  const marca =
+    estado && (estado.tipo === 'festivo' || estado.tipo === 'periodo' || estado.tipo === 'vacaciones')
+      ? etiquetaNoLectivo(estado)
+      : null
   return (
     <button
       onClick={onElegir}
       aria-pressed={seleccionado}
-      aria-label={`${formatoLargo(fecha)}${nSesiones ? `, ${nSesiones} ${nSesiones === 1 ? 'sesión' : 'sesiones'}` : ''}`}
+      title={marca ?? undefined}
+      aria-label={`${formatoLargo(fecha)}${marca ? `, ${marca}` : ''}${nSesiones ? `, ${nSesiones} ${nSesiones === 1 ? 'sesión' : 'sesiones'}` : ''}`}
       className={
         'flex min-h-[3rem] flex-col items-center justify-start gap-1 rounded-xl p-1 pt-1.5 transition ' +
         'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 active:scale-95 ' +
@@ -229,6 +238,14 @@ function CeldaDia({
       >
         {dia}
       </span>
+      {marca && (
+        <span className="flex max-w-full items-center gap-1 text-xs texto-suave" aria-hidden>
+          <CalendarOff size={14} className="shrink-0" />
+          {/* En móvil la celda no da para el rótulo: icono, y el texto en el
+              nombre accesible y el aviso del día. En escritorio, los dos. */}
+          <span className="hidden truncate lg:inline">{marca}</span>
+        </span>
+      )}
       {nSesiones > 0 ? (
         <span className="cifra rounded-full bg-agua-medio px-1.5 text-xs font-semibold text-primario-oscuro dark:bg-primario/40 dark:text-agua">
           {nSesiones}

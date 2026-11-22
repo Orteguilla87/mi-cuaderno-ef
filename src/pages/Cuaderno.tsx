@@ -729,6 +729,9 @@ function NivelMotrizDelAlumno({ alumno }: { alumno: Alumno }) {
       onClick={() => mostrarAviso(`Nivel motriz ${nivel}: ${rotulo}`)}
       title={`Nivel motriz ${nivel}: ${rotulo}`}
       aria-label={`Nivel motriz ${nivel}: ${rotulo}`}
+      // Exenta de los 44 px: insignia de 18 px pegada al nombre; ampliarla
+      // taparía el botón de la ficha, donde el nivel también se ve.
+      data-tactil-exento="nivel motriz"
       // Escritorio: 12 px y tinta plena (AA); el móvil conserva su insignia.
       className="cifra flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-borde text-xs font-bold leading-none text-tinta dark:border-noche-borde dark:text-noche-texto lg:h-5 lg:w-5"
     >
@@ -774,7 +777,7 @@ function PuntoEtiquetas({
               'flex shrink-0 items-center gap-1 rounded-full leading-none ' +
               (soloIcono
                 ? ''
-                : 'border border-borde px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide dark:border-noche-borde ') +
+                : 'border border-borde px-1.5 py-0.5 text-xs font-bold dark:border-noche-borde ') +
               // Caducada: atenuada Y tachada. La opacidad sola no se ve al sol.
               // Por eso una caducada NUNCA es solo icono: sin texto no hay qué
               // tachar, y la atenuación se quedaría sola.
@@ -840,6 +843,9 @@ function PuntosEtiquetasCompactos({
         // del nombre más largo, y la columna —que en una tabla crece hasta su
         // contenido— se ensanchaba igual. La celda es `sticky`, así que es ella
         // el bloque contenedor. Alta como la fila entera: esa es la zona de toque.
+        // Exento de los 44 px: es una tira de 8 px junto al nombre y ampliarla
+        // taparía el botón de la ficha. Su información está también en la ficha.
+        data-tactil-exento="puntos de etiqueta"
         className="absolute inset-y-0 left-0 flex w-2 flex-col items-center justify-center gap-0.5 lg:hidden"
       >
         {puestas.slice(0, MARCAS_VISIBLES).map(({ etiqueta: e, caducada }) => {
@@ -893,7 +899,7 @@ function PuntosEtiquetasCompactos({
                 <span className={'min-w-0 flex-1 font-semibold ' + (caducada ? 'line-through' : '')}>
                   {e.nombre}
                 </span>
-                <span className="shrink-0 rounded-full border border-borde px-2 py-0.5 text-xs font-bold uppercase tracking-wide dark:border-noche-borde">
+                <span className="shrink-0 rounded-full border border-borde px-2 py-0.5 text-xs font-bold dark:border-noche-borde">
                   {e.abreviatura}
                 </span>
                 {caducada && <span className="shrink-0 text-xs texto-suave">caducada</span>}
@@ -1128,7 +1134,7 @@ function Rejilla({
           <tr>
             <th
               // Esquina: fija en los dos ejes y por encima de títulos y nombres.
-              className="sticky left-0 top-0 z-[3] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
+              className="sticky left-0 top-0 z-[3] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua"
               style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
               scope="col"
             >
@@ -1207,7 +1213,7 @@ function Rejilla({
                   {etiquetasVisibles && <NivelMotrizDelAlumno alumno={a} />}
                   {etiquetasVisibles && <PuntoEtiquetas alumno={a} catalogo={catalogoEtiquetas} />}
                   <button
-                    className="min-w-0 flex-1 truncate text-left underline-offset-2 active:underline"
+                    className="min-h-11 min-w-0 flex-1 truncate text-left underline-offset-2 active:underline"
                     onClick={() => navegar(`/alumnos/${a.id}`)}
                     aria-label={`Abrir ficha de ${formatearNombre(a, config.formatoNombre)}`}
                   >
@@ -1215,14 +1221,14 @@ function Rejilla({
                   </button>
                   <button
                     onClick={() => setObservando({ alumno: a, signo: '+' })}
-                    className="boton-obs flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-lima/20 text-lima-oscuro transition active:scale-95 dark:text-lima"
+                    className="tap-44 boton-obs flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-lima/20 text-lima-oscuro transition active:scale-95 dark:text-lima"
                     aria-label={`Observación positiva para ${nombre}`}
                   >
                     <Plus size={16} strokeWidth={3} aria-hidden />
                   </button>
                   <button
                     onClick={() => setObservando({ alumno: a, signo: '-' })}
-                    className="boton-obs flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-acento/15 text-acento transition active:scale-95"
+                    className="tap-44 boton-obs flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-acento/15 text-acento transition active:scale-95"
                     aria-label={`Observación negativa para ${nombre}`}
                   >
                     <Minus size={16} strokeWidth={3} aria-hidden />

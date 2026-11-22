@@ -289,11 +289,11 @@ export function HojaImportarRubrica({
                       <tr key={f.indice} className={fuera ? 'opacity-40' : undefined}>
                         <td className="sticky left-0 z-10 max-w-[14rem] bg-hueso p-1.5 align-top dark:bg-noche-fondo">
                           {f.referencia ? (
-                            <span className="pildora mr-1 bg-agua-claro px-1.5 py-0.5 text-[11px] font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+                            <span className="pildora mr-1 bg-agua-claro px-1.5 py-0.5 text-xs font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
                               {f.referencia}
                             </span>
                           ) : (
-                            <span className="mr-1 text-[11px] font-semibold texto-suave">
+                            <span className="mr-1 text-xs font-semibold texto-suave">
                               sin ref.
                             </span>
                           )}
@@ -318,7 +318,7 @@ export function HojaImportarRubrica({
                         {niveles.map((_, i) => (
                           <td key={i} className="max-w-[12rem] p-1.5 align-top texto-suave">
                             {f.descripciones[i] || (
-                              <span className="text-[11px] italic">vacío</span>
+                              <span className="text-xs italic">vacío</span>
                             )}
                           </td>
                         ))}

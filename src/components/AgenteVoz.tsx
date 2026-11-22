@@ -686,7 +686,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                   <li key={d.logId} className="flex items-center gap-2 text-sm">
                     <span className="min-w-0 flex-1 truncate texto-suave">{d.resumen}</span>
                     <button
-                      className="pildora min-h-[40px] shrink-0 bg-agua-claro px-3 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+                      className="pildora min-h-11 shrink-0 bg-agua-claro px-3 text-xs font-semibold text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
                       onClick={() => void deshacerUna(d.logId, d.resumen)}
                       disabled={procesando}
                     >
@@ -742,7 +742,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                     {fase.gruposOfrecidos.map((g) => (
                       <button
                         key={g.id}
-                        className="pildora min-h-[40px] bg-agua-claro px-3 text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+                        className="pildora min-h-11 bg-agua-claro px-3 text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
                         onClick={() => void elegirGrupo(g.id)}
                         disabled={procesando}
                       >
@@ -770,7 +770,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                   {fase.aclaracion.opciones.map((op, i) => (
                     <button
                       key={i}
-                      className="pildora min-h-[40px] bg-agua-claro px-3 text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+                      className="pildora min-h-11 bg-agua-claro px-3 text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
                       onClick={() =>
                         setFase({ ...fase, aclaracion: undefined, intenciones: [op], descartadas: [] })
                       }
@@ -896,7 +896,7 @@ function HojaAgente({ abierta, onCerrar }: { abierta: boolean; onCerrar: () => v
                   {(fase.candidatosAlumno.length ? fase.candidatosAlumno : alumnosDe(fase.grupo)).map((a) => (
                     <button
                       key={a.id}
-                      className="pildora min-h-[40px] bg-agua-claro px-3 text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+                      className="pildora min-h-11 bg-agua-claro px-3 text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
                       onClick={() => void elegirAlumno(a)}
                       disabled={procesando}
                     >
@@ -1202,7 +1202,7 @@ function TipoDeColumna({
           .map((t) => (
             <button
               key={t.tipo}
-              className="pildora min-h-[40px] bg-agua-claro px-3 text-xs text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
+              className="pildora min-h-11 bg-agua-claro px-3 text-xs text-primario-oscuro dark:bg-noche-elevada dark:text-agua"
               onClick={() => onTipo(t.tipo)}
             >
               {t.etiqueta}

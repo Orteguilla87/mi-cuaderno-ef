@@ -63,7 +63,7 @@ export function SelectorGrupo({
         type="button"
         className={
           tono === 'cabecera'
-            ? 'flex w-full items-center gap-2 rounded-xl py-0.5 text-left text-white transition active:bg-white/15 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50'
+            ? 'flex min-h-11 w-full items-center gap-2 rounded-xl py-0.5 text-left text-white transition active:bg-white/15 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50'
             : 'desplegable w-full'
         }
         onClick={() => setAbierto((v) => !v)}

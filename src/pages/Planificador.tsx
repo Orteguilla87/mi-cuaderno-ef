@@ -1095,7 +1095,7 @@ function PreviaDelVolcado({ previa }: { previa: PreviaVolcado }) {
               <span className="min-w-0 flex-1 truncate">
                 {p.plan ? p.plan.titulo || 'Sesión sin título' : p.previa.titulo}
               </span>
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide">
+              <span className="shrink-0 text-xs font-semibold">
                 {p.accion === 'rellenar'
                     ? 'Rellena'
                     : p.accion === 'sustituir'

@@ -841,7 +841,7 @@ function FilaEditable({
                      focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40"
           onClick={() => onElegir(sugerido.id)}
         >
-          <span className="pildora bg-agua-claro px-1.5 py-0.5 text-[11px] font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
+          <span className="pildora bg-agua-claro px-1.5 py-0.5 text-xs font-bold text-primario-oscuro dark:bg-noche-elevada dark:text-agua">
             {sugerido.codigo}
           </span>
           <span className="min-w-0 flex-1">

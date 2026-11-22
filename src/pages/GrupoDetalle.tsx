@@ -252,7 +252,7 @@ export function GrupoDetalle({ grupoId }: { grupoId: string }) {
                   {etiquetasVisibles && <PuntoEtiquetas alumno={a} catalogo={catalogoEtiquetas} />}
                   <button
                     onClick={() => navegar(`/alumnos/${a.id}`)}
-                    className="min-w-0 flex-1 py-1 text-left"
+                    className="min-h-11 min-w-0 flex-1 py-1 text-left"
                   >
                     <span className="block truncate text-lg font-semibold">
                       {a.apellidos ? `${a.apellidos}, ${a.nombre}` : a.nombre}
@@ -388,7 +388,7 @@ function PuntoEtiquetas({
             aria-label={`Etiqueta ${e.nombre}${caducada ? ', caducada' : ''}`}
             style={variablesColor(e.colorId)}
             className={
-              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde ' +
+              'tap-44 flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-xs font-semibold leading-none dark:border-noche-borde ' +
               // Caducada: atenuada Y tachada. La opacidad sola no se ve al sol.
               (caducada ? 'opacity-50 line-through' : '')
             }

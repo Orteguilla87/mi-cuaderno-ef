@@ -98,6 +98,49 @@
     }
   }
 
+  /* Objetivo táctil ≥44×44 en móvil (Bloque F6b) para controles que se
+     dibujan más pequeños: un ::after transparente amplía el área de toque sin
+     cambiar el dibujo ni el flujo. Solo móvil: con ratón, un área invisible
+     mayor que el control solo estorbaría a sus vecinos. */
+  @media (max-width: 1023px) {
+    .tap-44:not(.absolute):not(.fixed):not(.sticky) {
+      position: relative;
+    }
+    .tap-44::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  /* Móvil: ningún campo por debajo de 16 px, aunque el componente pida
+     `text-sm`. Con menos, iOS amplía la página al enfocarlo. `!important`
+     solo aquí y solo en móvil: tiene que ganar a cualquier utilidad. */
+  @media (max-width: 1023px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Asas de arrastre (Grupos, Bloque F6b): con ratón en escritorio solo
+     aparecen al pasar por la tarjeta o al enfocarla; en táctil, siempre. */
+  @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+    .tarjeta-arrastrable .asa-arrastre {
+      opacity: 0;
+      transition: opacity 120ms;
+    }
+    .tarjeta-arrastrable:hover .asa-arrastre,
+    .tarjeta-arrastrable:focus-within .asa-arrastre {
+      opacity: 1;
+    }
+  }
+
   ::selection {
     @apply bg-agua text-tinta;
   }
@@ -229,7 +272,7 @@
            dark:focus-visible:border-agua dark:focus-visible:ring-agua/25;
   }
   .etiqueta {
-    @apply mb-1.5 block text-sm font-bold uppercase tracking-wide text-primario
+    @apply mb-1.5 block text-sm font-semibold text-primario
            dark:text-agua;
   }
 
@@ -371,8 +414,9 @@
 
   /* ——— Píldoras / badges ——— */
   .pildora {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold
-           uppercase tracking-wide;
+    /* Tipo oración (Bloque F6b): sin mayúsculas forzadas; el texto se
+       pinta tal como se guarda. */
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
   }
 
   /* ——— Desplegable ———
@@ -394,11 +438,11 @@
   .aviso {
     /* Avisos (Bloque F6a): ≥15 px en móvil y ≥14 px en escritorio; texto con
        el rol de aviso, que ya trae su tono para cada tema. */
-    @apply rounded-xl border border-aviso/40 bg-aviso-claro p-3 text-[15px] text-aviso lg:text-sm
+    @apply rounded-xl border border-aviso/40 bg-aviso-claro p-3 text-sm text-aviso
            dark:border-aviso/30 dark:bg-noche-elevada;
   }
   .aviso-fuerte {
-    @apply rounded-xl border border-acento/40 bg-acento/10 p-3 text-[15px] text-acento lg:text-sm
+    @apply rounded-xl border border-acento/40 bg-acento/10 p-3 text-sm text-acento
            dark:border-acento/40 dark:bg-acento/10;
   }
 }

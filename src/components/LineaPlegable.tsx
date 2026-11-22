@@ -61,7 +61,7 @@ export function LineaPlegable({
         onClick={alternar}
         aria-expanded={abierto}
         aria-label={abierto ? etiquetaContraer : etiquetaExpandir}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-tinta-tenue hover:bg-agua-claro dark:hover:bg-noche-elevada"
+        className="tap-44 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-tinta-tenue hover:bg-agua-claro dark:hover:bg-noche-elevada"
       >
         <ChevronDown
           size={16}

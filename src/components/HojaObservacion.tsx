@@ -159,7 +159,7 @@ export function HojaObservacion({
                     }
                     aria-pressed={activa}
                     className={
-                      'pildora min-h-[40px] px-3 transition ' +
+                      'pildora min-h-11 px-3 transition ' +
                       (activa
                         ? 'bg-primario text-white'
                         : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')

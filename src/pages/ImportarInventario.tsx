@@ -454,7 +454,7 @@ function Preview({
         <div className="mt-2 flex flex-wrap gap-2">
           <span className="self-center text-sm texto-suave">Con todas las duplicadas:</span>
           {(['crear', 'fusionar', 'omitir'] as Resolucion[]).map((r) => (
-            <button key={r} className="btn-suave min-h-[40px] px-3 text-sm" onClick={() => onTodas(r)}>
+            <button key={r} className="btn-suave min-h-11 px-3 text-sm" onClick={() => onTodas(r)}>
               {ETIQUETA_RESOLUCION[r]}
             </button>
           ))}
@@ -524,7 +524,7 @@ function Preview({
                         aria-pressed={resolucion === r}
                         disabled={r === 'fusionar' && duplicado.enElFichero}
                         className={
-                          'pildora min-h-[40px] px-3 disabled:opacity-30 ' +
+                          'pildora min-h-11 px-3 disabled:opacity-30 ' +
                           (resolucion === r
                             ? 'bg-primario text-white'
                             : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')

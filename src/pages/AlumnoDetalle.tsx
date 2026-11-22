@@ -303,7 +303,7 @@ function PuntoEtiquetas({ alumno, catalogo }: { alumno: Alumno; catalogo: Etique
             aria-label={`Etiqueta ${e.nombre}${caducada ? ', caducada' : ''}`}
             style={variablesColor(e.colorId)}
             className={
-              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-2 py-1 text-xs font-bold uppercase leading-none tracking-wide dark:border-noche-borde ' +
+              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-2 py-1 text-xs font-bold leading-none dark:border-noche-borde ' +
               // Caducada: atenuada Y tachada. La opacidad sola no basta.
               (caducada ? 'opacity-50 line-through' : '')
             }

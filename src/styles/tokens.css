@@ -108,6 +108,26 @@
   --radio-contenedor: 16px;
   --radio-tarjeta: 12px;
   --radio-control: 8px;
+
+  /* Escala tipográfica MÓVIL (Bloque F6b). La de escritorio va aparte, en
+     su media query; no comparten ningún valor por diseño. 16 px para el texto
+     principal, las celdas y todo campo: por debajo, iOS amplía al enfocar. */
+  --fs-meta: 13px;
+  --fs-texto: 15px;
+  --fs-principal: 16px;
+  --fs-seccion: 18px;
+  --fs-titulo: 22px;
+}
+
+/* Escala tipográfica ESCRITORIO (Bloque F6b). Mismo corte que `lg:`. */
+@media (min-width: 1024px) {
+  :root {
+    --fs-meta: 12px;
+    --fs-texto: 14px;
+    --fs-principal: 16px;
+    --fs-seccion: 20px;
+    --fs-titulo: 24px;
+  }
 }
 
 .dark {

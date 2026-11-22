@@ -208,7 +208,7 @@ function PorCompetencias({
         <div key={competencia} className="space-y-1.5">
           <LineaPlegable
             texto={`${competencia}: ${lista[0].competenciaTexto}`}
-            textoClassName="text-xs font-bold uppercase tracking-wide text-primario dark:text-agua"
+            textoClassName="text-xs font-bold text-primario dark:text-agua"
             etiquetaExpandir={`Ver texto completo de ${competencia}`}
             etiquetaContraer={`Contraer texto de ${competencia}`}
           />

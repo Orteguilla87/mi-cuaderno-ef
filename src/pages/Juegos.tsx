@@ -94,7 +94,7 @@ export function Juegos({
                   onClick={() => setEtiqueta(null)}
                   aria-pressed={etiqueta === null}
                   className={
-                    'pildora min-h-[40px] px-3 ' +
+                    'pildora min-h-11 px-3 ' +
                     (etiqueta === null
                       ? 'bg-primario text-white'
                       : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
@@ -108,7 +108,7 @@ export function Juegos({
                     onClick={() => setEtiqueta(etiqueta === t ? null : t)}
                     aria-pressed={etiqueta === t}
                     className={
-                      'pildora min-h-[40px] px-3 ' +
+                      'pildora min-h-11 px-3 ' +
                       (etiqueta === t
                         ? 'bg-primario text-white'
                         : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')

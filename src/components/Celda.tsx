@@ -282,7 +282,7 @@ function CeldaContador({
       <button
         ref={anclaRef}
         className={
-          CLASE_CELDA + ' cifra text-lg ' + (negativo ? 'text-acento lg:dark:text-acento-claro' : '')
+          CLASE_CELDA + ' cifra text-base ' + (negativo ? 'text-acento lg:dark:text-acento-claro' : '')
         }
         onClick={() => {
           setCoord(null)
@@ -526,7 +526,7 @@ export function Celda({
           onClick={onAbrirEditor}
           aria-label={`${nombre}, ${columna.titulo}: ${n ?? 'sin nota'}`}
         >
-          <span className="cifra text-lg">{n == null ? '·' : n.toFixed(decimales)}</span>
+          <span className="cifra text-base">{n == null ? '·' : n.toFixed(decimales)}</span>
         </button>
       )
     }
@@ -545,7 +545,7 @@ export function Celda({
           onClick={onAbrirEditor}
           aria-label={`${nombre}, ${columna.titulo}: ${n == null ? 'sin evaluar' : n.toFixed(1)}`}
         >
-          <span className="cifra text-lg">{n == null ? '·' : n.toFixed(1)}</span>
+          <span className="cifra text-base">{n == null ? '·' : n.toFixed(1)}</span>
           {parcial && (
             <span className="cifra text-xs font-semibold texto-suave">
               {calculado!.contadas}/{calculado!.total}
@@ -580,7 +580,7 @@ export function Celda({
           className={base + ' flex-col gap-0 ' + (suspenso ? 'text-acento' : '')}
           aria-label={`${nombre}, ${columna.titulo}: ${n == null ? 'sin datos' : n.toFixed(1)}`}
         >
-          <span className="cifra text-lg">{n == null ? '·' : n.toFixed(1)}</span>
+          <span className="cifra text-base">{n == null ? '·' : n.toFixed(1)}</span>
           {parcial && (
             <span className="cifra text-xs font-semibold texto-suave">
               {calculado!.contadas}/{calculado!.total}

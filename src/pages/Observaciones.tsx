@@ -97,7 +97,7 @@ export function Observaciones({ grupoId, alumnoId }: { grupoId?: string; alumnoI
                 onClick={() => setTipo(t)}
                 aria-pressed={tipo === t}
                 className={
-                  'pildora min-h-[40px] px-3 normal-case tracking-normal ' +
+                  'pildora min-h-11 px-3 normal-case tracking-normal ' +
                   (tipo === t
                     ? 'bg-primario text-white'
                     : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
@@ -148,7 +148,7 @@ export function Observaciones({ grupoId, alumnoId }: { grupoId?: string; alumnoI
 
                   <div className="min-w-0 flex-1">
                     <button
-                      className="block w-full truncate text-left text-base font-bold"
+                      className="block min-h-11 w-full truncate text-left text-base font-bold"
                       onClick={() => o.alumnoId && navegar(`/alumnos/${o.alumnoId}`)}
                     >
                       {nombreAlumno(o.alumnoId)}

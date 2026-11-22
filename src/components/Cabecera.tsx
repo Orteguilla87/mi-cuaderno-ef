@@ -68,7 +68,7 @@ export function Cabecera({
         )}
         <div className="min-w-0 flex-1">
           {tituloSlot ?? (
-            <h1 className="truncate text-2xl font-bold tracking-tight apaisado:text-xl lg:text-xl lg:leading-7">
+            <h1 className="truncate text-2xl font-semibold tracking-tight apaisado:text-xl lg:leading-7">
               {titulo}
             </h1>
           )}

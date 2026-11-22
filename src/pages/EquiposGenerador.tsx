@@ -462,7 +462,7 @@ function ConfiguracionPaso(props: {
                 onClick={() => alternarExclusion(a.id)}
                 aria-pressed={props.excluidos.has(a.id)}
                 className={
-                  'pildora min-h-[40px] px-3 ' +
+                  'pildora min-h-11 px-3 ' +
                   (props.excluidos.has(a.id)
                     ? 'bg-acento/15 text-acento line-through'
                     : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')

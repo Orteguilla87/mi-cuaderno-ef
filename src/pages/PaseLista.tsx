@@ -467,7 +467,7 @@ function PuntoEtiquetas({ alumno, catalogo }: { alumno: Alumno; catalogo: Etique
             title={caducada ? `${e.nombre} (caducada)` : e.nombre}
             style={variablesColor(e.colorId)}
             className={
-              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide dark:border-noche-borde ' +
+              'flex shrink-0 items-center gap-1 rounded-full border border-borde px-1.5 py-0.5 text-xs font-semibold leading-none dark:border-noche-borde ' +
               // Caducada: atenuada Y tachada. Al sol la opacidad sola no se ve.
               (caducada ? 'opacity-50 line-through' : '')
             }
@@ -527,7 +527,7 @@ function TarjetaAlumno({
         }
       >
         <button
-          className="text-left"
+          className="min-h-11 text-left"
           {...larga.props}
           onClick={() => {
             // Tras una pulsación larga el click también dispara: se ignora para
@@ -560,7 +560,7 @@ function TarjetaAlumno({
         <button
           onClick={onChandal}
           className={
-            'absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-xl transition ' +
+            'tap-44 absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-xl transition ' +
             'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primario/40 ' +
             (registro && !registro.chandal
               ? 'bg-acento text-white'

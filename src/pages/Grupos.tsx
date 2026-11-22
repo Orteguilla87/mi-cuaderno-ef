@@ -35,6 +35,15 @@ import { useUI } from '../store/ui'
 
 const DIAS = ['L', 'M', 'X', 'J', 'V'] as const
 
+/** «L, X, V 09:00» · «M 10:30»: franjas agrupadas por hora de inicio, en orden. */
+function resumenHorario(horario: FranjaHorario[]): string[] {
+  const porHora = new Map<string, number[]>()
+  for (const h of horario) porHora.set(h.horaInicio, [...(porHora.get(h.horaInicio) ?? []), h.diaSemana])
+  return [...porHora.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([hora, dias]) => `${[...new Set(dias)].sort().map((d) => DIAS[d - 1] ?? '?').join(', ')} ${hora}`)
+}
+
 export function Grupos() {
   const [abierta, setAbierta] = useState(false)
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -143,13 +152,13 @@ function GrupoTarjeta({ grupo: g, alumnos }: { grupo: Grupo; alumnos: number }) 
     <div
       ref={setNodeRef}
       style={estilo}
-      className="flex items-stretch gap-1 rounded-xl2 border border-borde bg-white dark:border-noche-borde dark:bg-noche-superficie"
+      className="tarjeta-arrastrable flex items-stretch gap-1 rounded-xl2 border border-borde bg-white dark:border-noche-borde dark:bg-noche-superficie"
     >
       <button
         {...attributes}
         {...listeners}
         style={{ touchAction: 'none' }}
-        className="flex shrink-0 cursor-grab items-center px-2 text-tinta-tenue active:cursor-grabbing"
+        className="asa-arrastre flex w-11 shrink-0 cursor-grab items-center justify-center text-tinta-tenue active:cursor-grabbing"
         aria-label={`Reordenar ${g.nombre}`}
       >
         <GripVertical size={18} aria-hidden />
@@ -168,11 +177,18 @@ function GrupoTarjeta({ grupo: g, alumnos }: { grupo: Grupo; alumnos: number }) 
             <span className="truncate text-lg font-bold">{g.nombre}</span>
             <BadgeEtapa etapa={g.etapa} nivel={g.nivel} />
           </span>
-          <span className="mt-0.5 block text-sm texto-suave">
-            {alumnos} alumnos
-            {g.horario.length > 0 &&
-              ' · ' + g.horario.map((h) => `${DIAS[h.diaSemana - 1]} ${h.horaInicio}`).join(' · ')}
-          </span>
+          <span className="mt-0.5 block text-sm texto-suave">{alumnos} alumnos</span>
+          {/* Horario compacto (Bloque F6b): días con la misma hora juntos
+              («L, X, V 09:00») y cada bloque sin partir por dentro. */}
+          {g.horario.length > 0 && (
+            <span className="mt-0.5 flex flex-wrap gap-x-3 text-sm texto-suave">
+              {resumenHorario(g.horario).map((bloque) => (
+                <span key={bloque} className="cifra whitespace-nowrap">
+                  {bloque}
+                </span>
+              ))}
+            </span>
+          )}
         </span>
         <span className="text-2xl text-tinta-tenue" aria-hidden>
           ›

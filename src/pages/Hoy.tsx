@@ -589,7 +589,7 @@ function AccionesClase({
     <>
       <button
         onClick={() => navegar(`/cuaderno/${grupo.id}`)}
-        className="flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold text-primario dark:text-agua"
+        className="flex min-h-11 min-w-11 shrink-0 flex-col items-center justify-center gap-0.5 text-xs font-bold text-primario dark:text-agua"
         aria-label={`Grupo ${grupo.nombre} en el Cuaderno`}
       >
         <Table2 size={22} aria-hidden />
@@ -603,7 +603,7 @@ function AccionesClase({
           )
         }
         className={
-          'flex shrink-0 flex-col items-center gap-0.5 text-xs font-bold ' +
+          'flex min-h-11 min-w-11 shrink-0 flex-col items-center justify-center gap-0.5 text-xs font-bold ' +
           (completo ? 'text-lima-oscuro dark:text-lima' : 'text-primario dark:text-agua')
         }
         aria-label={completo ? `Asistencia completa · ${grupo.nombre}` : `Pasar lista · ${grupo.nombre}`}

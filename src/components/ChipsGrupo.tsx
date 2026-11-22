@@ -24,7 +24,7 @@ export function ChipsGrupo({
           onClick={() => onCambio(g.id)}
           aria-pressed={valor === g.id}
           className={
-            'pildora min-h-[40px] gap-1.5 px-3 ' +
+            'pildora min-h-11 gap-1.5 px-3 ' +
             (valor === g.id
               ? 'bg-primario text-white'
               : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')

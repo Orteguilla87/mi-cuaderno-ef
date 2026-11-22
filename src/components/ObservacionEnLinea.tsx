@@ -250,7 +250,7 @@ function FilaObservacion({ observacion: o }: { observacion: Observacion }) {
             onClick={() => void cambiar({ tipo: valor })}
             aria-pressed={o.tipo === valor}
             className={
-              'pildora min-h-[40px] px-3 text-xs transition ' +
+              'pildora min-h-11 px-3 text-xs transition ' +
               (o.tipo === valor
                 ? 'bg-primario text-white'
                 : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')

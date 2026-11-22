@@ -170,7 +170,7 @@ function FichaCriterio({ cobertura }: { cobertura: CoberturaCriterio }) {
                     <span className="block texto-suave">{u.descriptor}</span>
                   )}
                   {!u.calificable && (
-                    <span className="pildora mt-1 bg-aviso/15 px-2 py-0.5 text-[11px] font-semibold text-aviso-oscuro">
+                    <span className="pildora mt-1 bg-aviso/15 px-2 py-0.5 text-xs font-semibold text-aviso-oscuro">
                       No calificable
                     </span>
                   )}

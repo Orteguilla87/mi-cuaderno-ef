@@ -27,7 +27,7 @@ export function TextoMarkdown({ texto, className }: { texto: string; className?:
         if (b.tipo === 'titulo' && b.nivel === 1) {
           return (
             <div key={i} className={i === 0 ? '' : 'pt-2'}>
-              <h3 className="text-sm font-bold uppercase tracking-wide text-primario dark:text-agua">
+              <h3 className="text-sm font-bold text-primario dark:text-agua">
                 <Trozos trozos={b.trozos} />
               </h3>
               <div className="linea-pista mt-1" aria-hidden />
@@ -40,7 +40,7 @@ export function TextoMarkdown({ texto, className }: { texto: string; className?:
             <h4
               key={i}
               className={
-                'text-xs font-bold uppercase tracking-wide texto-suave' + (i === 0 ? '' : ' pt-1')
+                'text-xs font-bold texto-suave' + (i === 0 ? '' : ' pt-1')
               }
             >
               <Trozos trozos={b.trozos} />

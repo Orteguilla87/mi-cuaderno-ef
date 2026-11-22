@@ -188,7 +188,7 @@ function RejillaInfantil({
           <tr>
             <th
               scope="col"
-              className="sticky left-0 z-20 min-w-[150px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:top-0 lg:top-0"
+              className="sticky left-0 z-20 min-w-[150px] border-b-2 border-r border-borde bg-agua-claro px-3 py-2 text-left text-xs font-bold text-primario-oscuro dark:border-noche-borde dark:bg-noche-elevada dark:text-agua apaisado:top-0 lg:top-0"
             >
               Alumno
             </th>

@@ -117,7 +117,7 @@ function FilaAlumno({ alumno }: { alumno: Alumno }) {
             onClick={() => actualizar({ genero: alumno.genero === g.valor ? null : g.valor })}
             aria-pressed={alumno.genero === g.valor}
             className={
-              'pildora min-h-[40px] px-3 ' +
+              'pildora min-h-11 px-3 ' +
               (alumno.genero === g.valor
                 ? 'bg-primario text-white'
                 : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')

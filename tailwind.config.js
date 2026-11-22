@@ -100,6 +100,26 @@ export default {
       ringColor: { DEFAULT: token('primary') },
       minHeight: { tap: '48px' },
       minWidth: { tap: '48px' },
+      // Escala tipográfica (Bloque F6b). Cada nombre apunta a un ROL cuyo valor
+      // se define POR SEPARADO para móvil y para escritorio en tokens.css (sin
+      // constantes compartidas): meta, texto, principal, sección y título.
+      // 3xl en adelante queda fuera: son las cifras grandes de las vistas
+      // proyectables (marcador, sorteo), que se miden a distancia.
+      fontSize: {
+        xs: ['var(--fs-meta)', { lineHeight: '1.35' }],
+        sm: ['var(--fs-texto)', { lineHeight: '1.45' }],
+        base: ['var(--fs-principal)', { lineHeight: '1.5' }],
+        lg: ['var(--fs-seccion)', { lineHeight: '1.35' }],
+        xl: ['var(--fs-seccion)', { lineHeight: '1.3' }],
+        '2xl': ['var(--fs-titulo)', { lineHeight: '1.25' }],
+      },
+      // Pesos (Bloque F6b): 400 texto, 600 títulos y nombres. Las negritas
+      // (700+) de antes se quedan en 600: sin negritas innecesarias.
+      fontWeight: {
+        bold: '600',
+        extrabold: '600',
+        black: '600',
+      },
       // Radios por jerarquía (Bloque F6a), desde las variables de tokens.css.
       // La escala heredada se remapea para que ningún componente quede con un
       // radio suelto: `xl`/`lg`/`md` (controles) → 8 px; `xl2` (tarjetas) →
