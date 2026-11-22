@@ -73,7 +73,7 @@ export function AgenteVoz() {
         onClick={() => setAbierta(true)}
         style={{ height: 'var(--alto-fab)', width: 'var(--alto-fab)' }}
         className={
-          'capa-fab fixed right-4 z-fab flex items-center justify-center rounded-full bg-acento text-white shadow-lg shadow-acento/30 transition-opacity active:scale-95 ' +
+          'capa-fab fixed right-4 z-fab flex items-center justify-center rounded-full bg-primario text-white shadow-lg shadow-primario/40 ring-2 ring-hueso transition-opacity dark:bg-primario-claro dark:ring-noche-fondo active:scale-95 ' +
           (oculto ? 'pointer-events-none opacity-0' : 'opacity-100')
         }
         aria-label="Agente de voz"

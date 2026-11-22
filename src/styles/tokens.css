@@ -31,7 +31,9 @@
   /* Acento aclarado hacia --bg (60 %): el acento puro da 2.4:1 como texto sobre
      los fondos noche. Solo para texto en modo oscuro (≥4.5:1 sobre --night-raised). */
   --accent-light: 228 155 173; /* #E49BAD */
-  --positive-dark: 127 133 0; /* #7F8500 · texto sobre claro: el lima puro no da AA */
+  /* Bloque F6a: oscurecido de #7F8500 a #636800. El anterior daba 3.6:1 sobre
+     el relleno lima/20 de las celdas; este da ≥5:1 sobre blanco y sobre él. */
+  --positive-dark: 99 104 0; /* #636800 · texto sobre claro: el lima puro no da AA */
   --soft-light: 228 239 241; /* #E4EFF1 · superficies suaves */
   --soft-mid: 198 222 227; /* #C6DEE3 · superficies suaves elevadas */
 
@@ -43,6 +45,9 @@
   --warning: 188 101 37; /* #BC6525 · relleno de chip, iconos */
   --warning-dark: 143 76 28; /* #8F4C1C · texto sobre fondo claro (AA) */
   --warning-soft: 250 238 226; /* #FAEEE2 · fondo de caja de aviso */
+  /* Bloque F6a: aclarado al 50 % hacia --bg, texto de aviso sobre fondos noche
+     (el --warning puro da 2.7:1 ahí). */
+  --warning-light: 216 172 137; /* #D8AC89 */
 
   /* ——— Peto amarillo (Generador de equipos) ———
      Único color realmente nuevo de esta hoja: representa un objeto físico (un
@@ -54,9 +59,13 @@
      destacado», no una segunda familia de color. */
   --equipo-amarillo: 180 140 0; /* #B48C00 */
 
-  /* Neutros con el matiz del primario: ningún gris frío de Tailwind. */
-  --ink-soft: 91 126 133; /* #5B7E85 · texto secundario */
-  --ink-faint: 143 170 175; /* #8FAAAF · texto terciario, placeholders */
+  /* Neutros con el matiz del primario: ningún gris frío de Tailwind.
+     Bloque F6a: ambos oscurecidos hacia --ink. Los anteriores (#5B7E85,
+     #8FAAAF) daban 3.9–4.4:1 y 2.2:1 como texto sobre --bg / --soft-light.
+     Ahora los dos pasan AA (≥4.5:1) sobre --bg, --surface y --soft-light, y
+     siguen distinguiéndose entre sí (≈6:1 frente a ≈4.7:1 sobre --bg). */
+  --ink-soft: 63 97 104; /* #3F6168 · texto secundario */
+  --ink-faint: 79 113 120; /* #4F7178 · texto terciario, placeholders */
   --border: 213 226 228; /* #D5E2E4 */
   --border-strong: 154 195 204; /* #9AC3CC */
 
@@ -67,4 +76,47 @@
   --night-border: 27 85 97; /* #1B5561 */
   --night-ink: 243 243 236; /* #F3F3EC · el propio --bg como texto */
   --night-soft: 155 188 194; /* #9BBCC2 · texto secundario en oscuro */
+
+  /* ——— Bloque F6a: roles derivados (cambian con el tema) ———
+     Los componentes piden un ROL y el tema decide el valor; ninguno es un
+     color nuevo, todos son tokens de arriba. */
+
+  /* Superficies en tres niveles con salto visible (≥1.1:1 de luminancia
+     entre cada par): fondo de la app, tarjeta, elevado/seleccionado. */
+  --sup-fondo: 243 243 236; /* = --bg */
+  --sup-tarjeta: 255 255 255; /* = --surface */
+  --sup-elevada: 198 222 227; /* = --soft-mid */
+  /* Fila par de rejillas con columna fija: --soft-light al 50 % sobre
+     --surface, opaco porque la columna congelada no puede transparentar. */
+  --sup-fila: 238 245 246; /* #EEF5F6 */
+
+  /* Texto e iconos «negativo/error». El acento puro (#CE184B) da 4.2:1 sobre
+     su propio relleno al 10 % y 2.4:1 sobre los fondos noche: como TEXTO se
+     usa su oscurecido en claro y su aclarado en oscuro. Los rellenos
+     (`bg-acento`) siguen con el acento puro. */
+  --accent-text: 163 17 57; /* = --accent-dark */
+
+  /* Texto secundario/terciario y de aviso: mismo rol en los dos temas. Así
+     un `text-tinta-suave` o `text-aviso` sin su variante `dark:` ya no se
+     queda con el tono de claro sobre fondo noche (2.5:1). */
+  --texto-suave: 63 97 104; /* = --ink-soft */
+  --texto-tenue: 79 113 120; /* = --ink-faint */
+  --warning-text: 143 76 28; /* = --warning-dark */
+
+  /* Radios por jerarquía: contenedor (hojas, paneles, menús) > tarjeta >
+     control (botón, campo, chip rectangular). Píldoras: `rounded-full`. */
+  --radio-contenedor: 16px;
+  --radio-tarjeta: 12px;
+  --radio-control: 8px;
+}
+
+.dark {
+  --sup-fondo: 6 40 48; /* = --night-bg */
+  --sup-tarjeta: 11 53 64; /* = --night-surface */
+  --sup-elevada: 16 63 74; /* = --night-raised */
+  --sup-fila: 11 53 64; /* = --night-surface */
+  --accent-text: 228 155 173; /* = --accent-light */
+  --texto-suave: 155 188 194; /* = --night-soft */
+  --texto-tenue: 155 188 194; /* = --night-soft */
+  --warning-text: 216 172 137; /* = --warning-light */
 }

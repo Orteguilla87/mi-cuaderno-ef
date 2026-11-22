@@ -19,7 +19,7 @@ export function BadgeEtapa({ etapa, nivel }: { etapa: Etapa; nivel?: number }) {
         'pildora ' +
         (esInfantil
           ? 'bg-lima text-white dark:bg-lima-oscuro'
-          : 'bg-agua text-primario-oscuro dark:bg-agua/25 dark:text-agua')
+          : 'bg-agua text-primario-oscuro dark:bg-agua/25 dark:text-noche-texto')
       }
     >
       {soloNivel ? (

@@ -91,7 +91,7 @@ export function VincularAlumnado() {
       />
 
       <div className="space-y-4 p-4">
-        <div className="aviso text-xs">
+        <div className="aviso">
           Vincular NO fusiona los grupos. Lo que se comparte es lo de la persona —etiquetas y
           pautas de apoyo—; las notas, la asistencia y el Cuaderno siguen siendo de cada área.
           Nada se vincula sin que lo confirmes tú, y todo se puede deshacer.

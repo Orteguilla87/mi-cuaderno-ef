@@ -98,7 +98,7 @@ export function SelectorGrupo({
         <ul
           role="listbox"
           aria-label="Grupo"
-          className="absolute left-0 right-0 top-full z-hoja mt-1 max-h-72 overflow-y-auto rounded-xl2 border border-borde bg-superficie p-1.5 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+          className="absolute left-0 right-0 top-full z-hoja mt-1 max-h-72 overflow-y-auto rounded-contenedor border border-borde bg-superficie p-1.5 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
         >
           {grupos.map((g) => (
             <li key={g.id}>

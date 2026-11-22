@@ -182,7 +182,9 @@ function VistaMes({ curso }: { curso: CursoEscolar | undefined }) {
 function fondoCelda(estado: EstadoDia | undefined, enMes: boolean): string {
   if (!estado || estado.tipo === 'lectivo')
     return enMes ? 'bg-superficie dark:bg-noche-superficie' : 'bg-superficie/50 dark:bg-noche-superficie/50'
-  if (estado.tipo === 'festivo') return 'bg-acento/10 dark:bg-acento/20'
+  // Bloque F6a: el rojo queda para negativo/error; el festivo se distingue por
+  // tono (agua medio) y por su rótulo, no por el color solo.
+  if (estado.tipo === 'festivo') return 'bg-agua-medio dark:bg-primario/30'
   // Fin de semana, vacaciones y fuera de curso: superficie suave, no accionable.
   return 'bg-agua-claro dark:bg-noche-elevada'
 }

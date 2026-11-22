@@ -71,7 +71,7 @@
   }
 
   body {
-    @apply bg-hueso text-tinta antialiased dark:bg-noche-fondo dark:text-noche-texto;
+    @apply bg-sup-fondo text-tinta antialiased dark:text-noche-texto;
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     /* Sin fuentes remotas: bundle autocontenido (§1.1). */
     overscroll-behavior-y: none;
@@ -85,6 +85,19 @@
     font-size: 16px;
   }
 
+  /* Foco de teclado en escritorio (Bloque F6a): ningún control se queda sin
+     anillo visible (≥3:1). `:where()` lo deja a especificidad 0, así que los
+     componentes con su propio `ring` (botones, campos) lo conservan. */
+  @media (min-width: 1024px) {
+    :where(a, button, input, select, textarea, summary, [tabindex], [role='button'], [role='tab']):focus-visible {
+      outline: 3px solid rgb(var(--primary));
+      outline-offset: 2px;
+    }
+    :where(.dark) :where(a, button, input, select, textarea, summary, [tabindex], [role='button'], [role='tab']):focus-visible {
+      outline-color: rgb(var(--soft));
+    }
+  }
+
   ::selection {
     @apply bg-agua text-tinta;
   }
@@ -96,7 +109,7 @@
     @apply text-tinta-suave dark:text-noche-suave;
   }
   .texto-tenue {
-    @apply text-tinta-tenue dark:text-noche-suave/70;
+    @apply text-tinta-tenue dark:text-noche-suave;
   }
 
   /* ——— Botones ———
@@ -114,7 +127,7 @@
   }
   .btn-primario {
     @apply btn bg-primario text-white shadow-sm shadow-primario/25
-           hover:bg-primario-claro dark:bg-primario-claro dark:hover:bg-primario;
+           hover:bg-primario-claro dark:bg-primario dark:hover:bg-primario-oscuro;
   }
   .btn-acento {
     @apply btn bg-acento text-white shadow-sm shadow-acento/25 hover:bg-acento-oscuro;
@@ -190,17 +203,19 @@
   }
 
   /* ——— Superficies ——— */
+  /* Superficies (Bloque F6a): tres niveles con salto visible, como roles de
+     tokens.css que cambian con el tema — fondo (body), tarjeta, elevada. */
   .tarjeta {
-    @apply rounded-xl2 border border-borde bg-white p-4
-           dark:border-noche-borde dark:bg-noche-superficie;
+    @apply rounded-tarjeta border border-borde bg-sup-tarjeta p-4
+           dark:border-noche-borde;
   }
   .tarjeta-pulsable {
     @apply tarjeta transition active:scale-[0.99] hover:border-borde-fuerte
            dark:hover:border-agua/40;
   }
   .panel-agua {
-    @apply rounded-xl2 border border-agua bg-agua-claro p-4
-           dark:border-noche-borde dark:bg-noche-elevada;
+    @apply rounded-contenedor border border-agua bg-agua-claro p-4
+           dark:border-noche-borde dark:bg-sup-elevada;
   }
 
   /* ——— Formularios ——— */
@@ -210,7 +225,7 @@
            focus-visible:border-primario focus-visible:ring-4 focus-visible:ring-primario/25
            aria-[invalid=true]:border-acento aria-[invalid=true]:ring-acento/20
            dark:border-noche-borde dark:bg-noche-superficie dark:text-noche-texto
-           dark:placeholder:text-noche-suave/60
+           dark:placeholder:text-noche-suave
            dark:focus-visible:border-agua dark:focus-visible:ring-agua/25;
   }
   .etiqueta {
@@ -377,11 +392,13 @@
      avisos suaves (retraso, recordatorio) y otra para los que piden más
      atención (irreversible, error de validación). */
   .aviso {
-    @apply rounded-xl border border-aviso/40 bg-aviso-claro p-3 text-sm text-aviso-oscuro
-           dark:border-aviso/30 dark:bg-noche-elevada dark:text-aviso;
+    /* Avisos (Bloque F6a): ≥15 px en móvil y ≥14 px en escritorio; texto con
+       el rol de aviso, que ya trae su tono para cada tema. */
+    @apply rounded-xl border border-aviso/40 bg-aviso-claro p-3 text-[15px] text-aviso lg:text-sm
+           dark:border-aviso/30 dark:bg-noche-elevada;
   }
   .aviso-fuerte {
-    @apply rounded-xl border border-acento/40 bg-acento/10 p-3 text-sm text-acento
+    @apply rounded-xl border border-acento/40 bg-acento/10 p-3 text-[15px] text-acento lg:text-sm
            dark:border-acento/40 dark:bg-acento/10;
   }
 }

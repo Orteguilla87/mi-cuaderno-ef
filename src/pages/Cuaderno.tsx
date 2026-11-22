@@ -662,7 +662,7 @@ function MenuAcciones({
         <ul
           role="menu"
           aria-label="Acciones del cuaderno"
-          className="absolute left-0 top-full z-hoja mt-1 w-64 space-y-0.5 rounded-xl2 border border-borde bg-superficie p-1.5 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+          className="absolute left-0 top-full z-hoja mt-1 w-64 space-y-0.5 rounded-contenedor border border-borde bg-superficie p-1.5 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
         >
           {acciones.map(({ etiqueta, Icono, onClick }) => (
             <li key={etiqueta} role="none">
@@ -730,7 +730,7 @@ function NivelMotrizDelAlumno({ alumno }: { alumno: Alumno }) {
       title={`Nivel motriz ${nivel}: ${rotulo}`}
       aria-label={`Nivel motriz ${nivel}: ${rotulo}`}
       // Escritorio: 12 px y tinta plena (AA); el móvil conserva su insignia.
-      className="cifra flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-borde text-[10px] font-bold leading-none text-tinta-suave dark:border-noche-borde dark:text-noche-suave lg:h-5 lg:w-5 lg:text-xs lg:text-tinta lg:dark:text-noche-texto"
+      className="cifra flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-borde text-xs font-bold leading-none text-tinta dark:border-noche-borde dark:text-noche-texto lg:h-5 lg:w-5"
     >
       {nivel}
     </button>
@@ -962,7 +962,7 @@ function CabeceraColumna({
         <span className="line-clamp-2 text-xs font-bold leading-tight text-primario-oscuro dark:text-agua">
           {columna.titulo}
         </span>
-        <Settings2 size={12} className="text-tinta-tenue lg:text-tinta-suave lg:dark:text-noche-suave" aria-hidden />
+        <Settings2 size={12} className="text-tinta-suave" aria-hidden />
       </button>
     </th>
   )
@@ -1178,7 +1178,7 @@ function Rejilla({
               // por la fila o al enfocarla (index.css).
               className={
                 'fila-obs transition-colors duration-1000 ' +
-                (resaltada === a.id ? 'bg-acento/15' : fila % 2 ? 'bg-agua-claro/30 dark:bg-noche-elevada/30' : '')
+                (resaltada === a.id ? 'bg-primario/15' : fila % 2 ? 'bg-agua-claro/30 dark:bg-noche-elevada/30' : '')
               }
             >
               <th
@@ -1187,9 +1187,9 @@ function Rejilla({
                   'sticky left-0 z-[1] border-b border-r border-borde px-2 py-1.5 text-left text-sm font-semibold transition-colors duration-1000 dark:border-noche-borde ' +
                   (resaltada === a.id
                     ? // La columna fija tiene que ser opaca: superficie + una capa del acento.
-                      'bg-superficie shadow-[inset_4px_0_0_rgb(var(--accent)),inset_0_0_0_999px_rgb(var(--accent)/0.15)] dark:bg-noche-superficie'
+                      'bg-superficie shadow-[inset_4px_0_0_rgb(var(--primary)),inset_0_0_0_999px_rgb(var(--primary)/0.15)] dark:bg-noche-superficie'
                     : fila % 2
-                      ? 'bg-[rgb(238,245,246)] dark:bg-noche-superficie'
+                      ? 'bg-sup-fila'
                       : 'bg-superficie dark:bg-noche-superficie')
                 }
                 style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}

@@ -75,6 +75,24 @@ export default {
           suave: token('night-soft'),
         },
       },
+      // Bloque F6a: `text-acento` (texto e iconos) apunta a un ROL que cambia
+      // con el tema (--accent-text: oscurecido en claro, aclarado en oscuro);
+      // `bg-acento`, `border-acento` y `ring-acento` siguen con el acento puro.
+      textColor: {
+        acento: { DEFAULT: token('accent-text') },
+        tinta: { suave: token('texto-suave'), tenue: token('texto-tenue') },
+        aviso: { DEFAULT: token('warning-text') },
+      },
+      // Tres superficies (fondo, tarjeta, elevada) y la fila par de rejilla:
+      // roles de tokens.css que se redefinen en `.dark`.
+      backgroundColor: {
+        sup: {
+          fondo: token('sup-fondo'),
+          tarjeta: token('sup-tarjeta'),
+          elevada: token('sup-elevada'),
+          fila: token('sup-fila'),
+        },
+      },
       // Sin esto, un `border` o un `ring` sin color explícito cae al gris-200 y
       // al azul-500 de Tailwind: grises y azules ajenos colados sin que aparezcan
       // en ningún grep. Los valores por defecto también son tokens.
@@ -82,7 +100,23 @@ export default {
       ringColor: { DEFAULT: token('primary') },
       minHeight: { tap: '48px' },
       minWidth: { tap: '48px' },
-      borderRadius: { xl2: '1.25rem' },
+      // Radios por jerarquía (Bloque F6a), desde las variables de tokens.css.
+      // La escala heredada se remapea para que ningún componente quede con un
+      // radio suelto: `xl`/`lg`/`md` (controles) → 8 px; `xl2` (tarjetas) →
+      // 12 px; `2xl`/`3xl` → contenedor. Hojas, paneles y menús piden
+      // `rounded-contenedor` (16 px) explícitamente.
+      borderRadius: {
+        DEFAULT: 'var(--radio-control)',
+        control: 'var(--radio-control)',
+        tarjeta: 'var(--radio-tarjeta)',
+        contenedor: 'var(--radio-contenedor)',
+        md: 'var(--radio-control)',
+        lg: 'var(--radio-control)',
+        xl: 'var(--radio-control)',
+        xl2: 'var(--radio-tarjeta)',
+        '2xl': 'var(--radio-contenedor)',
+        '3xl': 'var(--radio-contenedor)',
+      },
       // Escala de capas de src/index.css: un solo origen para nav/FAB/hojas/
       // avisos/pantallas completas/bloqueo por PIN, para que no se repita un
       // z-40 suelto en cada componente y acabe empatando con otro.

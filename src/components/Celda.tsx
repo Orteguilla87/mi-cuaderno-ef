@@ -165,7 +165,7 @@ function SelectorCaritas({
               left: coord?.left ?? 0,
               visibility: coord ? 'visible' : 'hidden',
             }}
-            className="fixed z-hoja flex max-w-[92vw] flex-wrap items-start justify-center gap-1 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+            className="fixed z-hoja flex max-w-[92vw] flex-wrap items-start justify-center gap-1 rounded-contenedor border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
           >
             {escala.map((c, i) => {
               const activo = i === indice
@@ -331,7 +331,7 @@ function CeldaContador({
               left: coord?.left ?? 0,
               visibility: coord ? 'visible' : 'hidden',
             }}
-            className="fixed z-hoja flex max-w-[92vw] flex-col gap-2 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+            className="fixed z-hoja flex max-w-[92vw] flex-col gap-2 rounded-contenedor border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
           >
             <div className="flex items-center gap-2">
               <button

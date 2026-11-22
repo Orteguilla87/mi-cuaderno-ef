@@ -157,7 +157,7 @@ export function MenuNotaCelda({
         role="menu"
         aria-label={`Nota de ${menu.alumno.alias || menu.alumno.nombre} en ${menu.columna.titulo}`}
         style={{ top: coord?.top ?? 0, left: coord?.left ?? 0, visibility: coord ? 'visible' : 'hidden' }}
-        className="fixed z-hoja min-w-[12rem] rounded-xl2 border border-borde bg-superficie p-1 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+        className="fixed z-hoja min-w-[12rem] rounded-contenedor border border-borde bg-superficie p-1 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
       >
         <button
           role="menuitem"

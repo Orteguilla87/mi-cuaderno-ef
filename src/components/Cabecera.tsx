@@ -79,7 +79,7 @@ export function Cabecera({
         <IndicadorSincro />
         {acciones}
       </div>
-      {subtitulo && <div className="mt-1.5 text-sm text-agua apaisado:mt-0.5 lg:hidden">{subtitulo}</div>}
+      {subtitulo && <div className="mt-1.5 text-sm text-agua-claro apaisado:mt-0.5 lg:hidden">{subtitulo}</div>}
     </header>
   )
 }
@@ -103,7 +103,7 @@ export function AccionCabecera({
         // sistema (pensadas para fondo claro) tiene contraste ahí.
         'btn focus-visible:ring-offset-primario dark:focus-visible:ring-offset-primario-oscuro ' +
         (destacada
-          ? 'bg-acento text-white shadow-sm'
+          ? 'bg-hueso text-primario-oscuro shadow-sm'
           : 'border border-white/35 text-white active:bg-white/15 focus-visible:ring-white/50')
       }
     >

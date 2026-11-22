@@ -50,7 +50,7 @@ export function EtiquetasAlumno() {
       />
 
       <div className="space-y-4 p-4">
-        <div className="aviso text-xs">
+        <div className="aviso">
           Datos sensibles: no salen nunca de este dispositivo salvo dentro de la copia cifrada, y
           solo se ven en tus pantallas de trabajo —Cuaderno, ficha del grupo, pase de lista y ficha
           del alumno—. No aparecen en informes, ni en exportaciones, ni en las herramientas de aula,

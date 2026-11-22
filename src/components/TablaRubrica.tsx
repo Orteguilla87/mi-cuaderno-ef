@@ -369,7 +369,7 @@ function SelectorNivel({
         aria-modal="true"
         aria-label={etiqueta}
         style={{ top: coord?.top ?? 0, left: coord?.left ?? 0, visibility: coord ? 'visible' : 'hidden' }}
-        className="fixed z-modal w-[min(92vw,320px)] space-y-1.5 rounded-xl2 border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
+        className="fixed z-modal w-[min(92vw,320px)] space-y-1.5 rounded-contenedor border border-borde bg-superficie p-2 shadow-xl dark:border-noche-borde dark:bg-noche-superficie"
       >
         <div className="flex items-center gap-1">
           <button
