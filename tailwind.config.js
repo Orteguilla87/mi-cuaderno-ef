@@ -34,6 +34,7 @@ export default {
         acento: {
           DEFAULT: token('accent'),
           oscuro: token('accent-dark'),
+          claro: token('accent-light'),
         },
         lima: {
           DEFAULT: token('positive'),

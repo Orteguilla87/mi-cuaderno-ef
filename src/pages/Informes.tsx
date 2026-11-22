@@ -17,7 +17,7 @@ import {
 } from '../lib/informes'
 import { navegar } from '../lib/router'
 import { useUI } from '../store/ui'
-import { variablesColor } from '../components/SelectorColor'
+import { ChipsGrupo } from '../components/ChipsGrupo'
 
 export function Informes() {
   const mostrarAviso = useUI((s) => s.mostrarAviso)
@@ -72,28 +72,7 @@ export function Informes() {
           />
         ) : (
           <>
-            <div className="flex flex-wrap gap-2">
-              {grupos.map((g) => (
-                <button
-                  key={g.id}
-                  onClick={() => setGrupoId(g.id)}
-                  aria-pressed={grupo?.id === g.id}
-                  className={
-                    'pildora min-h-[40px] gap-1.5 px-3 ' +
-                    (grupo?.id === g.id
-                      ? 'bg-primario text-white'
-                      : 'bg-agua-claro text-primario-oscuro dark:bg-noche-elevada dark:text-agua')
-                  }
-                >
-                  <span
-                    className="color-dato h-2.5 w-2.5 rounded-full"
-                    style={variablesColor(g.colorId ?? g.color)}
-                    aria-hidden
-                  />
-                  {g.nombre}
-                </button>
-              ))}
-            </div>
+            <ChipsGrupo grupos={grupos} valor={grupo?.id} onCambio={setGrupoId} />
 
             <div className="grid grid-cols-3 gap-2">
               {([1, 2, 3] as const).map((t) => (

@@ -282,12 +282,25 @@ function CeldaContador({
       <button
         ref={anclaRef}
         className={
-          CLASE_CELDA + ' cifra text-lg ' + (negativo ? 'text-acento' : '')
+          CLASE_CELDA + ' cifra text-lg ' + (negativo ? 'text-acento lg:dark:text-acento-claro' : '')
         }
         onClick={() => {
           setCoord(null)
           setBorrador(valor == null ? '' : String(valor))
           setAbierto(true)
+        }}
+        // Teclado físico (Bloque F3): con la celda enfocada, «+»/«−» suman o
+        // restan un paso sin abrir el panel; Supr o Retroceso la dejan VACÍA
+        // (sin registro), nunca a 0.
+        onKeyDown={(e) => {
+          if (e.ctrlKey || e.metaKey || e.altKey) return
+          if (e.key === '+') sumar(1)
+          else if (e.key === '-' || e.key === '−') sumar(-1)
+          else if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (valor != null) onBorrar()
+          } else return
+          e.preventDefault()
+          e.stopPropagation()
         }}
         aria-haspopup="dialog"
         aria-expanded={abierto}

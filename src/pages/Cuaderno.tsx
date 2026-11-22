@@ -16,7 +16,7 @@ import {
   SlidersHorizontal,
   Table2,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Cabecera } from '../components/Cabecera'
 import { Celda, EditorColumna, HojaAplicarGrupo } from '../components/Celda'
 import { EstadoVacio } from '../components/EstadoVacio'
@@ -26,6 +26,8 @@ import { HojaObservacion } from '../components/HojaObservacion'
 import { HojaNotaCelda, MarcaNota, MenuNotaCelda, type CeldaNota } from '../components/NotaCelda'
 import { HojaPesosTrimestre } from '../components/HojaPesosTrimestre'
 import { SelectorGrupo } from '../components/SelectorGrupo'
+import { ChipsGrupo } from '../components/ChipsGrupo'
+import { useEsEscritorio } from '../lib/useEsEscritorio'
 import { SorteoAlumno } from '../components/SorteoAlumno'
 import { TablaRubrica } from '../components/TablaRubrica'
 import {
@@ -99,6 +101,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
   // acerca a la pantalla.
   const etiquetasVisibles = useEtiquetasVisibles((e) => e.visibles)
   const alternarEtiquetas = useEtiquetasVisibles((e) => e.alternar)
+  const esEscritorio = useEsEscritorio()
   const mostrarAviso = useUI((s) => s.mostrarAviso)
   const copiadas = usePortapapelesColumnas((s) => s.copiadas)
   const copiarColumnas = usePortapapelesColumnas((s) => s.copiar)
@@ -320,8 +323,35 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
     return borrarValor(columna.id, alumnoId)
   }
 
-  return (
+  // Bloque F3: en escritorio la página no se desplaza; solo la rejilla, que
+  // ocupa todo el alto que queda (`.cuaderno-pagina`, index.css). Por eso ahí
+  // los bloques que en móvil van debajo de la tabla se montan DENTRO de su
+  // scroll, como pie. Decidirlo en JS evita pintarlos dos veces.
+  const pieTrimestre = (
     <>
+      {grupo?.etapa === 'primaria' && idEfectivo && (
+        <NotaDelTrimestre
+          grupoId={idEfectivo}
+          trimestre={trimestre}
+          alumnos={alumnos ?? []}
+          onRepartir={() => setRepartiendo(true)}
+        />
+      )}
+
+      <MediasPorUnidad
+        columnas={columnas ?? []}
+        alumnos={alumnos ?? []}
+        valores={mapaValores}
+        rubricas={mapaRubricas}
+        unidades={unidades ?? []}
+      />
+    </>
+  )
+  const hayRejilla = !!alumnos?.length && visibles.length > 0
+  const pieEnRejilla = esEscritorio && hayRejilla
+
+  return (
+    <div className="cuaderno-pagina">
       {/* Solo título + subtítulo en la cabecera (§ Bloque 5.1): con acciones
           dentro, a 360–390px el título quedaba tapado por los botones
           contiguos. Los botones bajan a su propia fila, bajo las pestañas de
@@ -345,7 +375,17 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
             activo, así que cambiar de grupo aquí tiene que mover TAMBIÉN la
             ruta; se reemplaza, no se apila, para que «Atrás» siga devolviendo
             al origen desde el que se entró. */}
-        <SelectorGrupo grupos={grupos} valor={idEfectivo} onCambio={cambiarDeGrupo} />
+        <div className="lg:hidden">
+          <SelectorGrupo grupos={grupos} valor={idEfectivo} onCambio={cambiarDeGrupo} />
+        </div>
+        {/* Escritorio (Bloque F3): chips a la vista, como en Informes. Va DESPUÉS
+            del desplegable para que en móvil el `space-y` no cambie. */}
+        <ChipsGrupo
+          grupos={grupos}
+          valor={idEfectivo ?? undefined}
+          onCambio={cambiarDeGrupo}
+          className="hidden lg:!mt-0 lg:flex"
+        />
 
         <div role="tablist" aria-label="Trimestre" className="pestanas">
           {([1, 2, 3] as const).map((t) => (
@@ -497,25 +537,11 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           onAplicarGrupo={setAplicando}
           onCambiar={cambiar}
           onBorrar={borrar}
+          pie={pieEnRejilla ? pieTrimestre : undefined}
         />
       )}
 
-      {grupo?.etapa === 'primaria' && idEfectivo && (
-        <NotaDelTrimestre
-          grupoId={idEfectivo}
-          trimestre={trimestre}
-          alumnos={alumnos ?? []}
-          onRepartir={() => setRepartiendo(true)}
-        />
-      )}
-
-      <MediasPorUnidad
-        columnas={columnas ?? []}
-        alumnos={alumnos ?? []}
-        valores={mapaValores}
-        rubricas={mapaRubricas}
-        unidades={unidades ?? []}
-      />
+      {!pieEnRejilla && pieTrimestre}
 
       <HojaPesosTrimestre
         abierta={repartiendo}
@@ -582,7 +608,7 @@ export function Cuaderno({ grupoId: grupoIdInicial }: { grupoId?: string } = {})
           onCerrar={() => setPegando(false)}
         />
       )}
-    </>
+    </div>
   )
 }
 
@@ -703,7 +729,8 @@ function NivelMotrizDelAlumno({ alumno }: { alumno: Alumno }) {
       onClick={() => mostrarAviso(`Nivel motriz ${nivel}: ${rotulo}`)}
       title={`Nivel motriz ${nivel}: ${rotulo}`}
       aria-label={`Nivel motriz ${nivel}: ${rotulo}`}
-      className="cifra flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-borde text-[10px] font-bold leading-none text-tinta-suave dark:border-noche-borde dark:text-noche-suave"
+      // Escritorio: 12 px y tinta plena (AA); el móvil conserva su insignia.
+      className="cifra flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-borde text-[10px] font-bold leading-none text-tinta-suave dark:border-noche-borde dark:text-noche-suave lg:h-5 lg:w-5 lg:text-xs lg:text-tinta lg:dark:text-noche-texto"
     >
       {nivel}
     </button>
@@ -747,7 +774,7 @@ function PuntoEtiquetas({
               'flex shrink-0 items-center gap-1 rounded-full leading-none ' +
               (soloIcono
                 ? ''
-                : 'border border-borde px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide dark:border-noche-borde ') +
+                : 'border border-borde px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide dark:border-noche-borde ') +
               // Caducada: atenuada Y tachada. La opacidad sola no se ve al sol.
               // Por eso una caducada NUNCA es solo icono: sin texto no hay qué
               // tachar, y la atenuación se quedaría sola.
@@ -906,10 +933,18 @@ function CabeceraColumna({
       // El contador va aún más estrecho: en su celda solo cabe —y solo hay que
       // leer— un número, así que robar ancho al resto de la rejilla no tiene
       // sentido.
+      //
+      // Escritorio (Bloque F3): mínimo por tipo, y lo que sobre se reparte
+      // (la tabla llena el ancho). La rúbrica lleva más: su celda pinta nota y
+      // recuento de criterios.
       className={
         (columna.tipo === 'contador'
-          ? 'min-w-[52px] apaisado:min-w-[46px] '
-          : 'min-w-[76px] apaisado:min-w-[64px] ') +
+          ? 'min-w-[52px] apaisado:min-w-[46px] lg:min-w-[72px] '
+          : columna.tipo === 'positivo_negativo'
+            ? 'min-w-[76px] apaisado:min-w-[64px] lg:min-w-[72px] '
+            : columna.tipo === 'rubrica'
+              ? 'min-w-[76px] apaisado:min-w-[64px] lg:min-w-[104px] '
+              : 'min-w-[76px] apaisado:min-w-[64px] lg:min-w-[88px] ') +
         'border-b-2 border-r border-borde bg-agua-claro p-0 dark:border-noche-borde dark:bg-noche-elevada sticky top-0 z-[2]'
       }
     >
@@ -927,7 +962,7 @@ function CabeceraColumna({
         <span className="line-clamp-2 text-xs font-bold leading-tight text-primario-oscuro dark:text-agua">
           {columna.titulo}
         </span>
-        <Settings2 size={12} className="text-tinta-tenue" aria-hidden />
+        <Settings2 size={12} className="text-tinta-tenue lg:text-tinta-suave lg:dark:text-noche-suave" aria-hidden />
       </button>
     </th>
   )
@@ -951,7 +986,14 @@ function Rejilla({
   onAplicarGrupo,
   onCambiar,
   onBorrar,
+  pie,
 }: {
+  /**
+   * Escritorio (Bloque F3): lo que va bajo la tabla DENTRO de su scroll, que
+   * ahí es el único de la vista. Fijado a la izquierda y con el ancho visible,
+   * para que el scroll horizontal de la tabla no lo arrastre.
+   */
+  pie?: ReactNode
   alumnos: Alumno[]
   visibles: Columna[]
   valores: Map<string, import('../db/types').ValorCelda>
@@ -979,7 +1021,12 @@ function Rejilla({
     signo: SignoObservacion
   } | null>(null)
   const config = useConfig()
-  const anchoColumnaAlumno = ANCHO_COLUMNA_ALUMNO_PX[config.anchoColumnaAlumno]
+  const esEscritorio = useEsEscritorio()
+  // En escritorio el nombre no baja de 180 px: hay sitio, y truncarlo obliga
+  // a abrir la ficha para saber de quién es la fila.
+  const anchoColumnaAlumno = esEscritorio
+    ? Math.max(180, ANCHO_COLUMNA_ALUMNO_PX[config.anchoColumnaAlumno])
+    : ANCHO_COLUMNA_ALUMNO_PX[config.anchoColumnaAlumno]
   // El catálogo se lee aquí, no en la celda: son 25 filas y una consulta por
   // fila sobraría entera.
   const catalogoEtiquetas = useLiveQuery(() => leerEtiquetas(), []) ?? []
@@ -997,6 +1044,21 @@ function Rejilla({
   // El apagado del resaltado vive en un ref, NO en la limpieza del efecto: al
   // marcar la petición como atendida el efecto se vuelve a ejecutar, y esa
   // limpieza cancelaría el apagado y dejaría la fila marcada para siempre.
+  // Ancho visible del contenedor (sin su relleno): el del pie fijado.
+  const [anchoVisible, setAnchoVisible] = useState<number | null>(null)
+  const hayPie = !!pie
+  useEffect(() => {
+    const cont = contenedorRef.current
+    if (!hayPie || !cont) return
+    const medir = () => {
+      const cs = getComputedStyle(cont)
+      setAnchoVisible(cont.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight))
+    }
+    medir()
+    const ro = new ResizeObserver(medir)
+    ro.observe(cont)
+    return () => ro.disconnect()
+  }, [hayPie])
   const apagarResaltado = useRef<(() => void) | null>(null)
   useEffect(() => () => apagarResaltado.current?.(), [])
   useEffect(() => {
@@ -1058,7 +1120,9 @@ function Rejilla({
     // cabe entero entre la Cabecera y la barra inferior, así la fila de títulos
     // nunca queda debajo de ninguna de las dos.
     <div ref={contenedorRef} className="carril-fab-derecha rejilla-desplazable">
-      <table className="w-max border-separate border-spacing-0">
+      {/* Escritorio: si sobra ancho, la tabla lo llena y lo reparte entre
+          columnas; si falta, su ancho mínimo manda y aparece el scroll. */}
+      <table className="w-max border-separate border-spacing-0 lg:w-full lg:min-w-max">
         <caption className="sr-only">Cuaderno de notas: alumnos por columnas de evaluación</caption>
         <thead>
           <tr>
@@ -1110,8 +1174,10 @@ function Rejilla({
               data-resaltada={resaltada === a.id || undefined}
               // El resaltado entra de golpe y se desvanece con la transición al
               // quitarse: localizarla de un vistazo, sin dejarla marcada.
+              // `fila-obs`: con ratón, los +/− de observación salen al pasar
+              // por la fila o al enfocarla (index.css).
               className={
-                'transition-colors duration-1000 ' +
+                'fila-obs transition-colors duration-1000 ' +
                 (resaltada === a.id ? 'bg-acento/15' : fila % 2 ? 'bg-agua-claro/30 dark:bg-noche-elevada/30' : '')
               }
             >
@@ -1127,6 +1193,15 @@ function Rejilla({
                       : 'bg-superficie dark:bg-noche-superficie')
                 }
                 style={{ minWidth: anchoColumnaAlumno, width: anchoColumnaAlumno }}
+                // Teclado: con el foco en la fila del nombre, «+» y «−» hacen
+                // lo mismo que sus botones (abren la observación con el signo).
+                onKeyDown={(e) => {
+                  if (e.ctrlKey || e.metaKey || e.altKey) return
+                  const signo = e.key === '+' ? '+' : e.key === '-' || e.key === '−' ? '-' : null
+                  if (!signo) return
+                  e.preventDefault()
+                  setObservando({ alumno: a, signo })
+                }}
               >
                 <div className="flex items-center gap-1">
                   {etiquetasVisibles && <NivelMotrizDelAlumno alumno={a} />}
@@ -1140,14 +1215,14 @@ function Rejilla({
                   </button>
                   <button
                     onClick={() => setObservando({ alumno: a, signo: '+' })}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-lima/20 text-lima-oscuro transition active:scale-95 dark:text-lima"
+                    className="boton-obs flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-lima/20 text-lima-oscuro transition active:scale-95 dark:text-lima"
                     aria-label={`Observación positiva para ${nombre}`}
                   >
                     <Plus size={16} strokeWidth={3} aria-hidden />
                   </button>
                   <button
                     onClick={() => setObservando({ alumno: a, signo: '-' })}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-acento/15 text-acento transition active:scale-95"
+                    className="boton-obs flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-acento/15 text-acento transition active:scale-95"
                     aria-label={`Observación negativa para ${nombre}`}
                   >
                     <Minus size={16} strokeWidth={3} aria-hidden />
@@ -1158,7 +1233,9 @@ function Rejilla({
                     {contador.positivos > 0 && (
                       <span className="text-lima-oscuro dark:text-lima">+{contador.positivos}</span>
                     )}
-                    {contador.negativos > 0 && <span className="text-acento">−{contador.negativos}</span>}
+                    {contador.negativos > 0 && (
+                      <span className="text-acento lg:dark:text-acento-claro">−{contador.negativos}</span>
+                    )}
                   </div>
                 )}
               </th>
@@ -1197,6 +1274,12 @@ function Rejilla({
           })}
         </tbody>
       </table>
+
+      {pie && (
+        <div className="sticky left-0" style={{ width: anchoVisible ?? undefined }}>
+          {pie}
+        </div>
+      )}
 
       <HojaObservacion
         abierta={!!observando}

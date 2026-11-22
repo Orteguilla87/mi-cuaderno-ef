@@ -28,6 +28,9 @@
   --primary-dark: 0 80 95; /* #00505F · pulsado, modo pista */
   --primary-light: 18 136 159; /* #12889F · hover, primario sobre fondo oscuro */
   --accent-dark: 163 17 57; /* #A31139 · hover del acento */
+  /* Acento aclarado hacia --bg (60 %): el acento puro da 2.4:1 como texto sobre
+     los fondos noche. Solo para texto en modo oscuro (≥4.5:1 sobre --night-raised). */
+  --accent-light: 228 155 173; /* #E49BAD */
   --positive-dark: 127 133 0; /* #7F8500 · texto sobre claro: el lima puro no da AA */
   --soft-light: 228 239 241; /* #E4EFF1 · superficies suaves */
   --soft-mid: 198 222 227; /* #C6DEE3 · superficies suaves elevadas */

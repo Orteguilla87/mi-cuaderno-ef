@@ -74,7 +74,7 @@ export function Cabecera({
           )}
           {/* Escritorio (Bloque F2): el subtítulo va bajo el título, en pequeño,
               dentro de la misma barra de ≤64 px. Solo lectura (texto y badges). */}
-          {subtitulo && <div className="hidden truncate text-xs leading-4 text-agua lg:block">{subtitulo}</div>}
+          {subtitulo && <div className="hidden truncate text-xs leading-4 text-agua-claro lg:block">{subtitulo}</div>}
         </div>
         <IndicadorSincro />
         {acciones}

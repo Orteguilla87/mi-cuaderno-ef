@@ -273,6 +273,45 @@
     );
   }
 
+  /* Cuaderno en escritorio (Bloque F3): UN solo scroll. La página mide justo
+     el alto de la ventana menos la reserva inferior de `<main>` (`carril-fab`,
+     que en escritorio es solo la del FAB) y la rejilla se queda con todo lo
+     que sobra bajo cabecera, chips, pestañas y acciones. La página no se
+     desplaza; la rejilla, en los dos ejes. En móvil esta clase no hace nada. */
+  @media (min-width: 1024px) {
+    .cuaderno-pagina {
+      display: flex;
+      flex-direction: column;
+      height: calc(100dvh - var(--alto-fab) - var(--holgura-capa) * 2 - env(safe-area-inset-bottom));
+    }
+    .cuaderno-pagina > * {
+      flex-shrink: 0;
+    }
+    .cuaderno-pagina > .rejilla-desplazable {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+    }
+    /* Pestañas inactivas: el tinta-suave da 3.95:1 sobre el fondo. */
+    .cuaderno-pagina .pestana:not([aria-selected='true']) {
+      @apply text-tinta dark:text-noche-texto;
+    }
+  }
+
+  /* +/− de observación de cada fila: con ratón (hover fino) solo aparecen al
+     pasar por la fila o al enfocarla. Opacidad y no `display`: siguen en el
+     orden de Tab y el foco los hace visibles. Táctil: siempre a la vista. */
+  @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+    .fila-obs .boton-obs {
+      opacity: 0;
+      transition: opacity 120ms;
+    }
+    .fila-obs:hover .boton-obs,
+    .fila-obs:focus-within .boton-obs {
+      opacity: 1;
+    }
+  }
+
   /* El aviso, encima del FAB. Usa siempre la altura del FAB grande aunque esté
      compacto: una posición estable se lee mejor que una que salta de pantalla
      en pantalla. */
